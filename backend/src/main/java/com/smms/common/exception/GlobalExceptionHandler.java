@@ -29,6 +29,20 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(e.getCode(), e.getMessage());
     }
 
+    /** 越权访问（@RequirePerm 校验失败）：403 + JSON（BR-SYS-05） */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ApiResponse<Void> handleAccessDenied(org.springframework.security.access.AccessDeniedException e) {
+        return ApiResponse.fail(ErrorCode.FORBIDDEN);
+    }
+
+    /** 请求体不可读（JSON 格式错误等） */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleNotReadable(org.springframework.http.converter.HttpMessageNotReadableException e) {
+        return ApiResponse.fail(ErrorCode.PARAM_INVALID, "请求体格式不正确");
+    }
+
     /** 参数校验异常（@RequestBody @Valid） */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

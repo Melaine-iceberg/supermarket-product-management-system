@@ -1,64 +1,148 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { ping, type PingResult } from '@/api/health'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
-const loading = ref(false)
-const result = ref<PingResult | null>(null)
+const router = useRouter()
+const auth = useAuthStore()
 
-async function handlePing() {
-  loading.value = true
-  try {
-    result.value = await ping()
-    ElMessage.success('后端连接正常')
-  } finally {
-    loading.value = false
+const user = computed(() => auth.user)
+const today = new Date().toLocaleDateString('zh-CN', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  weekday: 'long',
+})
+
+/** 快捷入口：取前 6 个可访问菜单 */
+const quickLinks = computed(() => {
+  const links: { title: string; path: string; icon: string }[] = []
+  for (const dir of auth.menus) {
+    if (dir.children?.length) {
+      for (const menu of dir.children) {
+        if (menu.routePath) {
+          links.push({ title: menu.name, path: menu.routePath, icon: menu.icon || 'Document' })
+        }
+        if (links.length >= 8) return links
+      }
+    }
   }
-}
+  return links
+})
 </script>
 
 <template>
-  <main class="home">
-    <el-card class="home-card">
-      <template #header>
-        <span class="title">超市商品管理系统</span>
-        <el-tag type="info" effect="plain">工程骨架已就绪</el-tag>
-      </template>
-      <p class="desc">前后端分离架构：Vue 3 + Element Plus 前端，Spring Boot 后端（/api/v1）。</p>
-      <el-button type="primary" :loading="loading" @click="handlePing">
-        测试后端连通
-      </el-button>
-      <el-descriptions v-if="result" :column="1" border class="result">
-        <el-descriptions-item label="后端应用">{{ result.app }}</el-descriptions-item>
-        <el-descriptions-item label="服务器时间">{{ result.serverTime }}</el-descriptions-item>
-      </el-descriptions>
-    </el-card>
-  </main>
+  <div class="home">
+    <el-row :gutter="16">
+      <el-col :span="24">
+        <el-card>
+          <div class="welcome">
+            <el-avatar :size="56" class="avatar">{{ user?.realName?.charAt(0) }}</el-avatar>
+            <div class="info">
+              <h3>{{ user?.realName }}，{{ today.includes('星期六') || today.includes('星期日') ? '周末好' : '你好' }}</h3>
+              <p>{{ today }} · 当前角色：{{ user?.roleNames?.join('、') || '未分配' }}</p>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card>
+          <template #header>快捷入口</template>
+          <div v-if="quickLinks.length" class="links">
+            <div
+              v-for="link in quickLinks"
+              :key="link.path"
+              class="link-item"
+              @click="router.push(link.path)"
+            >
+              <el-icon :size="24" color="#409eff"><component :is="link.icon" /></el-icon>
+              <span>{{ link.title }}</span>
+            </div>
+          </div>
+          <el-empty v-else description="暂无可用菜单" :image-size="60" />
+        </el-card>
+      </el-col>
+
+      <el-col :span="24">
+        <el-card>
+          <template #header>系统说明</template>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="系统名称">超市商品管理系统（SMMS）</el-descriptions-item>
+            <el-descriptions-item label="版本">v0.1.0 · 步骤2：系统管理模块</el-descriptions-item>
+            <el-descriptions-item label="技术栈">Vue 3 + Element Plus / Spring Boot 4 + MyBatis-Plus</el-descriptions-item>
+            <el-descriptions-item label="接口规范">RESTful /api/v1 · JWT Bearer 认证</el-descriptions-item>
+          </el-descriptions>
+          <el-alert
+            class="tip"
+            type="info"
+            :closable="false"
+            show-icon
+            title="后续模块（商品 / 库存 / 采购 / 销售 / 会员 / 报表）将在后续步骤陆续交付"
+          />
+        </el-card>
+      </el-col>
+    </el-row>
+  </div>
 </template>
 
 <style scoped lang="scss">
 .home {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f7fa;
-}
+  max-width: 1100px;
+  margin: 0 auto;
 
-.home-card {
-  width: 520px;
+  .welcome {
+    display: flex;
+    align-items: center;
+    gap: 16px;
 
-  .title {
-    font-size: 18px;
-    font-weight: 600;
-    margin-right: 12px;
+    .avatar {
+      background: #409eff;
+      color: #fff;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .info {
+      h3 {
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0;
+        color: #909399;
+        font-size: 13px;
+      }
+    }
   }
 
-  .desc {
-    color: #606266;
-    margin: 0 0 16px;
+  .links {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+
+    .link-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 18px 8px;
+      border: 1px solid #ebeef5;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 13px;
+
+      &:hover {
+        border-color: #409eff;
+        color: #409eff;
+        box-shadow: 0 2px 12px rgba(64, 158, 255, 0.15);
+      }
+    }
   }
 
-  .result {
+  .tip {
     margin-top: 16px;
   }
 }

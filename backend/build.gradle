@@ -14,6 +14,11 @@ java {
     }
 }
 
+// 保留方法参数名（@Valid 校验消息、OpLog SpEL 目标解析依赖）
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs << '-parameters'
+}
+
 // 生成构建信息，供 /actuator/info 展示版本号（IR-SW-08）
 springBoot {
     buildInfo()
@@ -24,11 +29,17 @@ repositories {
 }
 
 dependencies {
-    // Web / 校验 / 切面 / 监控
+    // Web / 校验 / 切面 / 监控 / 安全
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.aspectj:aspectjweaver'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // JWT（HS256，IR-SW-03）
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
     // ORM：MyBatis-Plus（Spring Boot 4 专用 starter）+ 分页插件（3.5.9+ 拆分至独立包）
     implementation 'com.baomidou:mybatis-plus-spring-boot4-starter:3.5.17'

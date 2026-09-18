@@ -1,0 +1,98 @@
+package com.smms.sys.service;
+
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.smms.common.api.ErrorCode;
+import com.smms.common.exception.BusinessException;
+import com.smms.sys.dto.DictItemSaveRequest;
+import com.smms.sys.dto.DictVO;
+import com.smms.sys.entity.SysDict;
+import com.smms.sys.entity.SysDictItem;
+import com.smms.sys.mapper.SysDictItemMapper;
+import com.smms.sys.mapper.SysDictMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * 数据字典服务（FR-SYS-07）：维护计量单位、收款方式、退货原因等枚举；
+ * 停用项不可被新单据选择，历史数据仍能正确显示名称。
+ */
+@Service
+@RequiredArgsConstructor
+public class SysDictService {
+
+    private final SysDictMapper dictMapper;
+    private final SysDictItemMapper itemMapper;
+
+    /** 全部字典类型 + 字典项 */
+    public List<DictVO> list() {
+        List<SysDict> dicts = dictMapper.selectList(
+                Wrappers.<SysDict>lambdaQuery().orderByAsc(SysDict::getId));
+        List<SysDictItem> items = itemMapper.selectList(
+                Wrappers.<SysDictItem>lambdaQuery().orderByAsc(SysDictItem::getSortNo));
+        Map<Long, List<SysDictItem>> byDict = items.stream()
+                .collect(Collectors.groupingBy(SysDictItem::getDictId));
+        return dicts.stream().map(d -> new DictVO(d.getId(), d.getDictType(), d.getDictName(),
+                d.getRemark(),
+                byDict.getOrDefault(d.getId(), List.of()).stream().map(this::toItemVO).toList()))
+                .toList();
+    }
+
+    /** 新增字典项：同一字典下 value 唯一 */
+    public void addItem(String dictType, DictItemSaveRequest req, String operator) {
+        SysDict dict = requireDict(dictType);
+        checkValueUnique(dict.getId(), req.value(), null);
+        SysDictItem item = new SysDictItem();
+        item.setDictId(dict.getId());
+        item.setLabel(req.label());
+        item.setValue(req.value());
+        item.setSortNo(req.sortNo());
+        item.setStatus(req.status());
+        item.setRemark(req.remark());
+        item.setCreateBy(operator);
+        itemMapper.insert(item);
+    }
+
+    /** 编辑字典项：value 不可与其他项冲突 */
+    public void updateItem(Long itemId, DictItemSaveRequest req, String operator) {
+        SysDictItem item = itemMapper.selectById(itemId);
+        if (item == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "字典项不存在");
+        }
+        checkValueUnique(item.getDictId(), req.value(), itemId);
+        item.setLabel(req.label());
+        item.setValue(req.value());
+        item.setSortNo(req.sortNo());
+        item.setStatus(req.status());
+        item.setRemark(req.remark());
+        item.setUpdateBy(operator);
+        itemMapper.updateById(item);
+    }
+
+    private SysDict requireDict(String dictType) {
+        SysDict dict = dictMapper.selectOne(Wrappers.<SysDict>lambdaQuery()
+                .eq(SysDict::getDictType, dictType));
+        if (dict == null || dict.getStatus() == null || dict.getStatus() != 1) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "字典类型不存在或已停用");
+        }
+        return dict;
+    }
+
+    private void checkValueUnique(Long dictId, String value, Long excludeItemId) {
+        Long count = itemMapper.selectCount(Wrappers.<SysDictItem>lambdaQuery()
+                .eq(SysDictItem::getDictId, dictId)
+                .eq(SysDictItem::getValue, value)
+                .ne(excludeItemId != null, SysDictItem::getId, excludeItemId));
+        if (count != null && count > 0) {
+            throw new BusinessException(ErrorCode.BUSINESS_ERROR, "字典项值已存在：" + value);
+        }
+    }
+
+    private DictVO.ItemVO toItemVO(SysDictItem item) {
+        return new DictVO.ItemVO(item.getId(), item.getLabel(), item.getValue(),
+                item.getSortNo(), item.getStatus(), item.getRemark());
+    }
+}
