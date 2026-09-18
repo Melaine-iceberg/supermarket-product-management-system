@@ -1,0 +1,43 @@
+#### 后端（Gradle / Spring Boot）####
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+#### 前端（Node / Vite）####
+node_modules/
+dist/
+*.local
+
+#### 敏感本地配置（不入库，见 NFR-SEC-11 / IR-SW-02）####
+.env
+.env.*
+application-local.yaml
+*.pem
+
+#### 日志与临时文件 ####
+logs/
+*.log
+dev-data/
+
+#### IDE / 编辑器 ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+.vscode/
+.classpath
+.project
+.settings
+*.springBeans
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+#### 系统文件 ####
+.DS_Store
+Thumbs.db

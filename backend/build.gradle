@@ -1,0 +1,53 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.smms'
+version = '0.1.0-SNAPSHOT'
+description = '超市商品管理系统（SMMS）后端服务'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+// 生成构建信息，供 /actuator/info 展示版本号（IR-SW-08）
+springBoot {
+    buildInfo()
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Web / 校验 / 切面 / 监控
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.aspectj:aspectjweaver'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // ORM：MyBatis-Plus（Spring Boot 4 专用 starter）+ 分页插件（3.5.9+ 拆分至独立包）
+    implementation 'com.baomidou:mybatis-plus-spring-boot4-starter:3.5.17'
+    implementation 'com.baomidou:mybatis-plus-jsqlparser:3.5.17'
+
+    // 数据库驱动
+    runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // 工具
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // 测试
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
