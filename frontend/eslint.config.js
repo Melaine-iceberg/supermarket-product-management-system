@@ -17,9 +17,25 @@ export default tseslint.config(
     },
   },
   {
+    files: ['**/*.{ts,vue}'],
+    rules: {
+      // 未定义变量由 vue-tsc 编译期检查（typescript-eslint 官方建议）
+      'no-undef': 'off',
+      // 下划线前缀为有意忽略的解构变量（如导出剔除分页参数）
+      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^_' }],
+    },
+  },
+  {
     files: ['**/*.vue'],
     languageOptions: {
       parserOptions: { parser: tseslint.parser },
+    },
+  },
+  {
+    files: ['**/views/**/index.vue'],
+    rules: {
+      // 页面统一以 views/<模块>/index.vue 命名（与菜单表组件路径约定一致）
+      'vue/multi-word-component-names': 'off',
     },
   },
 )

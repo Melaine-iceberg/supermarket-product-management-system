@@ -85,6 +85,12 @@ const router = createRouter({
           component: () => import('@/views/goods/category/index.vue'),
           meta: { perm: 'sys:cat:list', title: '分类管理' },
         },
+        {
+          path: 'goods/list',
+          name: 'goods-list',
+          component: () => import('@/views/goods/list/index.vue'),
+          meta: { perm: 'sys:goods:list', title: '商品档案' },
+        },
       ],
     },
     {

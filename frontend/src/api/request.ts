@@ -10,6 +10,12 @@ export interface ApiResponse<T = unknown> {
   timestamp: string
 }
 
+/** 分页结果（IR-COM-04）：列表接口须返回总条数以支持前端分页 */
+export interface PageResult<T> {
+  list: T[]
+  total: number
+}
+
 export const TOKEN_KEY = 'smms_token'
 
 const instance = axios.create({
@@ -84,7 +90,7 @@ export const http = {
     const res = await instance.delete<ApiResponse<T>>(url, { params })
     return res.data.data
   },
-  /** 下载文件（CSV 导出等，blob 响应） */
+  /** 下载文件（CSV/Excel 导出等，blob 响应） */
   async download(url: string, params?: object, config?: AxiosRequestConfig): Promise<Blob> {
     const res = await instance.get(url, {
       params,
@@ -93,4 +99,14 @@ export const http = {
     })
     return res.data as Blob
   },
+}
+
+/** 导出文件保存到本地 */
+export function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }

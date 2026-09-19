@@ -322,7 +322,8 @@ onMounted(load)
           <el-tree-select
             v-model="form.parentId"
             :data="parentOptions"
-            :props="{ label: 'path', value: 'id' }"
+            :props="{ label: 'path' }"
+            node-key="id"
             check-strictly
             :render-after-expand="false"
             default-expand-all

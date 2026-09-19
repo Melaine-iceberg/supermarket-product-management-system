@@ -1,11 +1,6 @@
 import { http, TOKEN_KEY } from './request'
+import type { PageResult } from './request'
 import type { MenuNode } from './auth'
-
-// ---------- 通用分页结构（IR-COM-04） ----------
-export interface PageResult<T> {
-  list: T[]
-  total: number
-}
 
 // ---------- 用户管理（FR-SYS-02） ----------
 export interface SysUserVO {
@@ -228,16 +223,6 @@ export function pageLoginLogs(params: {
   size: number
 }) {
   return http.get<PageResult<LoginLogVO>>('/loginlogs', params)
-}
-
-/** 导出文件保存到本地 */
-export function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 /** 当前登录用户的 Token（供需要直连的场景） */

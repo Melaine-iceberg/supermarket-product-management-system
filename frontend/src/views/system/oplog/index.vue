@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { saveBlob } from '@/api/request'
 import {
   pageOpLogs,
   listOpLogModules,
   exportOpLogs,
-  saveBlob,
   type OperationLogVO,
 } from '@/api/system'
 

@@ -90,7 +90,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page" v-loading="loading">
+  <div v-loading="loading" class="page">
     <el-card v-for="group in groups" :key="group.group" class="group-card">
       <template #header>{{ group.label }}</template>
       <el-table :data="group.list" stripe>
