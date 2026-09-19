@@ -78,6 +78,13 @@ const router = createRouter({
           component: () => import('@/views/system/loginlog/index.vue'),
           meta: { perm: 'sys:loginlog:list', title: '登录日志' },
         },
+        // 商品管理（FR-CAT / FR-GOODS）
+        {
+          path: 'goods/category',
+          name: 'goods-category',
+          component: () => import('@/views/goods/category/index.vue'),
+          meta: { perm: 'sys:cat:list', title: '分类管理' },
+        },
       ],
     },
     {

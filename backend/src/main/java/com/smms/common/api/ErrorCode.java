@@ -35,7 +35,16 @@ public enum ErrorCode {
     ROLE_CODE_EXISTS(1105, "角色代码已存在"),
     WEAK_PASSWORD(1106, "密码强度不足"),
     OLD_PASSWORD_ERROR(1107, "原密码不正确"),
-    BUILTIN_PROTECTED(1108, "内置对象受保护，不允许该操作");
+    BUILTIN_PROTECTED(1108, "内置对象受保护，不允许该操作"),
+
+    // ---------- CAT 分类模块（1200 ~ 1299，FR-CAT-01 ~ 07） ----------
+    CAT_NAME_EXISTS(1201, "同级下已存在同名分类"),
+    CAT_LEVEL_EXCEED(1202, "分类层级最多3级"),
+    CAT_PARENT_INVALID(1203, "上级分类不能是自身或其子孙分类"),
+    CAT_HAS_CHILDREN(1204, "存在子分类，禁止删除"),
+    CAT_HAS_GOODS(1205, "分类下存在商品，禁止删除，请改用停用"),
+    CAT_PARENT_DISABLED(1206, "上级分类已停用，请先启用上级分类"),
+    CAT_ANCESTOR_DISABLED(1207, "上级分类已停用，无法启用该分类，请先启用上级分类");
 
     private final int code;
     private final String message;
