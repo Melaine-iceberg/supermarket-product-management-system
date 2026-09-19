@@ -61,6 +61,21 @@ export function listBrands() {
   return http.get<BrandVO[]>('/brands')
 }
 
+// ---------- 计量单位（FR-GOODS-08） ----------
+export interface UnitVO {
+  id: number
+  name: string
+  symbol: string | null
+  /** 是否重量单位：称重商品只能选重量单位（BR-GOODS-05） */
+  isWeight: number
+  status: number
+}
+
+/** 单位列表（商品表单下拉、单位管理页共用） */
+export function listUnits() {
+  return http.get<UnitVO[]>('/units')
+}
+
 // ---------- 商品档案（FR-GOODS-01~07/10~12） ----------
 export interface GoodsListVO {
   id: number
@@ -131,4 +146,97 @@ export function deleteGoods(id: number) {
 /** 清单导出（FR-GOODS-12）：与列表同一筛选条件，返回 xlsx blob */
 export function exportGoods(params: Omit<GoodsListQuery, 'page' | 'size'>) {
   return http.download('/goods/export', params)
+}
+
+/** 商品档案完整记录（详情接口内嵌，含列表没有的 remark/image 等） */
+export interface GoodsRecord {
+  id: number
+  goodsCode: string
+  barcode: string | null
+  name: string
+  categoryId: number
+  brandId: number | null
+  unitId: number
+  spec: string | null
+  origin: string | null
+  purchasePrice: number
+  retailPrice: number
+  memberPrice: number
+  pluCode: string | null
+  isWeighed: number
+  allowReturn: number
+  safetyStockLower: number
+  safetyStockUpper: number | null
+  image: string | null
+  remark: string | null
+  status: number
+}
+
+/** 商品详情聚合（FR-GOODS-04）：此处仅声明表单回填所需字段 */
+export interface GoodsDetailVO {
+  goods: GoodsRecord
+  categoryName: string
+  unitName: string
+  brandName: string | null
+}
+
+/** 商品详情（FR-GOODS-04）：档案 + 库存成本 + 流水/采购价/销量/供应商聚合 */
+export function getGoodsDetail(id: number) {
+  return http.get<GoodsDetailVO>(`/goods/${id}/detail`)
+}
+
+/** 新增商品请求（FR-GOODS-01）：编码/条码留空自动生成 */
+export interface GoodsCreatePayload {
+  name: string
+  categoryId: number
+  unitId: number
+  brandId?: number
+  spec?: string
+  origin?: string
+  purchasePrice?: number
+  retailPrice: number
+  memberPrice?: number
+  barcode?: string
+  goodsCode?: string
+  pluCode?: string
+  isWeighed: number
+  allowReturn: number
+  safetyStockLower?: number
+  safetyStockUpper?: number
+  /** >0 时生成"期初建账"流水（BR-INV-01），仅创建时可设 */
+  initialStock?: number
+  remark?: string
+}
+
+/** 编辑商品请求（FR-GOODS-02）：编码/初始库存不可改；条码变更须 barcodeConfirmed */
+export interface GoodsUpdatePayload extends Omit<GoodsCreatePayload, 'goodsCode' | 'initialStock'> {
+  barcode: string
+  /** 条码修改二次确认标记（FR-GOODS-02） */
+  barcodeConfirmed: boolean
+  /** 图片路径（编辑全量覆盖，透传原值） */
+  image?: string
+  /** 调价原因（价格变更时随调价历史记录，FR-GOODS-10） */
+  priceChangeReason?: string
+}
+
+/** 新增结果：回显系统生成的编码与店内码 */
+export interface GoodsCreatedVO {
+  id: number
+  goodsCode: string
+  barcode: string
+}
+
+/** 新增商品（FR-GOODS-01） */
+export function createGoods(data: GoodsCreatePayload) {
+  return http.post<GoodsCreatedVO>('/goods', data)
+}
+
+/** 编辑商品（FR-GOODS-02）：调价留痕 */
+export function updateGoods(id: number, data: GoodsUpdatePayload) {
+  return http.put<void>(`/goods/${id}`, data)
+}
+
+/** 店内码预览（FR-GOODS-07）：EAN-13 前缀20~29 + 序号 + 校验位，不落库 */
+export function nextBarcode() {
+  return http.get<{ barcode: string }>('/goods/next-barcode')
 }
