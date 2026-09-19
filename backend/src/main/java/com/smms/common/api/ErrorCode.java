@@ -62,7 +62,12 @@ public enum ErrorCode {
     PROMO_PRICE_INVALID(1332, "促销价必须低于零售价"),
 
     // ---------- INV 库存模块（1400 ~ 1499，FR-INV-01 ~ 12） ----------
-    STOCK_NOT_ENOUGH(1401, "库存不足");
+    STOCK_NOT_ENOUGH(1401, "库存不足"),
+    CHECK_SCOPE_EMPTY(1411, "盘点范围内没有可盘商品"),
+    CHECK_OVERLAP(1412, "范围内已存在未审核盘点单，不可重复创建（BR-INV-09）"),
+    CHECK_STATUS_INVALID(1413, "盘点单当前状态不允许该操作"),
+    CHECK_AUDIT_SELF(1414, "审核人与盘点人必须为不同用户（BR-SYS-01）"),
+    CHECK_REASON_REQUIRED(1415, "差异原因或驳回意见不能为空");
 
     private final int code;
     private final String message;

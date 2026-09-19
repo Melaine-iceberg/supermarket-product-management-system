@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.inv.mapper.StockCheckItemMapper">
+
+    <!-- ==================== 盘点明细（DR-14，FR-INV-08） ==================== -->
+
+    <!-- 范围商品解析 + 账面快照（FR-INV-07）：结存行缺失按 0（建档初始库存 0 的商品无结存行）；
+         WARNING 口径与库存预警一致（缺货/预警/积压，仅启用商品）；
+         ALL/CATEGORY/GOODS 范围含停用商品（货架遗留库存仍须盘点） -->
+    <select id="selectScopeGoods" resultType="com.smms.inv.dto.CheckScopeGoods">
+        SELECT
+            g.id AS goodsId,
+            COALESCE(inv.quantity, 0)   AS bookQty,
+            COALESCE(inv.cost_price, 0) AS costPrice
+        FROM goods g
+        LEFT JOIN inventory inv ON inv.goods_id = g.id
+        <where>
+            <choose>
+                <when test="scopeType == 'ALL'">
+                </when>
+                <when test="scopeType == 'CATEGORY'">
+                    AND g.category_id IN
+                    <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+                </when>
+                <when test="scopeType == 'GOODS'">
+                    AND g.id IN
+                    <foreach collection="goodsIds" item="gid" open="(" separator="," close=")">#{gid}</foreach>
+                </when>
+                <when test="scopeType == 'WARNING'">
+                    AND g.status = 1
+                    AND (
+                        COALESCE(inv.quantity, 0) &lt;= 0
+                        OR COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower
+                        OR (g.safety_stock_upper IS NOT NULL AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper)
+                    )
+                </when>
+                <otherwise>
+                    AND 1 = 0
+                </otherwise>
+            </choose>
+        </where>
+        ORDER BY g.id
+    </select>
+
+    <!-- 明细分页（FR-INV-08）：关联商品档案，keyword 匹配编码/条码/名称（扫码定位行），
+         onlyDiff=true 时仅看差异行（复核用） -->
+    <select id="selectItemPage" resultType="com.smms.inv.dto.CheckItemVO">
+        SELECT
+            i.id           AS id,
+            i.goods_id     AS goodsId,
+            g.goods_code   AS goodsCode,
+            g.barcode      AS barcode,
+            g.name         AS name,
+            g.category_id  AS categoryId,
+            c.name         AS categoryName,
+            u.name         AS unitName,
+            g.spec         AS spec,
+            g.is_weighed   AS isWeighed,
+            i.book_qty     AS bookQty,
+            i.actual_qty   AS actualQty,
+            i.diff_qty     AS diffQty,
+            i.cost_price   AS costPrice,
+            i.diff_amount  AS diffAmount,
+            i.diff_reason  AS diffReason,
+            i.remark       AS remark
+        FROM stock_check_item i
+        JOIN goods g ON g.id = i.goods_id
+        JOIN category c ON c.id = g.category_id
+        JOIN unit u ON u.id = g.unit_id
+        <where>
+            i.order_id = #{orderId}
+            <if test="onlyDiff">
+                AND i.diff_qty IS NOT NULL AND i.diff_qty &lt;&gt; 0
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (g.name LIKE CONCAT('%', #{keyword}, '%')
+                     OR g.goods_code LIKE CONCAT('%', #{keyword}, '%')
+                     OR g.barcode LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY i.id
+    </select>
+
+    <!-- 这些盘点单明细中的商品ID（BR-INV-09 防重复盘点） -->
+    <select id="selectGoodsIdsOfOrders" resultType="java.lang.Long">
+        SELECT DISTINCT goods_id
+        FROM stock_check_item
+        WHERE order_id IN
+        <foreach collection="orderIds" item="oid" open="(" separator="," close=")">#{oid}</foreach>
+    </select>
+
+    <!-- 批量插入明细快照行（service 按 500 行/批分片） -->
+    <insert id="insertBatch">
+        INSERT INTO stock_check_item (order_id, goods_id, book_qty, cost_price)
+        VALUES
+        <foreach collection="items" item="it" separator=",">
+            (#{it.orderId}, #{it.goodsId}, #{it.bookQty}, #{it.costPrice})
+        </foreach>
+    </insert>
+</mapper>

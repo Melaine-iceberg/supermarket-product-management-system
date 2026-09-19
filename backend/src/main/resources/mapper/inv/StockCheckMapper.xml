@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.inv.mapper.StockCheckOrderMapper">
+
+    <!-- ==================== 盘点单（DR-13，FR-INV-07） ==================== -->
+
+    <!-- 盘点单分页：单号/状态/盘点人/审核人/时间区间组合筛选，创建时间倒序；
+         录入进度/差异行数由明细子查询统计（entered=实盘数已录，diff=差异≠0） -->
+    <select id="selectCheckPage" resultType="com.smms.inv.dto.CheckOrderVO">
+        SELECT
+            o.id                AS id,
+            o.order_no          AS orderNo,
+            o.scope_type        AS scopeType,
+            o.scope_desc        AS scopeDesc,
+            o.status            AS status,
+            o.checker_name      AS checkerName,
+            o.start_time        AS startTime,
+            o.base_time         AS baseTime,
+            o.item_count        AS itemCount,
+            (SELECT COUNT(*) FROM stock_check_item i
+             WHERE i.order_id = o.id AND i.actual_qty IS NOT NULL) AS enteredCount,
+            (SELECT COUNT(*) FROM stock_check_item i
+             WHERE i.order_id = o.id AND i.diff_qty IS NOT NULL AND i.diff_qty &lt;&gt; 0) AS diffCount,
+            o.surplus_amount    AS surplusAmount,
+            o.shortage_amount   AS shortageAmount,
+            o.during_change_count AS duringChangeCount,
+            o.auditor_name      AS auditorName,
+            o.audit_time        AS auditTime,
+            o.audit_remark      AS auditRemark,
+            o.cancel_reason     AS cancelReason,
+            o.create_time       AS createTime
+        FROM stock_check_order o
+        <where>
+            <if test="q.orderNo != null and q.orderNo != ''">
+                AND o.order_no LIKE CONCAT('%', #{q.orderNo}, '%')
+            </if>
+            <if test="q.status != null and q.status != ''">
+                AND o.status = #{q.status}
+            </if>
+            <if test="q.checkerName != null and q.checkerName != ''">
+                AND o.checker_name LIKE CONCAT('%', #{q.checkerName}, '%')
+            </if>
+            <if test="q.auditorName != null and q.auditorName != ''">
+                AND o.auditor_name LIKE CONCAT('%', #{q.auditorName}, '%')
+            </if>
+            <if test="beginTime != null">
+                AND o.create_time &gt;= #{beginTime}
+            </if>
+            <if test="endTime != null">
+                AND o.create_time &lt; #{endTime}
+            </if>
+        </where>
+        ORDER BY o.create_time DESC, o.id DESC
+    </select>
+</mapper>
