@@ -61,6 +61,23 @@ export function listBrands() {
   return http.get<BrandVO[]>('/brands')
 }
 
+/** 品牌新增/编辑请求（FR-GOODS-13）：名称唯一 */
+export interface BrandSavePayload {
+  name: string
+  /** 首字母（拼音，0~2 位英文字母） */
+  firstLetter?: string
+  logo?: string
+  status: number
+}
+
+export function createBrand(data: BrandSavePayload) {
+  return http.post<void>('/brands', data)
+}
+
+export function updateBrand(id: number, data: BrandSavePayload) {
+  return http.put<void>(`/brands/${id}`, data)
+}
+
 // ---------- 计量单位（FR-GOODS-08） ----------
 export interface UnitVO {
   id: number
@@ -69,11 +86,28 @@ export interface UnitVO {
   /** 是否重量单位：称重商品只能选重量单位（BR-GOODS-05） */
   isWeight: number
   status: number
+  createTime: string
 }
 
 /** 单位列表（商品表单下拉、单位管理页共用） */
 export function listUnits() {
   return http.get<UnitVO[]>('/units')
+}
+
+/** 单位新增/编辑请求（FR-GOODS-08）：名称唯一；重量属性被商品引用后不可变更 */
+export interface UnitSavePayload {
+  name: string
+  symbol?: string
+  isWeight: number
+  status: number
+}
+
+export function createUnit(data: UnitSavePayload) {
+  return http.post<void>('/units', data)
+}
+
+export function updateUnit(id: number, data: UnitSavePayload) {
+  return http.put<void>(`/units/${id}`, data)
 }
 
 // ---------- 商品档案（FR-GOODS-01~07/10~12） ----------

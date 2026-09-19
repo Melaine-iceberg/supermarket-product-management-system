@@ -91,6 +91,18 @@ const router = createRouter({
           component: () => import('@/views/goods/list/index.vue'),
           meta: { perm: 'sys:goods:list', title: '商品档案' },
         },
+        {
+          path: 'goods/unit',
+          name: 'goods-unit',
+          component: () => import('@/views/goods/unit/index.vue'),
+          meta: { perm: 'sys:unit:list', title: '计量单位' },
+        },
+        {
+          path: 'goods/brand',
+          name: 'goods-brand',
+          component: () => import('@/views/goods/brand/index.vue'),
+          meta: { perm: 'sys:brand:list', title: '品牌管理' },
+        },
       ],
     },
     {
