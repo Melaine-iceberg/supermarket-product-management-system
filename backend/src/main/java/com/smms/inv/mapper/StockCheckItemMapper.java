@@ -42,6 +42,14 @@ public interface StockCheckItemMapper extends BaseMapper<StockCheckItem> {
     /** 提交审核时未盘行按账面确认（FR-INV-08）：实盘=账面，差异清零 */
     int confirmUnenteredAsBook(@Param("orderId") Long orderId);
 
+    /**
+     * 盘点期间发生的出入库笔数（BR-INV-10）：基准时间起该单范围内商品的全部库存流水数
+     * （营业中盘点为常态，不阻断盘点，仅在审核时提示复核差异原因）。
+     */
+    long countDuringChanges(@Param("orderId") Long orderId,
+                            @Param("baseTime") java.time.LocalDateTime baseTime,
+                            @Param("endTime") java.time.LocalDateTime endTime);
+
     /** 明细全量（导入模板/汇总统计用，不分页）：关联商品档案 */
     List<CheckItemVO> selectAllItems(@Param("orderId") Long orderId);
 }

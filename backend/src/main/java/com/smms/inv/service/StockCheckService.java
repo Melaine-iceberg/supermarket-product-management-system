@@ -10,6 +10,7 @@ import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.mapper.CategoryMapper;
 import com.smms.goods.mapper.GoodsMapper;
+import com.smms.inv.dto.CheckAuditRequest;
 import com.smms.inv.dto.CheckCreateRequest;
 import com.smms.inv.dto.CheckEntryRequest;
 import com.smms.inv.dto.CheckItemVO;
@@ -18,8 +19,12 @@ import com.smms.inv.dto.CheckOrderVO;
 import com.smms.inv.dto.CheckQuery;
 import com.smms.inv.dto.CheckScopeGoods;
 import com.smms.inv.dto.CheckSummaryVO;
+import com.smms.inv.entity.Inventory;
+import com.smms.inv.entity.InventoryRecord;
 import com.smms.inv.entity.StockCheckItem;
 import com.smms.inv.entity.StockCheckOrder;
+import com.smms.inv.mapper.InventoryMapper;
+import com.smms.inv.mapper.InventoryRecordMapper;
 import com.smms.inv.mapper.StockCheckItemMapper;
 import com.smms.inv.mapper.StockCheckOrderMapper;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +61,8 @@ public class StockCheckService {
 
     private final StockCheckOrderMapper orderMapper;
     private final StockCheckItemMapper itemMapper;
+    private final InventoryMapper inventoryMapper;
+    private final InventoryRecordMapper inventoryRecordMapper;
     private final CategoryMapper categoryMapper;
     private final GoodsMapper goodsMapper;
 
@@ -351,6 +358,122 @@ public class StockCheckService {
                 .set(StockCheckOrder::getShortageAmount, shortageAmount)
                 .eq(StockCheckOrder::getId, order.getId()));
         return new CheckSummaryVO(entered, diffCount, surplusAmount, shortageAmount);
+    }
+
+    // ==================== 盘点审核与库存调整（FR-INV-09） ====================
+
+    /**
+     * 盘点审核（FR-INV-09）：通过 → 单事务内生成盘盈/盘亏流水并将结存覆盖为实盘数；
+     * 驳回 → 须填意见并退回盘点中（§2.2.4）。审核人与盘点人必须不同（BR-SYS-01）。
+     */
+    @Transactional
+    public CheckOrderVO audit(Long orderId, CheckAuditRequest req, String auditorName) {
+        StockCheckOrder order = requireOrder(orderId);
+        if (!"PENDING_AUDIT".equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.CHECK_STATUS_INVALID,
+                    "仅待审核的盘点单可审核，当前状态：" + statusLabel(order.getStatus()));
+        }
+        if (auditorName.equals(order.getCheckerName())) {
+            throw new BusinessException(ErrorCode.CHECK_AUDIT_SELF,
+                    "审核人与盘点人必须为不同用户（当前均为 " + auditorName + "）");
+        }
+        return Boolean.TRUE.equals(req.approved())
+                ? auditPass(order, req.remark(), auditorName)
+                : auditReject(order, req.remark(), auditorName);
+    }
+
+    /**
+     * 审核通过（FR-INV-09，AC-12）：按 goodsId 升序逐行处理（与库存服务锁序一致，避免交叉死锁）——
+     * 行锁读当前结存，实盘≠当前结存时写 CHECK_SURPLUS/CHECK_SHORTAGE 流水（§8.2 按当前成本单价入账/结转），
+     * 并将结存覆盖为实盘数（成本单价不变，BR-INV-06 仅采购/报溢入库重算）。
+     * 流水差异 = 实盘 − 当前结存（盘点期间发生的出入库已计入结存，BR-INV-10），
+     * 保证不变式 结存 = 期初 + Σ流水（BR-INV-08）在任何盘点场景下成立。
+     */
+    private CheckOrderVO auditPass(StockCheckOrder order, String remark, String auditorName) {
+        LocalDateTime now = LocalDateTime.now();
+        // BR-INV-10：先统计盘点期间出入库笔数（须在本单调整流水写入前），审核人据此复核差异原因
+        long during = itemMapper.countDuringChanges(order.getId(), order.getBaseTime(), now);
+        List<StockCheckItem> items = new ArrayList<>(itemMapper.selectList(Wrappers.<StockCheckItem>lambdaQuery()
+                .eq(StockCheckItem::getOrderId, order.getId())));
+        items.sort(java.util.Comparator.comparing(StockCheckItem::getGoodsId));
+        for (StockCheckItem item : items) {
+            BigDecimal actual = item.getActualQty() == null ? item.getBookQty() : item.getActualQty();
+            Inventory inv = lockInventory(item.getGoodsId());
+            BigDecimal current = inv.getQuantity();
+            if (actual.compareTo(current) == 0) {
+                continue; // 期间变动恰好抵补，结存已与实盘一致，无需调整
+            }
+            BigDecimal costPrice = inv.getCostPrice() == null ? BigDecimal.ZERO : inv.getCostPrice();
+            boolean surplus = actual.compareTo(current) > 0;
+            InventoryRecord record = new InventoryRecord();
+            record.setGoodsId(item.getGoodsId());
+            record.setStoreId(STORE_ID);
+            record.setRecordType(surplus ? "CHECK_SURPLUS" : "CHECK_SHORTAGE");
+            record.setChangeQty(actual.subtract(current));
+            record.setBeforeQty(current);
+            record.setAfterQty(actual);
+            record.setUnitCost(costPrice.setScale(4, java.math.RoundingMode.HALF_UP));
+            record.setBizType("PD");
+            record.setBizNo(order.getOrderNo());
+            record.setOperatorName(auditorName);
+            record.setOperateTime(now);
+            record.setRemark("盘点审核调整" + (isBlank(item.getDiffReason()) ? "" : "：" + item.getDiffReason()));
+            inventoryRecordMapper.insert(record);
+            inventoryMapper.updateQuantityAndCost(item.getGoodsId(), STORE_ID, actual, costPrice,
+                    actual.multiply(costPrice).setScale(2, java.math.RoundingMode.HALF_UP));
+        }
+        String cleanRemark = isBlank(remark) ? null : remark.trim();
+        int affected = orderMapper.update(null, Wrappers.<StockCheckOrder>lambdaUpdate()
+                .set(StockCheckOrder::getStatus, "AUDITED")
+                .set(StockCheckOrder::getAuditorName, auditorName)
+                .set(StockCheckOrder::getAuditTime, now)
+                .set(StockCheckOrder::getAuditRemark, cleanRemark)
+                .set(StockCheckOrder::getDuringChangeCount, (int) during)
+                .eq(StockCheckOrder::getId, order.getId())
+                .eq(StockCheckOrder::getStatus, "PENDING_AUDIT"));
+        if (affected == 0) {
+            throw new BusinessException(ErrorCode.CONCURRENT_CONFLICT, "盘点单状态已变化，请刷新后重试");
+        }
+        order.setStatus("AUDITED");
+        order.setAuditorName(auditorName);
+        order.setAuditTime(now);
+        order.setAuditRemark(cleanRemark);
+        order.setDuringChangeCount((int) during);
+        return toVO(order);
+    }
+
+    /** 行锁读取结存（事务内保持至提交）；行缺失（从未发生变动的商品）先补 0 行 */
+    private Inventory lockInventory(Long goodsId) {
+        Inventory inv = inventoryMapper.selectByGoodsIdForUpdate(goodsId, STORE_ID);
+        if (inv == null) {
+            inventoryMapper.ensureRow(goodsId, STORE_ID);
+            inv = inventoryMapper.selectByGoodsIdForUpdate(goodsId, STORE_ID);
+        }
+        return inv;
+    }
+
+    /** 驳回（FR-INV-09）：意见必填，退回盘点中（§2.2.4），录入数据保留供修改后重新提交 */
+    private CheckOrderVO auditReject(StockCheckOrder order, String remark, String auditorName) {
+        if (isBlank(remark)) {
+            throw new BusinessException(ErrorCode.CHECK_REASON_REQUIRED, "驳回意见不能为空");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        String cleanRemark = remark.trim();
+        int affected = orderMapper.update(null, Wrappers.<StockCheckOrder>lambdaUpdate()
+                .set(StockCheckOrder::getStatus, "CHECKING")
+                .set(StockCheckOrder::getAuditorName, auditorName)
+                .set(StockCheckOrder::getAuditTime, now)
+                .set(StockCheckOrder::getAuditRemark, cleanRemark)
+                .eq(StockCheckOrder::getId, order.getId())
+                .eq(StockCheckOrder::getStatus, "PENDING_AUDIT"));
+        if (affected == 0) {
+            throw new BusinessException(ErrorCode.CONCURRENT_CONFLICT, "盘点单状态已变化，请刷新后重试");
+        }
+        order.setStatus("CHECKING");
+        order.setAuditorName(auditorName);
+        order.setAuditTime(now);
+        order.setAuditRemark(cleanRemark);
+        return toVO(order);
     }
 
     // ==================== 内部工具 ====================

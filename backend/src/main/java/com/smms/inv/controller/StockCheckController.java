@@ -6,6 +6,7 @@ import com.smms.common.api.ApiResponse;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.inv.dto.CheckAuditRequest;
 import com.smms.inv.dto.CheckCreateRequest;
 import com.smms.inv.dto.CheckEntryRequest;
 import com.smms.inv.dto.CheckImportVO;
@@ -134,6 +135,20 @@ public class StockCheckController {
     public ApiResponse<CheckImportVO> importActual(@PathVariable Long id,
                                                    @RequestParam("file") MultipartFile file) {
         return ApiResponse.ok(checkExcelService.importActual(id, open(file)));
+    }
+
+    // ==================== 盘点审核与库存调整（FR-INV-09） ====================
+
+    /**
+     * 盘点审核（FR-INV-09）：通过 → 单事务生成盘盈/盘亏流水并覆盖结存（BR-INV-08 不变式保持）；
+     * 驳回 → 意见必填并退回盘点中。审核人与盘点人必须不同（BR-SYS-01）。
+     */
+    @PostMapping("/{id}/audit")
+    @RequirePerm("sys:check:audit")
+    @OpLog(module = "库存管理", action = "盘点审核")
+    public ApiResponse<CheckOrderVO> audit(@PathVariable Long id,
+                                           @Valid @RequestBody CheckAuditRequest req) {
+        return ApiResponse.ok(stockCheckService.audit(id, req, SecurityUtils.getLoginUser().username()));
     }
 
     private InputStream open(MultipartFile file) {

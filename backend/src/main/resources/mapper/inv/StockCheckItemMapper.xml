@@ -109,6 +109,17 @@
           AND actual_qty IS NULL
     </update>
 
+    <!-- 盘点期间出入库笔数（BR-INV-10）：基准时间起该单范围内商品的全部库存流水，
+         审核时统计并标注在单据上，提示审核人复核差异原因合理性 -->
+    <select id="countDuringChanges" resultType="long">
+        SELECT COUNT(*)
+        FROM inventory_record r
+        WHERE r.operate_time &gt;= #{baseTime}
+          AND r.operate_time &lt; #{endTime}
+          AND EXISTS (SELECT 1 FROM stock_check_item i
+                      WHERE i.order_id = #{orderId} AND i.goods_id = r.goods_id)
+    </select>
+
     <!-- 明细全量（导入模板/汇总统计用）：与分页查询同口径，不分页 -->
     <select id="selectAllItems" resultType="com.smms.inv.dto.CheckItemVO">
         SELECT

@@ -57,6 +57,8 @@ class StockCheckServiceTest {
 
     @Mock private StockCheckOrderMapper orderMapper;
     @Mock private StockCheckItemMapper itemMapper;
+    @Mock private com.smms.inv.mapper.InventoryMapper inventoryMapper;
+    @Mock private com.smms.inv.mapper.InventoryRecordMapper inventoryRecordMapper;
     @Mock private CategoryMapper categoryMapper;
     @Mock private GoodsMapper goodsMapper;
 
@@ -68,7 +70,8 @@ class StockCheckServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Goods.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckItem.class);
-        service = new StockCheckService(orderMapper, itemMapper, categoryMapper, goodsMapper);
+        service = new StockCheckService(orderMapper, itemMapper, inventoryMapper,
+                inventoryRecordMapper, categoryMapper, goodsMapper);
     }
 
     // ---------- 造数 ----------
