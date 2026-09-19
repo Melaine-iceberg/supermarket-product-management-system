@@ -3,6 +3,9 @@ package com.smms.inv.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smms.inv.dto.AlertItemVO;
+import com.smms.inv.dto.AlertQuery;
+import com.smms.inv.dto.AlertSummaryVO;
 import com.smms.inv.dto.InventoryItemVO;
 import com.smms.inv.dto.InventoryQuery;
 import com.smms.inv.entity.Inventory;
@@ -27,6 +30,15 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
 
     /** 合计行（FR-INV-01）：当前筛选口径下的库存总成本金额（SKU 数即分页 total） */
     BigDecimal selectInventorySummary(@Param("q") InventoryQuery q,
+                                      @Param("categoryIds") List<Long> categoryIds);
+
+    /** 预警分页（FR-INV-05）：仅启用商品（FR-GOODS-05），缺货含负库存（BR-INV-02），支持按缺口量排序 */
+    IPage<AlertItemVO> selectAlertPage(Page<AlertItemVO> page,
+                                       @Param("q") AlertQuery q,
+                                       @Param("categoryIds") List<Long> categoryIds);
+
+    /** 预警汇总（FR-INV-05）：各预警类型数量，角标口径见 AlertSummaryVO */
+    AlertSummaryVO selectAlertSummary(@Param("q") AlertQuery q,
                                       @Param("categoryIds") List<Long> categoryIds);
 
     /** 确保结存行存在：建档时初始库存为 0 的商品无结存行，首次变动前补 0 行 */

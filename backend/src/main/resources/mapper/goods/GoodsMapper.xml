@@ -156,4 +156,34 @@
         WHERE sg.goods_id = #{goodsId}
         ORDER BY sg.is_default DESC, sg.last_supply_time DESC
     </select>
+
+    <!-- ==================== 安全库存阈值维护（FR-INV-06） ==================== -->
+
+    <!-- 单商品更新阈值：仅更新阈值字段与更新人，结存等派生数据不受影响（BR-INV-11） -->
+    <update id="updateSafetyStock">
+        UPDATE goods
+        SET safety_stock_lower = #{lower},
+            safety_stock_upper = #{upper},
+            update_by          = #{operator}
+        WHERE id = #{goodsId}
+    </update>
+
+    <!-- 分类（含子分类）下阈值与目标值不同的商品：NULL 安全比较（&lt;=&gt;），只返回发生变化的行 -->
+    <select id="selectThresholdDiff" resultType="com.smms.goods.entity.Goods">
+        SELECT id, goods_code, name, is_weighed, safety_stock_lower, safety_stock_upper
+        FROM goods
+        WHERE category_id IN
+        <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+          AND NOT (safety_stock_lower &lt;=&gt; #{lower} AND safety_stock_upper &lt;=&gt; #{upper})
+    </select>
+
+    <!-- 按 id 批量更新阈值（FR-INV-06 按分类批量设置默认阈值） -->
+    <update id="updateSafetyStockBatch">
+        UPDATE goods
+        SET safety_stock_lower = #{lower},
+            safety_stock_upper = #{upper},
+            update_by          = #{operator}
+        WHERE id IN
+        <foreach collection="ids" item="gid" open="(" separator="," close=")">#{gid}</foreach>
+    </update>
 </mapper>

@@ -10,6 +10,10 @@ import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.mapper.CategoryMapper;
 import com.smms.goods.mapper.GoodsMapper;
+import com.smms.inv.dto.AlertItemVO;
+import com.smms.inv.dto.AlertPageVO;
+import com.smms.inv.dto.AlertQuery;
+import com.smms.inv.dto.AlertSummaryVO;
 import com.smms.inv.dto.InventoryItemVO;
 import com.smms.inv.dto.InventoryPageVO;
 import com.smms.inv.dto.InventoryQuery;
@@ -143,6 +147,38 @@ public class InventoryService {
         IPage<InventoryRecordVO> result =
                 inventoryRecordMapper.selectRecordPage(new Page<>(pageNo, size), q, beginTime, endTime);
         return PageVO.of(result);
+    }
+
+    // ==================== 库存预警查询（FR-INV-05） ====================
+
+    /**
+     * 预警分页：缺货/预警/积压清单，默认按缺口量降序（最紧急优先）；
+     * summary 为去掉类型筛选后的各类型数量（名称/编码/分类条件保留），页签切换不跳动。
+     */
+    public AlertPageVO alertPage(AlertQuery q) {
+        int pageNo = Math.max(q.page(), 1);
+        int size = q.size() <= 0 ? 20 : Math.min(q.size(), 100);
+        List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());
+        IPage<AlertItemVO> result =
+                inventoryMapper.selectAlertPage(new Page<>(pageNo, size), q, categoryIds);
+        AlertSummaryVO summary = inventoryMapper.selectAlertSummary(withoutAlertType(q), categoryIds);
+        return new AlertPageVO(result.getRecords(), result.getTotal(), summary);
+    }
+
+    /** 预警数量汇总（FR-INV-05/FR-RPT-01）：首页看板角标口径，忽略类型条件 */
+    public AlertSummaryVO alertSummary(AlertQuery q) {
+        List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());
+        return inventoryMapper.selectAlertSummary(withoutAlertType(q), categoryIds);
+    }
+
+    /** 预警导出查询（FR-INV-05）：与列表同一筛选口径，不分页、不查 count，行数上限由调用方控制 */
+    public List<AlertItemVO> listForAlertExport(AlertQuery q, int maxSize) {
+        List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());
+        return inventoryMapper.selectAlertPage(new Page<>(1, maxSize, false), q, categoryIds).getRecords();
+    }
+
+    private AlertQuery withoutAlertType(AlertQuery q) {
+        return new AlertQuery(q.name(), q.goodsCode(), q.categoryId(), null, 1, 1, null, null);
     }
 
     // ==================== 内部工具 ====================

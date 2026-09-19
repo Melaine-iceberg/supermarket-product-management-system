@@ -9,6 +9,10 @@ import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.mapper.CategoryMapper;
 import com.smms.goods.mapper.GoodsMapper;
+import com.smms.inv.dto.AlertItemVO;
+import com.smms.inv.dto.AlertPageVO;
+import com.smms.inv.dto.AlertQuery;
+import com.smms.inv.dto.AlertSummaryVO;
 import com.smms.inv.dto.InventoryItemVO;
 import com.smms.inv.dto.InventoryPageVO;
 import com.smms.inv.dto.InventoryQuery;
@@ -314,5 +318,61 @@ class InventoryServiceTest {
         verify(inventoryRecordMapper).selectRecordPage(any(), any(),
                 eq(LocalDateTime.of(2026, 9, 1, 0, 0)),
                 eq(LocalDateTime.of(2026, 9, 20, 0, 0)));
+    }
+
+    // ---------- 库存预警查询（FR-INV-05） ----------
+
+    @Test
+    @DisplayName("预警分页：分类按子树过滤，汇总忽略类型条件（页签切换不跳动）")
+    void alertPage_withSummary() {
+        Category root = new Category();
+        root.setId(1L);
+        root.setParentId(0L);
+        root.setPath("1");
+        Category selected = new Category();
+        selected.setId(5L);
+        selected.setParentId(1L);
+        selected.setPath("1/5");
+        Category child = new Category();
+        child.setId(9L);
+        child.setParentId(5L);
+        child.setPath("1/5/9");
+        when(categoryMapper.selectById(5L)).thenReturn(selected);
+        when(categoryMapper.selectList(any())).thenReturn(List.of(root, selected, child));
+
+        Page<AlertItemVO> pageResult = new Page<>(1, 20);
+        pageResult.setRecords(List.of());
+        pageResult.setTotal(7);
+        when(inventoryMapper.selectAlertPage(any(), any(), anyList())).thenReturn(pageResult);
+        when(inventoryMapper.selectAlertSummary(any(), anyList())).thenReturn(new AlertSummaryVO(2, 3, 4));
+
+        AlertPageVO vo = service.alertPage(new AlertQuery("可乐", null, 5L, "OUT", 0, 0, "gap", "desc"));
+
+        assertThat(vo.total()).isEqualTo(7);
+        assertThat(vo.summary().outCount()).isEqualTo(2);
+        assertThat(vo.summary().warningCount()).isEqualTo(3);
+        assertThat(vo.summary().overstockCount()).isEqualTo(4);
+        assertThat(vo.summary().totalCount()).isEqualTo(9);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Long>> idsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(inventoryMapper).selectAlertPage(any(), any(), idsCaptor.capture());
+        assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(5L, 9L);
+        // 汇总查询保留名称/分类条件但去掉类型条件
+        ArgumentCaptor<AlertQuery> summaryCaptor = ArgumentCaptor.forClass(AlertQuery.class);
+        verify(inventoryMapper).selectAlertSummary(summaryCaptor.capture(), anyList());
+        assertThat(summaryCaptor.getValue().alertType()).isNull();
+        assertThat(summaryCaptor.getValue().name()).isEqualTo("可乐");
+        assertThat(summaryCaptor.getValue().categoryId()).isEqualTo(5L);
+    }
+
+    @Test
+    @DisplayName("预警汇总：看板角标口径（FR-RPT-01），无分类条件时不解析子树")
+    void alertSummary_badge() {
+        when(inventoryMapper.selectAlertSummary(any(), any())).thenReturn(new AlertSummaryVO(1, 0, 0));
+
+        AlertSummaryVO vo = service.alertSummary(new AlertQuery(null, null, null, null, 1, 1, null, null));
+
+        assertThat(vo.totalCount()).isEqualTo(1);
+        verify(categoryMapper, never()).selectById(anyLong());
     }
 }

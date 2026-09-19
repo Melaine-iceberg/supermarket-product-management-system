@@ -12,6 +12,7 @@ import com.smms.goods.entity.Goods;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -37,4 +38,21 @@ public interface GoodsMapper extends BaseMapper<Goods> {
 
     /** 关联供应商清单（供应商商品关联 join 供应商，默认供应商优先） */
     List<SupplierBriefVO> selectSuppliersByGoods(@Param("goodsId") Long goodsId);
+
+    /** 单商品更新安全库存阈值（FR-INV-06），仅更新阈值字段与更新人 */
+    int updateSafetyStock(@Param("goodsId") Long goodsId,
+                          @Param("lower") BigDecimal lower,
+                          @Param("upper") BigDecimal upper,
+                          @Param("operator") String operator);
+
+    /** 分类（含子分类）下阈值与目标值不同的商品（FR-INV-06 批量设置默认阈值，NULL 安全比较） */
+    List<Goods> selectThresholdDiff(@Param("categoryIds") List<Long> categoryIds,
+                                    @Param("lower") BigDecimal lower,
+                                    @Param("upper") BigDecimal upper);
+
+    /** 按 id 批量更新安全库存阈值（FR-INV-06） */
+    int updateSafetyStockBatch(@Param("ids") List<Long> ids,
+                               @Param("lower") BigDecimal lower,
+                               @Param("upper") BigDecimal upper,
+                               @Param("operator") String operator);
 }

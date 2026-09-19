@@ -97,6 +97,123 @@
         <include refid="listWhere"/>
     </select>
 
+    <!-- ==================== 库存预警（FR-INV-05） ====================
+         状态口径（与实时库存一致）：缺货 OUT=结存<=0（含负库存，BR-INV-02）、
+         预警 WARNING=0<结存<=下限、积压 OVERSTOCK=结存>=上限；
+         判定优先级 OUT > OVERSTOCK > WARNING，保证列表/汇总/筛选三处口径一致；
+         仅统计启用商品（FR-GOODS-05 停用商品不进入预警清单） -->
+    <sql id="alertWhere">
+        <where>
+            g.status = 1
+            <if test="q.name != null and q.name != ''">
+                AND g.name LIKE CONCAT('%', #{q.name}, '%')
+            </if>
+            <if test="q.goodsCode != null and q.goodsCode != ''">
+                AND g.goods_code LIKE CONCAT('%', #{q.goodsCode}, '%')
+            </if>
+            <if test="categoryIds != null and categoryIds.size() > 0">
+                AND g.category_id IN
+                <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+            </if>
+            <choose>
+                <when test="q.alertType == 'OUT'">
+                    AND COALESCE(inv.quantity, 0) &lt;= 0
+                </when>
+                <when test="q.alertType == 'WARNING'">
+                    AND COALESCE(inv.quantity, 0) &gt; 0
+                    AND COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower
+                    AND (g.safety_stock_upper IS NULL OR COALESCE(inv.quantity, 0) &lt; g.safety_stock_upper)
+                </when>
+                <when test="q.alertType == 'OVERSTOCK'">
+                    AND g.safety_stock_upper IS NOT NULL
+                    AND COALESCE(inv.quantity, 0) &gt; 0
+                    AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper
+                </when>
+                <otherwise>
+                    AND (
+                        COALESCE(inv.quantity, 0) &lt;= 0
+                        OR (COALESCE(inv.quantity, 0) &gt; 0
+                            AND COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower
+                            AND (g.safety_stock_upper IS NULL OR COALESCE(inv.quantity, 0) &lt; g.safety_stock_upper))
+                        OR (g.safety_stock_upper IS NOT NULL
+                            AND COALESCE(inv.quantity, 0) &gt; 0
+                            AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper)
+                    )
+                </otherwise>
+            </choose>
+        </where>
+    </sql>
+
+    <!-- 缺口量表达式（FR-INV-05）：缺货/预警=下限-结存（负库存含欠账）、积压=结存-上限 -->
+    <sql id="gapExpr">
+        CASE
+            WHEN COALESCE(inv.quantity, 0) &lt;= 0 THEN g.safety_stock_lower - COALESCE(inv.quantity, 0)
+            WHEN g.safety_stock_upper IS NOT NULL AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper
+                THEN COALESCE(inv.quantity, 0) - g.safety_stock_upper
+            ELSE g.safety_stock_lower - COALESCE(inv.quantity, 0)
+        END
+    </sql>
+
+    <!-- 预警分页（FR-INV-05）：默认按缺口量降序（最紧急优先），排序白名单防注入 -->
+    <select id="selectAlertPage" resultType="com.smms.inv.dto.AlertItemVO">
+        SELECT
+            g.id                 AS goodsId,
+            g.goods_code         AS goodsCode,
+            g.barcode            AS barcode,
+            g.name               AS name,
+            g.category_id        AS categoryId,
+            c.name               AS categoryName,
+            u.name               AS unitName,
+            g.spec               AS spec,
+            g.is_weighed         AS isWeighed,
+            COALESCE(inv.quantity, 0)    AS quantity,
+            g.safety_stock_lower AS safetyStockLower,
+            g.safety_stock_upper AS safetyStockUpper,
+            CASE
+                WHEN COALESCE(inv.quantity, 0) &lt;= 0 THEN 'OUT'
+                WHEN g.safety_stock_upper IS NOT NULL AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper THEN 'OVERSTOCK'
+                ELSE 'WARNING'
+            END                  AS alertType,
+            <include refid="gapExpr"/> AS gapQty,
+            inv.last_change_time AS lastChangeTime
+        FROM goods g
+        JOIN category c ON c.id = g.category_id
+        JOIN unit u ON u.id = g.unit_id
+        LEFT JOIN inventory inv ON inv.goods_id = g.id
+        <include refid="alertWhere"/>
+        ORDER BY
+        <choose>
+            <when test="q.sortBy == 'gap'"><include refid="gapExpr"/></when>
+            <when test="q.sortBy == 'quantity'">COALESCE(inv.quantity, 0)</when>
+            <when test="q.sortBy == 'goodsCode'">g.goods_code</when>
+            <when test="q.sortBy == 'name'">g.name</when>
+            <when test="q.sortBy == 'lastChangeTime'">inv.last_change_time</when>
+            <otherwise><include refid="gapExpr"/></otherwise>
+        </choose>
+        <choose>
+            <when test="q.sortDir == 'asc'">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        , g.id DESC
+    </select>
+
+    <!-- 预警汇总（FR-INV-05）：各类型数量（判定优先级 OUT > OVERSTOCK > WARNING，与列表口径一致） -->
+    <select id="selectAlertSummary" resultType="com.smms.inv.dto.AlertSummaryVO">
+        SELECT
+            CAST(COALESCE(SUM(CASE WHEN COALESCE(inv.quantity, 0) &lt;= 0 THEN 1 ELSE 0 END), 0) AS SIGNED) AS outCount,
+            CAST(COALESCE(SUM(CASE WHEN COALESCE(inv.quantity, 0) &gt; 0
+                                        AND COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower
+                                        AND (g.safety_stock_upper IS NULL OR COALESCE(inv.quantity, 0) &lt; g.safety_stock_upper)
+                                   THEN 1 ELSE 0 END), 0) AS SIGNED) AS warningCount,
+            CAST(COALESCE(SUM(CASE WHEN g.safety_stock_upper IS NOT NULL
+                                        AND COALESCE(inv.quantity, 0) &gt; 0
+                                        AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper
+                                   THEN 1 ELSE 0 END), 0) AS SIGNED) AS overstockCount
+        FROM goods g
+        LEFT JOIN inventory inv ON inv.goods_id = g.id
+        <include refid="alertWhere"/>
+    </select>
+
     <!-- 确保结存行存在（ON DUPLICATE 无副作用，幂等） -->
     <insert id="ensureRow">
         INSERT INTO inventory (goods_id, store_id, quantity, cost_price, cost_amount, last_change_time, version)
