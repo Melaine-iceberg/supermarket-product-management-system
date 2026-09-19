@@ -38,4 +38,10 @@ public interface StockCheckItemMapper extends BaseMapper<StockCheckItem> {
 
     /** 批量插入盘点明细（快照行），service 层按 500 行/批分片调用 */
     int insertBatch(@Param("items") List<StockCheckItem> items);
+
+    /** 提交审核时未盘行按账面确认（FR-INV-08）：实盘=账面，差异清零 */
+    int confirmUnenteredAsBook(@Param("orderId") Long orderId);
+
+    /** 明细全量（导入模板/汇总统计用，不分页）：关联商品档案 */
+    List<CheckItemVO> selectAllItems(@Param("orderId") Long orderId);
 }

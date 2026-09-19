@@ -11,11 +11,13 @@ import com.smms.goods.entity.Goods;
 import com.smms.goods.mapper.CategoryMapper;
 import com.smms.goods.mapper.GoodsMapper;
 import com.smms.inv.dto.CheckCreateRequest;
+import com.smms.inv.dto.CheckEntryRequest;
 import com.smms.inv.dto.CheckItemVO;
 import com.smms.inv.dto.CheckOrderDetailVO;
 import com.smms.inv.dto.CheckOrderVO;
 import com.smms.inv.dto.CheckQuery;
 import com.smms.inv.dto.CheckScopeGoods;
+import com.smms.inv.dto.CheckSummaryVO;
 import com.smms.inv.entity.StockCheckItem;
 import com.smms.inv.entity.StockCheckOrder;
 import com.smms.inv.mapper.StockCheckItemMapper;
@@ -24,12 +26,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -223,6 +227,132 @@ public class StockCheckService {
                 .eq(StockCheckOrder::getId, id));
     }
 
+    // ==================== 实盘数量录入（FR-INV-08） ====================
+
+    /**
+     * 录入实盘数量（FR-INV-08）：仅盘点中状态；差异由服务端按 实盘-账面 计算，
+     * 差异金额 = 差异数量 × 快照成本单价（2位，HALF_UP）；差异≠0 的行必须填写原因。
+     * 录入后实时汇总盘盈/盘亏总额回写单头并返回。
+     */
+    @Transactional
+    public CheckSummaryVO enter(Long orderId, CheckEntryRequest req) {
+        StockCheckOrder order = requireOrder(orderId);
+        if (!"CHECKING".equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.CHECK_STATUS_INVALID,
+                    "仅盘点中的单据可录入实盘数，当前状态：" + statusLabel(order.getStatus()));
+        }
+        List<CheckEntryRequest.Item> lines = req == null || req.items() == null ? List.of() : req.items();
+        if (lines.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "录入明细不能为空");
+        }
+        Map<Long, StockCheckItem> byGoods = itemMapper.selectList(Wrappers.<StockCheckItem>lambdaQuery()
+                        .eq(StockCheckItem::getOrderId, orderId))
+                .stream().collect(java.util.stream.Collectors.toMap(StockCheckItem::getGoodsId, i -> i));
+        Map<Long, String> names = goodsMapper.selectBatchIds(
+                        lines.stream().map(CheckEntryRequest.Item::goodsId).toList())
+                .stream().collect(java.util.stream.Collectors.toMap(Goods::getId, Goods::getName));
+        Set<Long> seen = new HashSet<>();
+        for (CheckEntryRequest.Item line : lines) {
+            if (!seen.add(line.goodsId())) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID,
+                        "商品【" + names.getOrDefault(line.goodsId(), String.valueOf(line.goodsId()))
+                                + "】重复录入，请合并为一行");
+            }
+            StockCheckItem item = byGoods.get(line.goodsId());
+            if (item == null) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID,
+                        "商品【" + names.getOrDefault(line.goodsId(), String.valueOf(line.goodsId()))
+                                + "】不在本次盘点范围内");
+            }
+            if (line.actualQty().scale() > 3) {
+                throw new BusinessException(ErrorCode.PARAM_INVALID,
+                        "商品【" + names.get(line.goodsId()) + "】实盘数量最多 3 位小数");
+            }
+            BigDecimal actual = line.actualQty().setScale(3, java.math.RoundingMode.HALF_UP);
+            BigDecimal diff = actual.subtract(item.getBookQty());
+            if (diff.signum() != 0 && isBlank(line.diffReason())) {
+                throw new BusinessException(ErrorCode.CHECK_REASON_REQUIRED,
+                        "商品【" + names.get(line.goodsId()) + "】实盘 " + actual.stripTrailingZeros().toPlainString()
+                                + " 与账面 " + item.getBookQty().stripTrailingZeros().toPlainString()
+                                + " 存在差异，必须填写差异原因");
+            }
+            BigDecimal diffAmount = diff.multiply(item.getCostPrice()).setScale(2, java.math.RoundingMode.HALF_UP);
+            itemMapper.update(null, Wrappers.<StockCheckItem>lambdaUpdate()
+                    .set(StockCheckItem::getActualQty, actual)
+                    .set(StockCheckItem::getDiffQty, diff)
+                    .set(StockCheckItem::getDiffAmount, diffAmount)
+                    .set(StockCheckItem::getDiffReason, isBlank(line.diffReason()) ? null : line.diffReason().trim())
+                    .set(StockCheckItem::getRemark, isBlank(line.remark()) ? null : line.remark().trim())
+                    .eq(StockCheckItem::getId, item.getId()));
+        }
+        return refreshTotals(order);
+    }
+
+    // ==================== 提交审核（FR-INV-08，§2.2.4：盘点中→待审核） ====================
+
+    /**
+     * 提交审核：未盘行按账面确认（实盘=账面、差异清零）；差异行原因复核；
+     * 汇总盘盈/盘亏金额后状态置为待审核（条件更新防并发重复提交）。
+     */
+    @Transactional
+    public CheckSummaryVO submit(Long orderId) {
+        StockCheckOrder order = requireOrder(orderId);
+        if (!"CHECKING".equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.CHECK_STATUS_INVALID,
+                    "仅盘点中的单据可提交审核，当前状态：" + statusLabel(order.getStatus()));
+        }
+        itemMapper.confirmUnenteredAsBook(orderId);
+        Long noReason = itemMapper.selectCount(Wrappers.<StockCheckItem>lambdaQuery()
+                .eq(StockCheckItem::getOrderId, orderId)
+                .isNotNull(StockCheckItem::getDiffQty)
+                .ne(StockCheckItem::getDiffQty, BigDecimal.ZERO)
+                .and(w -> w.isNull(StockCheckItem::getDiffReason).or().eq(StockCheckItem::getDiffReason, "")));
+        if (noReason != null && noReason > 0) {
+            throw new BusinessException(ErrorCode.CHECK_REASON_REQUIRED,
+                    "存在 " + noReason + " 行差异未填写原因，请补录后提交");
+        }
+        CheckSummaryVO summary = refreshTotals(order);
+        int affected = orderMapper.update(null, Wrappers.<StockCheckOrder>lambdaUpdate()
+                .set(StockCheckOrder::getStatus, "PENDING_AUDIT")
+                .eq(StockCheckOrder::getId, orderId)
+                .eq(StockCheckOrder::getStatus, "CHECKING"));
+        if (affected == 0) {
+            throw new BusinessException(ErrorCode.CONCURRENT_CONFLICT, "盘点单状态已变化，请刷新后重试");
+        }
+        return summary;
+    }
+
+    /** 重算单头汇总（FR-INV-08 实时口径）：已录入行数、差异行数、盘盈/盘亏总额并回写 */
+    private CheckSummaryVO refreshTotals(StockCheckOrder order) {
+        List<StockCheckItem> all = itemMapper.selectList(Wrappers.<StockCheckItem>lambdaQuery()
+                .eq(StockCheckItem::getOrderId, order.getId()));
+        int entered = 0;
+        int diffCount = 0;
+        BigDecimal surplus = BigDecimal.ZERO;
+        BigDecimal shortage = BigDecimal.ZERO;
+        for (StockCheckItem item : all) {
+            if (item.getActualQty() != null) {
+                entered++;
+            }
+            if (item.getDiffQty() != null && item.getDiffQty().signum() != 0) {
+                diffCount++;
+                BigDecimal amount = item.getDiffAmount() == null ? BigDecimal.ZERO : item.getDiffAmount();
+                if (item.getDiffQty().signum() > 0) {
+                    surplus = surplus.add(amount);
+                } else {
+                    shortage = shortage.add(amount.abs());
+                }
+            }
+        }
+        BigDecimal surplusAmount = surplus.setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal shortageAmount = shortage.setScale(2, java.math.RoundingMode.HALF_UP);
+        orderMapper.update(null, Wrappers.<StockCheckOrder>lambdaUpdate()
+                .set(StockCheckOrder::getSurplusAmount, surplusAmount)
+                .set(StockCheckOrder::getShortageAmount, shortageAmount)
+                .eq(StockCheckOrder::getId, order.getId()));
+        return new CheckSummaryVO(entered, diffCount, surplusAmount, shortageAmount);
+    }
+
     // ==================== 内部工具 ====================
 
     private StockCheckOrder requireOrder(Long id) {
@@ -261,6 +391,10 @@ public class StockCheckService {
             case "CANCELLED" -> "已作废";
             default -> status;
         };
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /** 分类子树 id 集合（含自身）：按物化路径前缀匹配（与库存查询同口径） */

@@ -98,4 +98,42 @@
             (#{it.orderId}, #{it.goodsId}, #{it.bookQty}, #{it.costPrice})
         </foreach>
     </insert>
+
+    <!-- 提交审核时未盘行按账面确认（FR-INV-08）：实盘=账面，差异清零 -->
+    <update id="confirmUnenteredAsBook">
+        UPDATE stock_check_item
+        SET actual_qty = book_qty,
+            diff_qty   = 0,
+            diff_amount = 0
+        WHERE order_id = #{orderId}
+          AND actual_qty IS NULL
+    </update>
+
+    <!-- 明细全量（导入模板/汇总统计用）：与分页查询同口径，不分页 -->
+    <select id="selectAllItems" resultType="com.smms.inv.dto.CheckItemVO">
+        SELECT
+            i.id           AS id,
+            i.goods_id     AS goodsId,
+            g.goods_code   AS goodsCode,
+            g.barcode      AS barcode,
+            g.name         AS name,
+            g.category_id  AS categoryId,
+            c.name         AS categoryName,
+            u.name         AS unitName,
+            g.spec         AS spec,
+            g.is_weighed   AS isWeighed,
+            i.book_qty     AS bookQty,
+            i.actual_qty   AS actualQty,
+            i.diff_qty     AS diffQty,
+            i.cost_price   AS costPrice,
+            i.diff_amount  AS diffAmount,
+            i.diff_reason  AS diffReason,
+            i.remark       AS remark
+        FROM stock_check_item i
+        JOIN goods g ON g.id = i.goods_id
+        JOIN category c ON c.id = g.category_id
+        JOIN unit u ON u.id = g.unit_id
+        WHERE i.order_id = #{orderId}
+        ORDER BY i.id
+    </select>
 </mapper>
