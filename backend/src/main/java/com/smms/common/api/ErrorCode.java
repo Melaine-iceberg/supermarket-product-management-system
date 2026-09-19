@@ -44,7 +44,22 @@ public enum ErrorCode {
     CAT_HAS_CHILDREN(1204, "存在子分类，禁止删除"),
     CAT_HAS_GOODS(1205, "分类下存在商品，禁止删除，请改用停用"),
     CAT_PARENT_DISABLED(1206, "上级分类已停用，请先启用上级分类"),
-    CAT_ANCESTOR_DISABLED(1207, "上级分类已停用，无法启用该分类，请先启用上级分类");
+    CAT_ANCESTOR_DISABLED(1207, "上级分类已停用，无法启用该分类，请先启用上级分类"),
+
+    // ---------- GOODS 商品模块（1300 ~ 1399，FR-GOODS-01 ~ 13） ----------
+    GOODS_CODE_EXISTS(1301, "商品编码已存在"),
+    GOODS_BARCODE_EXISTS(1302, "商品条码已存在"),
+    GOODS_HAS_BUSINESS(1303, "商品已发生业务，禁止删除，请改用停用"),
+    GOODS_CATEGORY_NOT_LEAF(1304, "商品只能挂在叶子分类（无子分类）下"),
+    GOODS_WEIGHED_UNIT(1305, "称重商品的计量单位必须为重量单位（BR-GOODS-05）"),
+    GOODS_WEIGHED_PLU_REQUIRED(1306, "称重商品必须录入 PLU 码（BR-GOODS-05）"),
+    GOODS_BARCODE_CONFIRM_REQUIRED(1307, "条码修改需二次确认"),
+    GOODS_CODE_IMMUTABLE(1308, "商品编码创建后不可修改"),
+    UNIT_NAME_EXISTS(1311, "计量单位名称已存在"),
+    UNIT_HAS_GOODS(1312, "该单位已被商品使用，禁止删除，请改用停用"),
+    BRAND_NAME_EXISTS(1321, "品牌名称已存在"),
+    PROMO_OVERLAP(1331, "同一商品同一时间段只允许一条生效促销（BR-GOODS-04）"),
+    PROMO_PRICE_INVALID(1332, "促销价必须低于零售价");
 
     private final int code;
     private final String message;
