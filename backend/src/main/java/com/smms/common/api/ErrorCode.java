@@ -59,7 +59,10 @@ public enum ErrorCode {
     UNIT_HAS_GOODS(1312, "该单位已被商品使用，禁止删除，请改用停用"),
     BRAND_NAME_EXISTS(1321, "品牌名称已存在"),
     PROMO_OVERLAP(1331, "同一商品同一时间段只允许一条生效促销（BR-GOODS-04）"),
-    PROMO_PRICE_INVALID(1332, "促销价必须低于零售价");
+    PROMO_PRICE_INVALID(1332, "促销价必须低于零售价"),
+
+    // ---------- INV 库存模块（1400 ~ 1499，FR-INV-01 ~ 12） ----------
+    STOCK_NOT_ENOUGH(1401, "库存不足");
 
     private final int code;
     private final String message;

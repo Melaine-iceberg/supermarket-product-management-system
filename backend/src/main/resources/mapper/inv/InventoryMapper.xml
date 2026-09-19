@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.inv.mapper.InventoryMapper">
+
+    <!-- 实时库存筛选条件（FR-INV-01）：与列表/合计共用同一口径；
+         结存行缺失（建档时初始库存为 0）按 0 结存处理 -->
+    <sql id="listWhere">
+        <where>
+            <if test="q.name != null and q.name != ''">
+                AND g.name LIKE CONCAT('%', #{q.name}, '%')
+            </if>
+            <if test="q.goodsCode != null and q.goodsCode != ''">
+                AND g.goods_code LIKE CONCAT('%', #{q.goodsCode}, '%')
+            </if>
+            <if test="categoryIds != null and categoryIds.size() > 0">
+                AND g.category_id IN
+                <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+            </if>
+            <if test="q.stockStatus != null and q.stockStatus != ''">
+                <choose>
+                    <when test="q.stockStatus == 'OUT'">
+                        AND COALESCE(inv.quantity, 0) &lt;= 0
+                    </when>
+                    <when test="q.stockStatus == 'WARNING'">
+                        AND COALESCE(inv.quantity, 0) &gt; 0
+                        AND COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower
+                    </when>
+                    <when test="q.stockStatus == 'OVERSTOCK'">
+                        AND g.safety_stock_upper IS NOT NULL
+                        AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper
+                    </when>
+                    <when test="q.stockStatus == 'NORMAL'">
+                        AND COALESCE(inv.quantity, 0) &gt; g.safety_stock_lower
+                        AND (g.safety_stock_upper IS NULL OR COALESCE(inv.quantity, 0) &lt; g.safety_stock_upper)
+                    </when>
+                    <otherwise>
+                        AND 1 = 0
+                    </otherwise>
+                </choose>
+            </if>
+        </where>
+    </sql>
+
+    <!-- 实时库存分页（FR-INV-01）：库存状态口径与商品列表一致（FR-INV-05）
+         缺货 OUT=结存<=0；预警 WARNING=0<结存<=下限；积压 OVERSTOCK=结存>=上限；其余 NORMAL -->
+    <select id="selectInventoryPage" resultType="com.smms.inv.dto.InventoryItemVO">
+        SELECT
+            g.id                 AS goodsId,
+            g.goods_code         AS goodsCode,
+            g.barcode            AS barcode,
+            g.name               AS name,
+            g.category_id        AS categoryId,
+            c.name               AS categoryName,
+            u.name               AS unitName,
+            g.spec               AS spec,
+            g.is_weighed         AS isWeighed,
+            COALESCE(inv.quantity, 0)    AS quantity,
+            COALESCE(inv.cost_price, 0)  AS costPrice,
+            COALESCE(inv.cost_amount, 0) AS costAmount,
+            g.retail_price       AS retailPrice,
+            g.safety_stock_lower AS safetyStockLower,
+            g.safety_stock_upper AS safetyStockUpper,
+            CASE
+                WHEN COALESCE(inv.quantity, 0) &lt;= 0 THEN 'OUT'
+                WHEN g.safety_stock_upper IS NOT NULL AND COALESCE(inv.quantity, 0) &gt;= g.safety_stock_upper THEN 'OVERSTOCK'
+                WHEN COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower THEN 'WARNING'
+                ELSE 'NORMAL'
+            END                  AS stockStatus,
+            inv.last_change_time AS lastChangeTime
+        FROM goods g
+        JOIN category c ON c.id = g.category_id
+        JOIN unit u ON u.id = g.unit_id
+        LEFT JOIN inventory inv ON inv.goods_id = g.id
+        <include refid="listWhere"/>
+        ORDER BY
+        <choose>
+            <when test="q.sortBy == 'goodsCode'">g.goods_code</when>
+            <when test="q.sortBy == 'name'">g.name</when>
+            <when test="q.sortBy == 'quantity'">COALESCE(inv.quantity, 0)</when>
+            <when test="q.sortBy == 'costAmount'">COALESCE(inv.cost_amount, 0)</when>
+            <when test="q.sortBy == 'lastChangeTime'">inv.last_change_time</when>
+            <otherwise>inv.last_change_time</otherwise>
+        </choose>
+        <choose>
+            <when test="q.sortDir == 'asc'">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        , g.id DESC
+    </select>
+
+    <!-- 合计行（FR-INV-01）：库存总成本金额；总 SKU 数即分页 total，不再重复统计 -->
+    <select id="selectInventorySummary" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(inv.cost_amount), 0)
+        FROM goods g
+        LEFT JOIN inventory inv ON inv.goods_id = g.id
+        <include refid="listWhere"/>
+    </select>
+
+    <!-- 确保结存行存在（ON DUPLICATE 无副作用，幂等） -->
+    <insert id="ensureRow">
+        INSERT INTO inventory (goods_id, store_id, quantity, cost_price, cost_amount, last_change_time, version)
+        VALUES (#{goodsId}, #{storeId}, 0, 0, 0, NOW(), 0)
+        ON DUPLICATE KEY UPDATE goods_id = goods_id
+    </insert>
+
+    <!-- 原子条件扣减（BR-INV-03）：余量判定与扣减同一条语句，受影响行数=0 即库存不足；
+         出库成本单价不变，成本金额 = (结存-扣减量)×成本单价；禁止负库存时带余量条件（BR-INV-02） -->
+    <update id="decreaseStock">
+        UPDATE inventory
+        SET quantity         = quantity - #{qty},
+            cost_amount      = ROUND((quantity - #{qty}) * cost_price, 2),
+            last_change_time = NOW(),
+            version          = version + 1
+        WHERE goods_id = #{goodsId}
+          AND store_id = #{storeId}
+        <if test="!allowNegative">
+          AND quantity &gt;= #{qty}
+        </if>
+    </update>
+
+    <!-- 加库存（不重算成本，BR-INV-06 销售退货回冲）：数量增加、成本单价不变 -->
+    <update id="increaseStock">
+        UPDATE inventory
+        SET quantity         = quantity + #{qty},
+            cost_amount      = ROUND((quantity + #{qty}) * cost_price, 2),
+            last_change_time = NOW(),
+            version          = version + 1
+        WHERE goods_id = #{goodsId}
+          AND store_id = #{storeId}
+    </update>
+
+    <!-- 行锁读取结存（事务内，成本重算 / 盘点覆盖前取数） -->
+    <select id="selectByGoodsIdForUpdate" resultType="com.smms.inv.entity.Inventory">
+        SELECT goods_id, store_id, quantity, cost_price, cost_amount,
+               last_change_time, version, update_time
+        FROM inventory
+        WHERE goods_id = #{goodsId}
+          AND store_id = #{storeId}
+        FOR UPDATE
+    </select>
+
+    <!-- 覆盖式更新结存与成本（移动加权重算 / 盘点覆盖实盘数，FR-INV-09） -->
+    <update id="updateQuantityAndCost">
+        UPDATE inventory
+        SET quantity         = #{quantity},
+            cost_price       = #{costPrice},
+            cost_amount      = #{costAmount},
+            last_change_time = NOW(),
+            version          = version + 1
+        WHERE goods_id = #{goodsId}
+          AND store_id = #{storeId}
+    </update>
+</mapper>
