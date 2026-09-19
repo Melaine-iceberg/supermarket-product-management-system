@@ -3,16 +3,19 @@ package com.smms.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
 
 /**
- * 异步任务配置：日志写入使用独立线程池（FR-SYS-08），
- * 队列满时由调用线程执行，保证审计日志不丢失。
+ * 异步与定时任务配置：日志写入使用独立线程池（FR-SYS-08），
+ * 队列满时由调用线程执行，保证审计日志不丢失；
+ * @EnableScheduling 支撑促销到期自动失效等定时任务（IR-SW-06）。
  */
 @Configuration
 @EnableAsync
+@EnableScheduling
 public class AsyncConfig {
 
     @Bean(name = "logExecutor")

@@ -2,10 +2,18 @@ package com.smms.goods;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.goods.dto.GoodsCreateRequest;
 import com.smms.goods.dto.GoodsCreatedVO;
+import com.smms.goods.dto.GoodsDetailVO;
+import com.smms.goods.dto.GoodsListVO;
+import com.smms.goods.dto.GoodsQuery;
 import com.smms.goods.dto.GoodsUpdateRequest;
+import com.smms.goods.dto.PurchasePriceVO;
+import com.smms.goods.dto.SalesSummaryVO;
+import com.smms.goods.dto.SupplierBriefVO;
 import com.smms.goods.entity.Brand;
 import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
@@ -82,6 +90,7 @@ class GoodsServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Unit.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Brand.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), PriceHistory.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), com.smms.goods.entity.Promotion.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Inventory.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), InventoryRecord.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), PurchaseOrderItem.class);
@@ -539,6 +548,149 @@ class GoodsServiceTest {
         when(goodsMapper.selectById(eq(99L))).thenReturn(null);
 
         assertThatThrownBy(() -> service.changeStatus(99L, 0, "admin"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不存在");
+    }
+
+    // ---------- 列表查询（FR-GOODS-03） ----------
+
+    @Test
+    @DisplayName("分页默认值与上限：page<1 修正为 1，size 超 100 收敛为 100")
+    void page_defaultsAndClamp() {
+        when(goodsMapper.selectGoodsPage(any(), any(), any())).thenReturn(
+                new Page<>(1, 20, 0));
+
+        PageVO<GoodsListVO> vo = service.page(new GoodsQuery(
+                null, null, null, null, null, null, null, null, null, 0, 500, null, null));
+
+        ArgumentCaptor<Page<GoodsListVO>> pageCaptor = ArgumentCaptor.forClass(Page.class);
+        verify(goodsMapper).selectGoodsPage(pageCaptor.capture(), any(), any());
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(1);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(100);
+        assertThat(vo.total()).isZero();
+        // 未按分类筛选时不应触发分类子树解析
+        verify(categoryMapper, never()).selectById(anyLong());
+    }
+
+    @Test
+    @DisplayName("分类筛选含子树：按物化路径前缀收集自身与后代 id")
+    void page_categoryTreeResolved() {
+        Category parent = leafCategory(2L);
+        parent.setParentId(0L);
+        parent.setLevel(1);
+        parent.setPath("1/2");
+        Category child1 = leafCategory(5L);
+        Category child2 = leafCategory(6L);
+        Category other = leafCategory(7L);
+        other.setPath("1/3/7");
+        when(categoryMapper.selectById(2L)).thenReturn(parent);
+        when(categoryMapper.selectList(any())).thenReturn(List.of(parent, child1, child2, other));
+        when(goodsMapper.selectGoodsPage(any(), any(), any())).thenReturn(new Page<>(1, 20, 0));
+
+        service.page(new GoodsQuery(
+                null, null, null, 2L, null, null, null, null, null, 1, 20, null, null));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Long>> idsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(goodsMapper).selectGoodsPage(any(), any(), idsCaptor.capture());
+        // child1/child2 的 path 为 "1/2/x"，other 为 "1/3/7" 不在子树内
+        assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(2L, 5L, 6L);
+    }
+
+    @Test
+    @DisplayName("分类筛选不存在时明确报错")
+    void page_invalidCategory_rejected() {
+        when(categoryMapper.selectById(404L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.page(new GoodsQuery(
+                null, null, null, 404L, null, null, null, null, null, 1, 20, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("分类不存在");
+    }
+
+    // ---------- 详情与价格轨迹（FR-GOODS-04 / FR-GOODS-10） ----------
+
+    @Test
+    @DisplayName("详情聚合：档案+关联名+库存+生效促销+流水+采购价+销量+供应商")
+    void detail_assemblesAll() {
+        Goods goods = existingGoods();
+        goods.setBrandId(null);
+        when(goodsMapper.selectById(100L)).thenReturn(goods);
+        when(categoryMapper.selectById(5L)).thenReturn(leafCategory(5L));
+        when(unitMapper.selectById(1L)).thenReturn(unit(1L, 0));
+
+        Inventory inventory = new Inventory();
+        inventory.setGoodsId(100L);
+        inventory.setQuantity(new BigDecimal("12.000"));
+        when(inventoryMapper.selectById(100L)).thenReturn(inventory);
+
+        com.smms.goods.entity.Promotion promotion = new com.smms.goods.entity.Promotion();
+        promotion.setGoodsId(100L);
+        promotion.setPromoPrice(new BigDecimal("8.50"));
+        promotion.setStatus("ACTIVE");
+        when(promotionMapper.selectOne(any())).thenReturn(promotion);
+
+        InventoryRecord record = new InventoryRecord();
+        record.setGoodsId(100L);
+        record.setRecordType("INIT");
+        when(inventoryRecordMapper.selectList(any())).thenReturn(List.of(record));
+
+        PurchasePriceVO price = new PurchasePriceVO();
+        price.setOrderNo("RK202601010001");
+        price.setPrice(new BigDecimal("8.00"));
+        when(goodsMapper.selectRecentPurchasePrices(100L, 5)).thenReturn(List.of(price));
+
+        SalesSummaryVO summary = new SalesSummaryVO();
+        summary.setTotalQuantity(new BigDecimal("33"));
+        summary.setTotalAmount(new BigDecimal("300.00"));
+        when(goodsMapper.selectSalesSummary(eq(100L), any())).thenReturn(summary);
+
+        SupplierBriefVO supplier = new SupplierBriefVO();
+        supplier.setSupplierId(1L);
+        supplier.setSupplierName("华东饮品");
+        when(goodsMapper.selectSuppliersByGoods(100L)).thenReturn(List.of(supplier));
+
+        GoodsDetailVO vo = service.detail(100L);
+
+        assertThat(vo.goods().getGoodsCode()).isEqualTo("0500001");
+        assertThat(vo.categoryName()).isEqualTo("叶子分类5");
+        assertThat(vo.unitName()).isEqualTo("瓶");
+        assertThat(vo.brandName()).isNull();
+        assertThat(vo.inventory().getQuantity()).isEqualByComparingTo("12");
+        assertThat(vo.activePromotion().getPromoPrice()).isEqualByComparingTo("8.50");
+        assertThat(vo.recentInventoryRecords()).hasSize(1);
+        assertThat(vo.recentPurchasePrices().get(0).getOrderNo()).isEqualTo("RK202601010001");
+        assertThat(vo.salesSummary30d().getTotalQuantity()).isEqualByComparingTo("33");
+        assertThat(vo.suppliers().get(0).getSupplierName()).isEqualTo("华东饮品");
+    }
+
+    @Test
+    @DisplayName("调价历史（FR-GOODS-10）：按商品查询并倒序返回")
+    void priceHistory_returnsList() {
+        when(goodsMapper.selectById(100L)).thenReturn(existingGoods());
+        PriceHistory history = new PriceHistory();
+        history.setGoodsId(100L);
+        history.setPriceType("RETAIL");
+        history.setOldValue(new BigDecimal("10.00"));
+        history.setNewValue(new BigDecimal("12.00"));
+        when(priceHistoryMapper.selectList(any())).thenReturn(List.of(history));
+
+        List<PriceHistory> result = service.priceHistory(100L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getPriceType()).isEqualTo("RETAIL");
+        assertThat(result.get(0).getNewValue()).isEqualByComparingTo("12.00");
+    }
+
+    @Test
+    @DisplayName("详情/调价历史对不存在商品返回 NOT_FOUND")
+    void detail_notFound() {
+        when(goodsMapper.selectById(99L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.detail(99L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不存在");
+        assertThatThrownBy(() -> service.priceHistory(99L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("不存在");
     }

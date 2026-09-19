@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.goods.mapper.GoodsMapper">
+
+    <!-- 商品分页列表（FR-GOODS-03）：库存状态口径见 FR-INV-05
+         缺货 OUT=结存<=0；预警 WARNING=0<结存<=下限；积压 OVERSTOCK=结存>=上限；其余 NORMAL -->
+    <select id="selectGoodsPage" resultType="com.smms.goods.dto.GoodsListVO">
+        SELECT
+            g.id               AS id,
+            g.goods_code       AS goodsCode,
+            g.barcode          AS barcode,
+            g.name             AS name,
+            g.category_id      AS categoryId,
+            c.name             AS categoryName,
+            g.brand_id         AS brandId,
+            b.name             AS brandName,
+            g.unit_id          AS unitId,
+            u.name             AS unitName,
+            g.spec             AS spec,
+            g.origin           AS origin,
+            g.purchase_price   AS purchasePrice,
+            g.retail_price     AS retailPrice,
+            g.member_price     AS memberPrice,
+            promo.promo_price  AS promoPrice,
+            promo.end_time     AS promoEndTime,
+            g.plu_code         AS pluCode,
+            g.is_weighed       AS isWeighed,
+            g.allow_return     AS allowReturn,
+            g.safety_stock_lower AS safetyStockLower,
+            g.safety_stock_upper AS safetyStockUpper,
+            g.status           AS status,
+            inv.quantity       AS quantity,
+            inv.cost_price     AS costPrice,
+            inv.cost_amount    AS costAmount,
+            CASE
+                WHEN inv.quantity IS NULL OR inv.quantity &lt;= 0 THEN 'OUT'
+                WHEN g.safety_stock_upper IS NOT NULL AND inv.quantity &gt;= g.safety_stock_upper THEN 'OVERSTOCK'
+                WHEN inv.quantity &lt;= g.safety_stock_lower THEN 'WARNING'
+                ELSE 'NORMAL'
+            END                AS stockStatus,
+            g.create_time      AS createTime
+        FROM goods g
+        JOIN category c ON c.id = g.category_id
+        JOIN unit u ON u.id = g.unit_id
+        LEFT JOIN brand b ON b.id = g.brand_id
+        LEFT JOIN inventory inv ON inv.goods_id = g.id
+        LEFT JOIN (
+            SELECT goods_id, promo_price, end_time
+            FROM (
+                SELECT p.goods_id, p.promo_price, p.end_time,
+                       ROW_NUMBER() OVER (PARTITION BY p.goods_id ORDER BY p.start_time DESC) AS rn
+                FROM promotion p
+                WHERE p.status = 'ACTIVE' AND p.start_time &lt;= NOW() AND p.end_time &gt; NOW()
+            ) t
+            WHERE t.rn = 1
+        ) promo ON promo.goods_id = g.id
+        <where>
+            <if test="q.name != null and q.name != ''">
+                AND g.name LIKE CONCAT('%', #{q.name}, '%')
+            </if>
+            <if test="q.goodsCode != null and q.goodsCode != ''">
+                AND g.goods_code LIKE CONCAT('%', #{q.goodsCode}, '%')
+            </if>
+            <if test="q.barcode != null and q.barcode != ''">
+                AND g.barcode LIKE CONCAT('%', #{q.barcode}, '%')
+            </if>
+            <if test="categoryIds != null and categoryIds.size() > 0">
+                AND g.category_id IN
+                <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+            </if>
+            <if test="q.brandId != null">
+                AND g.brand_id = #{q.brandId}
+            </if>
+            <if test="q.status != null">
+                AND g.status = #{q.status}
+            </if>
+            <if test="q.isWeighed != null">
+                AND g.is_weighed = #{q.isWeighed}
+            </if>
+            <if test="q.allowReturn != null">
+                AND g.allow_return = #{q.allowReturn}
+            </if>
+            <if test="q.stockStatus != null and q.stockStatus != ''">
+                <choose>
+                    <when test="q.stockStatus == 'OUT'">
+                        AND (inv.quantity IS NULL OR inv.quantity &lt;= 0)
+                    </when>
+                    <when test="q.stockStatus == 'WARNING'">
+                        AND inv.quantity &gt; 0 AND inv.quantity &lt;= g.safety_stock_lower
+                    </when>
+                    <when test="q.stockStatus == 'OVERSTOCK'">
+                        AND g.safety_stock_upper IS NOT NULL AND inv.quantity &gt;= g.safety_stock_upper
+                    </when>
+                    <when test="q.stockStatus == 'NORMAL'">
+                        AND inv.quantity &gt; 0
+                        AND inv.quantity &gt; g.safety_stock_lower
+                        AND (g.safety_stock_upper IS NULL OR inv.quantity &lt; g.safety_stock_upper)
+                    </when>
+                    <otherwise>
+                        AND 1 = 0
+                    </otherwise>
+                </choose>
+            </if>
+        </where>
+        ORDER BY
+        <choose>
+            <when test="q.sortBy == 'goodsCode'">g.goods_code</when>
+            <when test="q.sortBy == 'name'">g.name</when>
+            <when test="q.sortBy == 'quantity'">inv.quantity</when>
+            <when test="q.sortBy == 'retailPrice'">g.retail_price</when>
+            <otherwise>g.create_time</otherwise>
+        </choose>
+        <choose>
+            <when test="q.sortDir == 'asc'">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        , g.id DESC
+    </select>
+
+    <!-- 最近 N 次采购价（FR-GOODS-04） -->
+    <select id="selectRecentPurchasePrices" resultType="com.smms.goods.dto.PurchasePriceVO">
+        SELECT
+            ro.order_no       AS orderNo,
+            ro.receipt_time   AS receiptTime,
+            roi.received_price AS price,
+            roi.received_qty  AS quantity
+        FROM receipt_order_item roi
+        JOIN receipt_order ro ON ro.id = roi.receipt_id
+        WHERE roi.goods_id = #{goodsId}
+        ORDER BY ro.receipt_time DESC, roi.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 指定时间起的销量销售额（FR-GOODS-04） -->
+    <select id="selectSalesSummary" resultType="com.smms.goods.dto.SalesSummaryVO">
+        SELECT
+            COALESCE(SUM(soi.quantity), 0)     AS totalQuantity,
+            COALESCE(SUM(soi.paid_amount), 0)  AS totalAmount
+        FROM sales_order_item soi
+        JOIN sales_order so ON so.id = soi.order_id
+        WHERE soi.goods_id = #{goodsId}
+          AND so.sale_time &gt;= #{since}
+    </select>
+
+    <!-- 关联供应商清单（FR-GOODS-04），默认供应商优先 -->
+    <select id="selectSuppliersByGoods" resultType="com.smms.goods.dto.SupplierBriefVO">
+        SELECT
+            sg.supplier_id       AS supplierId,
+            s.name               AS supplierName,
+            sg.supply_price      AS supplyPrice,
+            sg.is_default        AS isDefault,
+            sg.last_supply_time  AS lastSupplyTime
+        FROM supplier_goods sg
+        JOIN supplier s ON s.id = sg.supplier_id
+        WHERE sg.goods_id = #{goodsId}
+        ORDER BY sg.is_default DESC, sg.last_supply_time DESC
+    </select>
+</mapper>

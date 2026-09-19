@@ -1,9 +1,40 @@
 package com.smms.goods.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smms.goods.dto.GoodsListVO;
+import com.smms.goods.dto.GoodsQuery;
+import com.smms.goods.dto.PurchasePriceVO;
+import com.smms.goods.dto.SalesSummaryVO;
+import com.smms.goods.dto.SupplierBriefVO;
 import com.smms.goods.entity.Goods;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * 商品档案 Mapper：分页多维检索（FR-GOODS-03）与详情聚合查询（FR-GOODS-04）
+ * 以商品为中心的跨表只读查询，SQL 见 mapper/goods/GoodsMapper.xml。
+ */
 @Mapper
 public interface GoodsMapper extends BaseMapper<Goods> {
+
+    /** 分页列表：join 分类/单位/品牌/库存结存/生效促销，支持库存状态筛选（FR-GOODS-03） */
+    IPage<GoodsListVO> selectGoodsPage(Page<GoodsListVO> page,
+                                        @Param("q") GoodsQuery q,
+                                        @Param("categoryIds") List<Long> categoryIds);
+
+    /** 最近 N 次采购价（入库单明细 join 入库单，按入库时间倒序） */
+    List<PurchasePriceVO> selectRecentPurchasePrices(@Param("goodsId") Long goodsId,
+                                                     @Param("limit") int limit);
+
+    /** 指定时间起的销量与销售额汇总（销售明细 join 销售单） */
+    SalesSummaryVO selectSalesSummary(@Param("goodsId") Long goodsId,
+                                      @Param("since") LocalDateTime since);
+
+    /** 关联供应商清单（供应商商品关联 join 供应商，默认供应商优先） */
+    List<SupplierBriefVO> selectSuppliersByGoods(@Param("goodsId") Long goodsId);
 }

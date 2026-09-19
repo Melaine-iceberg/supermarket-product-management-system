@@ -1,16 +1,26 @@
 package com.smms.goods.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
+import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.common.util.Ean13Util;
 import com.smms.goods.dto.GoodsCreateRequest;
 import com.smms.goods.dto.GoodsCreatedVO;
+import com.smms.goods.dto.GoodsDetailVO;
+import com.smms.goods.dto.GoodsListVO;
+import com.smms.goods.dto.GoodsQuery;
 import com.smms.goods.dto.GoodsUpdateRequest;
+import com.smms.goods.dto.PurchasePriceVO;
+import com.smms.goods.dto.SalesSummaryVO;
+import com.smms.goods.dto.SupplierBriefVO;
 import com.smms.goods.entity.Brand;
 import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.PriceHistory;
+import com.smms.goods.entity.Promotion;
 import com.smms.goods.entity.Unit;
 import com.smms.goods.mapper.BrandMapper;
 import com.smms.goods.mapper.CategoryMapper;
@@ -67,6 +77,81 @@ public class GoodsService {
     private final SalesOrderItemMapper salesOrderItemMapper;
     private final SysConfigService configService;
     private final OperationLogService operationLogService;
+
+    // ==================== 列表查询（FR-GOODS-03） ====================
+
+    /**
+     * 分页列表：名称/编码/条码模糊、分类（含子树）、品牌/状态/库存状态/称重/退货组合筛选；
+     * 默认每页 20 条，上限 100（FR-GOODS-03）。排序白名单由 XML 保证。
+     */
+    public PageVO<GoodsListVO> page(GoodsQuery q) {
+        int page = Math.max(q.page(), 1);
+        int size = q.size() <= 0 ? 20 : Math.min(q.size(), 100);
+        List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());
+        IPage<GoodsListVO> result = goodsMapper.selectGoodsPage(new Page<>(page, size), q, categoryIds);
+        return PageVO.of(result);
+    }
+
+    /** 分类子树 id 集合（含自身）：按物化路径前缀匹配，分类量小采用全量内存过滤 */
+    private List<Long> resolveCategoryTree(Long categoryId) {
+        Category category = categoryMapper.selectById(categoryId);
+        if (category == null) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "所选分类不存在");
+        }
+        String prefix = category.getPath() + "/";
+        return categoryMapper.selectList(Wrappers.<Category>lambdaQuery()
+                        .select(Category::getId, Category::getPath))
+                .stream()
+                .filter(c -> c.getId().equals(categoryId) || c.getPath().startsWith(prefix))
+                .map(Category::getId)
+                .toList();
+    }
+
+    // ==================== 详情与价格轨迹（FR-GOODS-04 / FR-GOODS-10） ====================
+
+    /**
+     * 商品详情：完整档案 + 当前库存与成本 + 最近 10 条库存流水
+     * + 最近 5 次采购价 + 近 30 天销量销售额 + 关联供应商 + 当前生效促销。
+     */
+    public GoodsDetailVO detail(Long id) {
+        Goods goods = requireGoods(id);
+        Category category = categoryMapper.selectById(goods.getCategoryId());
+        Unit unit = unitMapper.selectById(goods.getUnitId());
+        Brand brand = goods.getBrandId() == null ? null : brandMapper.selectById(goods.getBrandId());
+        Inventory inventory = inventoryMapper.selectById(id);
+        LocalDateTime now = LocalDateTime.now();
+        Promotion activePromotion = promotionMapper.selectOne(Wrappers.<Promotion>lambdaQuery()
+                .eq(Promotion::getGoodsId, id)
+                .eq(Promotion::getStatus, "ACTIVE")
+                .le(Promotion::getStartTime, now)
+                .gt(Promotion::getEndTime, now)
+                .orderByDesc(Promotion::getStartTime)
+                .last("LIMIT 1"));
+        List<InventoryRecord> recentRecords = inventoryRecordMapper.selectList(
+                Wrappers.<InventoryRecord>lambdaQuery()
+                        .eq(InventoryRecord::getGoodsId, id)
+                        .orderByDesc(InventoryRecord::getOperateTime)
+                        .orderByDesc(InventoryRecord::getId)
+                        .last("LIMIT 10"));
+        List<PurchasePriceVO> recentPrices = goodsMapper.selectRecentPurchasePrices(id, 5);
+        SalesSummaryVO salesSummary = goodsMapper.selectSalesSummary(id, now.minusDays(30));
+        List<SupplierBriefVO> suppliers = goodsMapper.selectSuppliersByGoods(id);
+        return new GoodsDetailVO(goods,
+                category == null ? null : category.getName(),
+                unit == null ? null : unit.getName(),
+                brand == null ? null : brand.getName(),
+                inventory, activePromotion, recentRecords, recentPrices, salesSummary, suppliers);
+    }
+
+    /** 调价历史（FR-GOODS-10）：按商品查询完整价格轨迹，时间倒序 */
+    public List<PriceHistory> priceHistory(Long id) {
+        requireGoods(id);
+        return priceHistoryMapper.selectList(Wrappers.<PriceHistory>lambdaQuery()
+                .eq(PriceHistory::getGoodsId, id)
+                .orderByDesc(PriceHistory::getCreateTime)
+                .orderByDesc(PriceHistory::getId)
+                .last("LIMIT 500"));
+    }
 
     // ==================== 新增（FR-GOODS-01） ====================
 
