@@ -45,6 +45,9 @@ dependencies {
     implementation 'com.baomidou:mybatis-plus-spring-boot4-starter:3.5.17'
     implementation 'com.baomidou:mybatis-plus-jsqlparser:3.5.17'
 
+    // Excel 导入导出（FR-GOODS-11/12，Apache-2.0）
+    implementation 'org.apache.poi:poi-ooxml:5.4.1'
+
     // 数据库驱动
     runtimeOnly 'com.mysql:mysql-connector-j'
 

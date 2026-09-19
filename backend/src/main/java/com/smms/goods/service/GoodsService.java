@@ -92,6 +92,12 @@ public class GoodsService {
         return PageVO.of(result);
     }
 
+    /** 导出查询（FR-GOODS-12）：与列表同一筛选口径，不分页、不查 count，行数上限由调用方控制 */
+    public List<GoodsListVO> listForExport(GoodsQuery q, int maxSize) {
+        List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());
+        return goodsMapper.selectGoodsPage(new Page<>(1, maxSize, false), q, categoryIds).getRecords();
+    }
+
     /** 分类子树 id 集合（含自身）：按物化路径前缀匹配，分类量小采用全量内存过滤 */
     private List<Long> resolveCategoryTree(Long categoryId) {
         Category category = categoryMapper.selectById(categoryId);
