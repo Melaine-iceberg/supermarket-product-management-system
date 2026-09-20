@@ -42,8 +42,13 @@ export interface CheckoutPayload {
   authorizerName?: string
   remark?: string
   items: {
-    goodsId: number
-    /** 数量：普通商品正整数；称重商品为净重（≤3 位小数，BR-SALE-01） */
+    /** 商品ID（无码商品为空，FR-SALE-13） */
+    goodsId?: number
+    /** 无码商品名称（goodsId 为空时必填，FR-SALE-13） */
+    tempName?: string
+    /** 无码商品金额（折前行金额，goodsId 为空时必填，FR-SALE-13） */
+    tempAmount?: number
+    /** 数量：普通商品正整数；称重商品为净重（≤3 位小数，BR-SALE-01）；无码商品恒为 1 */
     quantity: number
     /** 净重（称重商品必填） */
     netWeight?: number

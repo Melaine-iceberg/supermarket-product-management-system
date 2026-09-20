@@ -517,6 +517,122 @@ class SalesCheckoutServiceTest {
                 .hasMessageContaining("库存不足");
     }
 
+    // ---------- 无码商品临时登记（FR-SALE-13，Could） ----------
+
+    @Test
+    @DisplayName("无码商品：名称金额直接入单、lineType=TEMP、成本为0、不扣库存")
+    void checkout_tempLine_success() {
+        when(goodsMapper.selectBatchIds(anyCollection())).thenReturn(List.of(
+                goods(GOODS_A, "可乐 330ml", "10.00", null, 0)));
+        when(promotionMapper.selectList(any())).thenReturn(List.of());
+        when(inventoryMapper.selectBatchIds(anyCollection())).thenReturn(List.of(inv(GOODS_A, "6.00")));
+        mockOrderInsertSuccess();
+
+        CheckoutCommand.CheckoutItem temp = new CheckoutCommand.CheckoutItem(
+                null, "手工蛋糕", new BigDecimal("12.50"), BigDecimal.ONE, null, null);
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null,
+                List.of(item(GOODS_A, "1"), temp), List.of(pay("CASH", "22.50")));
+
+        CheckoutVO vo = service.checkout(cmd, CASHIER);
+
+        // 商品总额 = 10 + 12.50；件数 = 1 + 1
+        assertThat(vo.goodsAmount()).isEqualByComparingTo("22.50");
+        SalesOrder order = capturedOrder();
+        assertThat(order.getItemCount()).isEqualTo(2);
+        assertThat(order.getPayableAmount()).isEqualByComparingTo("22.50");
+
+        List<SalesOrderItem> items = capturedItems();
+        SalesOrderItem tempItem = items.get(1);
+        assertThat(tempItem.getGoodsId()).isNull();
+        assertThat(tempItem.getGoodsName()).isEqualTo("手工蛋糕");
+        assertThat(tempItem.getBarcode()).isNull();
+        assertThat(tempItem.getLineType()).isEqualTo("TEMP");
+        assertThat(tempItem.getQuantity()).isEqualByComparingTo("1");
+        assertThat(tempItem.getAmount()).isEqualByComparingTo("12.50");
+        assertThat(tempItem.getPaidAmount()).isEqualByComparingTo("12.50");
+        assertThat(tempItem.getCostPrice()).isEqualByComparingTo("0");
+        assertThat(tempItem.getCostAmount()).isEqualByComparingTo("0");
+        assertThat(tempItem.getProfitAmount()).isEqualByComparingTo("12.50"); // 无成本档案，毛利=实付
+
+        // 库存仅对档案商品扣减（无码商品不扣库存，FR-SALE-13）
+        verify(inventoryService, times(1)).stockOut(any(StockChange.class));
+        verify(inventoryService).stockOut(argThat(stockChangeOf(GOODS_A, "1")));
+    }
+
+    @Test
+    @DisplayName("纯无码商品单：不查商品/促销/库存档案，结算成功")
+    void checkout_tempOnly_success() {
+        mockOrderInsertSuccess();
+
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "散装点心", new BigDecimal("8.00"), BigDecimal.ONE, null, null)),
+                List.of(pay("MOBILE", "8.00")));
+
+        CheckoutVO vo = service.checkout(cmd, CASHIER);
+
+        assertThat(vo.goodsAmount()).isEqualByComparingTo("8.00");
+        assertThat(vo.payableAmount()).isEqualByComparingTo("8.00");
+        assertThat(capturedItems().get(0).getLineType()).isEqualTo("TEMP");
+        verify(inventoryService, never()).stockOut(any(StockChange.class));
+        verify(goodsMapper, never()).selectBatchIds(anyCollection());
+    }
+
+    @Test
+    @DisplayName("会员单含无码商品：整单优惠按比例分摊到含无码的全部行（BR-SALE-03）")
+    void checkout_tempLine_memberDiscountAllocation() {
+        when(goodsMapper.selectBatchIds(anyCollection())).thenReturn(List.of(
+                goods(GOODS_A, "可乐", "10.00", null, 0)));
+        when(promotionMapper.selectList(any())).thenReturn(List.of());
+        when(inventoryMapper.selectBatchIds(anyCollection())).thenReturn(List.of(inv(GOODS_A, "6.00")));
+        mockOrderInsertSuccess();
+        when(memberMapper.selectById(MEMBER_ID)).thenReturn(member("100.00", 3, 1));
+        when(memberLevelMapper.selectById(1L)).thenReturn(level("0.9"));
+
+        CheckoutCommand cmd = new CheckoutCommand(1, MEMBER_ID, null, null, null,
+                List.of(item(GOODS_A, "1"),
+                        new CheckoutCommand.CheckoutItem(null, "代售报刊", new BigDecimal("10.00"), BigDecimal.ONE, null, null)),
+                List.of(pay("CASH", "18")));
+
+        service.checkout(cmd, CASHIER);
+
+        // 总额 20 × 0.9 = 18；行优惠 1.00 + 1.00，Σ行实付 = 应收
+        List<SalesOrderItem> items = capturedItems();
+        assertThat(items.get(0).getDiscountAmount()).isEqualByComparingTo("1.00");
+        assertThat(items.get(0).getPaidAmount()).isEqualByComparingTo("9.00");
+        assertThat(items.get(1).getDiscountAmount()).isEqualByComparingTo("1.00");
+        assertThat(items.get(1).getPaidAmount()).isEqualByComparingTo("9.00");
+        BigDecimal sumPaid = items.stream().map(SalesOrderItem::getPaidAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(sumPaid).isEqualByComparingTo(capturedOrder().getPayableAmount());
+    }
+
+    @Test
+    @DisplayName("无码商品：名称缺失/金额非法拒绝结算（FR-SALE-13）")
+    void checkout_tempLine_validation() {
+        CheckoutCommand blankName = new CheckoutCommand(1, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "  ", new BigDecimal("5"), BigDecimal.ONE, null, null)),
+                List.of(pay("CASH", "5")));
+        assertThatThrownBy(() -> service.checkout(blankName, CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("名称不能为空");
+
+        CheckoutCommand zeroAmount = new CheckoutCommand(1, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "散装糖果", new BigDecimal("0"), BigDecimal.ONE, null, null)),
+                List.of(pay("CASH", "5")));
+        assertThatThrownBy(() -> service.checkout(zeroAmount, CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("金额必须大于 0");
+
+        CheckoutCommand fineScale = new CheckoutCommand(1, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "散装糖果", new BigDecimal("1.234"), BigDecimal.ONE, null, null)),
+                List.of(pay("CASH", "5")));
+        assertThatThrownBy(() -> service.checkout(fineScale, CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("2 位小数");
+
+        verify(salesOrderMapper, never()).insert(any(SalesOrder.class));
+    }
+
     // ---------- 会员检索（FR-SALE-05） ----------
 
     @Test

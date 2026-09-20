@@ -51,13 +51,19 @@ public record CheckoutCommand(
         List<CheckoutPayment> payments
 ) {
 
-    /** 单条销售明细录入 */
+    /** 单条销售明细录入（档案商品传 goodsId；无码商品传 tempName/tempAmount，FR-SALE-13） */
     public record CheckoutItem(
 
-            @NotNull(message = "商品ID不能为空")
+            /** 商品ID（档案商品必填；无码商品为空，FR-SALE-13） */
             Long goodsId,
 
-            /** 数量：普通商品正整数；称重商品为净重（≤3 位小数，BR-SALE-01） */
+            /** 无码商品名称（goodsId 为空时必填，≤100 字符，FR-SALE-13） */
+            String tempName,
+
+            /** 无码商品金额（折前行金额，goodsId 为空时必填、> 0 且最多 2 位小数，FR-SALE-13） */
+            BigDecimal tempAmount,
+
+            /** 数量：普通商品正整数；称重商品为净重（≤3 位小数，BR-SALE-01）；无码商品恒为 1 */
             @NotNull(message = "数量不能为空")
             @DecimalMin(value = "0.001", message = "数量必须大于 0")
             BigDecimal quantity,
@@ -68,6 +74,11 @@ public record CheckoutCommand(
             /** 行备注 */
             String remark
     ) {
+
+        /** 档案商品明细便捷构造 */
+        public CheckoutItem(Long goodsId, BigDecimal quantity, BigDecimal netWeight, String remark) {
+            this(goodsId, null, null, quantity, netWeight, remark);
+        }
     }
 
     /** 单笔收款 */

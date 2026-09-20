@@ -176,10 +176,26 @@ public class SalesCheckoutService {
 
     // ==================== 内部计算与校验 ====================
 
-    /** 明细校验：非空、同商品不重复成行、数量精度（BR-SALE-01） */
+    /** 明细校验：非空、同商品不重复成行、数量精度（BR-SALE-01）；无码商品校验名称与金额（FR-SALE-13） */
     private void validateItems(List<CheckoutCommand.CheckoutItem> items) {
         Set<Long> goodsIds = new HashSet<>();
         for (CheckoutCommand.CheckoutItem item : items) {
+            // 无码商品临时登记（FR-SALE-13）：名称与金额必填，不关联 SKU、不扣库存
+            if (item.goodsId() == null) {
+                if (item.tempName() == null || item.tempName().isBlank()) {
+                    throw new BusinessException(ErrorCode.SALE_TEMP_LINE_INVALID, "无码商品名称不能为空");
+                }
+                if (item.tempName().trim().length() > 100) {
+                    throw new BusinessException(ErrorCode.SALE_TEMP_LINE_INVALID, "无码商品名称过长（最多 100 字符）");
+                }
+                if (item.tempAmount() == null || item.tempAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new BusinessException(ErrorCode.SALE_TEMP_LINE_INVALID, "无码商品金额必须大于 0");
+                }
+                if (item.tempAmount().scale() > 2) {
+                    throw new BusinessException(ErrorCode.SALE_TEMP_LINE_INVALID, "无码商品金额最多 2 位小数");
+                }
+                continue;
+            }
             if (!goodsIds.add(item.goodsId())) {
                 throw new BusinessException(ErrorCode.SALE_GOODS_DUPLICATED,
                         "商品【" + goodsName(item.goodsId()) + "】重复录入，请合并为一行");
@@ -191,12 +207,19 @@ public class SalesCheckoutService {
         }
     }
 
-    /** 商品档案加载：不存在或已停用即拒绝（FR-GOODS-05 停用不可销售） */
+    /** 商品档案加载：不存在或已停用即拒绝（FR-GOODS-05 停用不可销售）；无码商品跳过（FR-SALE-13） */
     private Map<Long, Goods> loadGoods(List<CheckoutCommand.CheckoutItem> items) {
-        List<Long> ids = items.stream().map(CheckoutCommand.CheckoutItem::goodsId).toList();
+        List<Long> ids = items.stream().map(CheckoutCommand.CheckoutItem::goodsId)
+                .filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
         Map<Long, Goods> map = goodsMapper.selectBatchIds(ids).stream()
                 .collect(Collectors.toMap(Goods::getId, Function.identity()));
         for (CheckoutCommand.CheckoutItem item : items) {
+            if (item.goodsId() == null) {
+                continue;
+            }
             Goods goods = map.get(item.goodsId());
             if (goods == null || goods.getStatus() == null || goods.getStatus() != 1) {
                 throw new BusinessException(ErrorCode.SALE_GOODS_INVALID,
@@ -267,12 +290,22 @@ public class SalesCheckoutService {
                                            Map<Long, Goods> goodsMap,
                                            Map<Long, Promotion> promoMap,
                                            boolean hasMember, BigDecimal memberRate, BigDecimal orderRate) {
-        Map<Long, Inventory> inventoryMap = inventoryMapper.selectBatchIds(
-                        items.stream().map(CheckoutCommand.CheckoutItem::goodsId).toList())
-                .stream().collect(Collectors.toMap(Inventory::getGoodsId, Function.identity()));
+        List<Long> goodsIds = items.stream().map(CheckoutCommand.CheckoutItem::goodsId)
+                .filter(java.util.Objects::nonNull).toList();
+        Map<Long, Inventory> inventoryMap = goodsIds.isEmpty() ? Map.of()
+                : inventoryMapper.selectBatchIds(goodsIds).stream()
+                .collect(Collectors.toMap(Inventory::getGoodsId, Function.identity()));
 
         List<CalculatedLine> lines = new ArrayList<>();
         for (CheckoutCommand.CheckoutItem item : items) {
+            // 无码商品（FR-SALE-13）：金额直接入单，数量恒为 1，无成本档案（毛利 = 实付）
+            if (item.goodsId() == null) {
+                BigDecimal tempAmount = item.tempAmount().setScale(2, RoundingMode.HALF_UP);
+                lines.add(new CalculatedLine(
+                        null, item.tempName().trim(), null, tempAmount, BigDecimal.ONE, tempAmount,
+                        null, BigDecimal.ZERO, null, null, null, null, item.remark()));
+                continue;
+            }
             Goods goods = goodsMap.get(item.goodsId());
             boolean weighed = goods.getIsWeighed() != null && goods.getIsWeighed() == 1;
             BigDecimal qty = item.quantity();
@@ -372,9 +405,10 @@ public class SalesCheckoutService {
     /** 销售单落库：唯一键冲突（并发出单）自动换单号重试（BR-SALE-02 全局唯一） */
     private SalesOrder insertOrder(CheckoutCommand cmd, LoginUser cashier, LocalDateTime now,
                                    CalculatedLines lines, BigDecimal paid, BigDecimal change) {
-        int itemCount = cmd.items().stream()
-                .mapToInt(i -> i.quantity().stripTrailingZeros().scale() <= 0
-                        ? i.quantity().intValue() : 1)
+        // 件数按落库行计算（无码商品恒为 1 件，FR-SALE-13）
+        int itemCount = lines.lines().stream()
+                .mapToInt(l -> l.quantity().stripTrailingZeros().scale() <= 0
+                        ? l.quantity().intValue() : 1)
                 .sum();
         SalesOrder order = new SalesOrder();
         order.setStoreId(STORE_ID);
@@ -440,7 +474,7 @@ public class SalesCheckoutService {
             entity.setCostAmount(costAmount);
             entity.setProfitAmount(paidAmount.subtract(costAmount));
             entity.setReturnedQty(BigDecimal.ZERO);
-            entity.setLineType("NORMAL");
+            entity.setLineType(line.goodsId() == null ? "TEMP" : "NORMAL");
             entity.setRemark(line.remark());
             result.add(entity);
         }
@@ -503,8 +537,10 @@ public class SalesCheckoutService {
                                    BigDecimal totalDiscount, BigDecimal memberDiscount,
                                    BigDecimal orderDiscount, BigDecimal payable, BigDecimal totalRate) {
 
+        /** 待扣库存行：无码商品不扣库存（FR-SALE-13），按 goodsId 升序防死锁 */
         List<CalculatedLine> sortedByGoodsId() {
-            return lines.stream().sorted((a, b) -> a.goodsId().compareTo(b.goodsId())).toList();
+            return lines.stream().filter(l -> l.goodsId() != null)
+                    .sorted((a, b) -> a.goodsId().compareTo(b.goodsId())).toList();
         }
     }
 }

@@ -288,7 +288,11 @@ async function openDetail(row: SalesOrderVO) {
             <el-table-column type="index" label="#" width="44" align="center" />
             <el-table-column prop="goodsName" label="商品名称" min-width="160">
               <template #default="{ row }">
-                {{ row.goodsName }}<span v-if="row.barcode" class="muted">（{{ row.barcode }}）</span>
+                {{ row.goodsName
+                }}<el-tag v-if="row.lineType === 'TEMP'" size="small" type="info" class="temp-tag">非档案商品</el-tag><span
+                  v-if="row.barcode"
+                  class="muted"
+                >（{{ row.barcode }}）</span>
               </template>
             </el-table-column>
             <el-table-column label="成交单价" width="90" align="right">
@@ -383,6 +387,10 @@ async function openDetail(row: SalesOrderVO) {
 
   .muted {
     color: #909399;
+  }
+
+  .temp-tag {
+    margin-left: 6px;
   }
 
   .payable {

@@ -20,12 +20,15 @@ function money(v: number | null | undefined) {
 
 // ---------- 购物车明细（FR-SALE-01/03） ----------
 interface CartLine {
-  goodsId: number
+  /** 行类型：NORMAL档案商品 / TEMP无码商品（FR-SALE-13） */
+  lineType: 'NORMAL' | 'TEMP'
+  /** 商品ID（无码商品为空，FR-SALE-13） */
+  goodsId: number | null
   name: string
   spec: string | null
   barcode: string | null
   unitName: string
-  /** 零售价（展示参考；实际取价由后端按 BR-GOODS-04 解析） */
+  /** 零售价（展示参考；实际取价由后端按 BR-GOODS-04 解析）；无码商品为直接录入的金额 */
   retailPrice: number
   isWeighed: number
   quantity: number
@@ -138,6 +141,7 @@ function doAdd(goods: GoodsListVO, quantity: number) {
     exist.quantity = Math.round((exist.quantity + quantity) * 1000) / 1000
   } else {
     cart.value.push({
+      lineType: 'NORMAL',
       goodsId: goods.id,
       name: goods.name,
       spec: goods.spec,
@@ -149,6 +153,51 @@ function doAdd(goods: GoodsListVO, quantity: number) {
       remark: '',
     })
   }
+}
+
+// ---------- 无码商品临时登记（FR-SALE-13，Could） ----------
+const tempDialog = reactive({
+  visible: false,
+  name: '',
+  amount: null as number | null,
+})
+
+function openTempDialog() {
+  tempDialog.name = ''
+  tempDialog.amount = null
+  tempDialog.visible = true
+}
+
+/** 录入名称与金额直接计入本单（不关联 SKU、不扣库存、不支持退货） */
+function confirmTempItem() {
+  const name = tempDialog.name.trim()
+  const amount = tempDialog.amount
+  if (!name) {
+    ElMessage.warning('请输入无码商品名称')
+    return
+  }
+  if (name.length > 100) {
+    ElMessage.warning('名称最多 100 字符')
+    return
+  }
+  if (amount == null || amount <= 0) {
+    ElMessage.warning('金额必须大于 0')
+    return
+  }
+  cart.value.push({
+    lineType: 'TEMP',
+    goodsId: null,
+    name,
+    spec: null,
+    barcode: null,
+    unitName: '项',
+    retailPrice: Math.round(amount * 100) / 100,
+    isWeighed: 0,
+    quantity: 1,
+    remark: '',
+  })
+  tempDialog.visible = false
+  focusInput()
 }
 
 /** 数量修改（普通商品正整数、称重 3 位小数，FR-SALE-03） */
@@ -163,7 +212,8 @@ function onQtyChange(line: CartLine) {
 }
 
 function removeLine(line: CartLine) {
-  cart.value = cart.value.filter((l) => l.goodsId !== line.goodsId)
+  // 按行对象删除（无码商品 goodsId 为空，不能按 goodsId 过滤）
+  cart.value = cart.value.filter((l) => l !== line)
 }
 
 async function clearCart() {
@@ -330,12 +380,21 @@ async function submitCheckout() {
       orderDiscountRate: orderRate.value,
       authorizerName: orderAuthorizer.value,
       remark: remark.value || undefined,
-      items: cart.value.map((l) => ({
-        goodsId: l.goodsId,
-        quantity: l.quantity,
-        netWeight: l.isWeighed === 1 ? l.quantity : undefined,
-        remark: l.remark || undefined,
-      })),
+      items: cart.value.map((l) =>
+        l.lineType === 'TEMP'
+          ? {
+              tempName: l.name,
+              tempAmount: l.retailPrice,
+              quantity: 1,
+              remark: l.remark || undefined,
+            }
+          : {
+              goodsId: l.goodsId!,
+              quantity: l.quantity,
+              netWeight: l.isWeighed === 1 ? l.quantity : undefined,
+              remark: l.remark || undefined,
+            },
+      ),
       payments: pays.map((l) => ({ payType: l.payType, amount: l.amount! })),
     })
     payDialog.visible = false
@@ -517,6 +576,7 @@ onUnmounted(() => {
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
+        <el-button size="large" plain class="temp-btn" @click="openTempDialog">无码商品</el-button>
         <div class="hotkeys">回车 录入 ｜ F2 结算 ｜ F4 挂单</div>
       </div>
 
@@ -562,6 +622,7 @@ onUnmounted(() => {
               <div class="goods-name">
                 {{ row.name }}
                 <el-tag v-if="row.isWeighed === 1" size="small" type="warning">称重</el-tag>
+                <el-tag v-if="row.lineType === 'TEMP'" size="small" type="info">非档案商品</el-tag>
               </div>
               <div v-if="row.spec || row.barcode" class="goods-sub">
                 <span v-if="row.spec">{{ row.spec }}</span>
@@ -570,11 +631,24 @@ onUnmounted(() => {
             </template>
           </el-table-column>
           <el-table-column label="单价" width="100" align="right">
-            <template #default="{ row }">￥{{ money(row.retailPrice) }}<span class="unit">/{{ row.unitName }}</span></template>
+            <template #default="{ row }">
+              <el-input-number
+                v-if="row.lineType === 'TEMP'"
+                v-model="row.retailPrice"
+                :min="0.01"
+                :precision="2"
+                :controls="false"
+                size="small"
+                style="width: 86px"
+              />
+              <template v-else>￥{{ money(row.retailPrice) }}<span class="unit">/{{ row.unitName }}</span></template>
+            </template>
           </el-table-column>
           <el-table-column label="数量" width="170" align="center">
             <template #default="{ row }">
+              <span v-if="row.lineType === 'TEMP'" class="temp-qty">1</span>
               <el-input-number
+                v-else
                 v-model="row.quantity"
                 :min="row.isWeighed === 1 ? 0.001 : 1"
                 :precision="row.isWeighed === 1 ? 3 : 0"
@@ -695,6 +769,48 @@ onUnmounted(() => {
       <template #footer>
         <el-button @click="weightDialog.visible = false">取消</el-button>
         <el-button type="primary" @click="confirmWeight">加入明细</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 无码商品临时登记（FR-SALE-13）：名称+金额直接入单 -->
+    <el-dialog
+      v-model="tempDialog.visible"
+      title="无码商品临时登记"
+      width="400px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="适用于条码缺失的临时商品：录入名称与金额直接计入本单"
+        description="不关联商品档案、不扣减库存、不支持退货；单据明细将标记“非档案商品”，便于日结对账。"
+        class="dialog-alert"
+      />
+      <el-form label-width="70px" @submit.prevent>
+        <el-form-item label="名称">
+          <el-input
+            v-model="tempDialog.name"
+            maxlength="100"
+            placeholder="如：代客加工 / 散装赠品"
+            @keyup.enter="confirmTempItem"
+          />
+        </el-form-item>
+        <el-form-item label="金额">
+          <el-input-number
+            v-model="tempDialog.amount"
+            :min="0.01"
+            :precision="2"
+            :controls="false"
+            placeholder="本行金额（元）"
+            style="width: 100%"
+            @keyup.enter="confirmTempItem"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="tempDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="confirmTempItem">加入明细</el-button>
       </template>
     </el-dialog>
 
@@ -888,6 +1004,10 @@ onUnmounted(() => {
         }
       }
 
+      .temp-btn {
+        font-weight: 500;
+      }
+
       .hotkeys {
         font-size: 12px;
         color: #909399;
@@ -930,6 +1050,10 @@ onUnmounted(() => {
 
       .goods-name {
         font-weight: 500;
+      }
+
+      .temp-qty {
+        color: #909399;
       }
 
       .goods-sub {
