@@ -97,7 +97,16 @@ public enum ErrorCode {
     SHIFT_ALREADY_OPEN(1530, "当前收银员已有在班班次，不可重复开班"),
     SHIFT_NOT_OPEN(1531, "当前收银员没有在班班次，无法交班"),
     SHIFT_NOT_FOUND(1532, "班次不存在"),
-    SHIFT_RETURN_FORBIDDEN(1533, "该销售单所属班次已交班，退货须店长处理（BR-SALE-09）");
+    SHIFT_RETURN_FORBIDDEN(1533, "该销售单所属班次已交班，退货须店长处理（BR-SALE-09）"),
+
+    // ---------- 会员模块（FR-MEM-01~05） ----------
+    MEMBER_NOT_FOUND(1601, "会员不存在或已被删除"),
+    MEMBER_PHONE_EXISTS(1602, "该手机号已注册会员（BR-MEM-01 全局唯一）"),
+    MEMBER_PHONE_INVALID(1603, "手机号须为大陆 11 位手机号（BR-MEM-01）"),
+    MEMBER_NO_EXCEED(1604, "会员编号流水已用尽，请联系管理员处理"),
+    MEMBER_LEVEL_NOT_FOUND(1611, "会员等级不存在"),
+    MEMBER_LEVEL_NAME_EXISTS(1612, "等级名称已存在"),
+    MEMBER_LEVEL_NO_ENABLED(1613, "没有启用中的会员等级，无法注册会员");
 
     private final int code;
     private final String message;

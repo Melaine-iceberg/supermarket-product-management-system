@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.member.mapper.MemberMapper">
+
+    <!-- 当前最大会员编号（BR-MEM-02：M+8位流水）：降序取第一条并加行锁，
+         串行化取号；uk_member_no 兜底防重 -->
+    <select id="selectLastMemberNoForUpdate" resultType="java.lang.String">
+        SELECT member_no
+        FROM member
+        ORDER BY member_no DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+</mapper>

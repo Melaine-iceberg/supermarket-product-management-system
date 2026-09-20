@@ -6,4 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
 public interface MemberMapper extends BaseMapper<Member> {
+
+    /** 当前最大会员编号（BR-MEM-02）：行锁串行化取号 */
+    String selectLastMemberNoForUpdate();
 }
