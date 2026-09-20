@@ -5,7 +5,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 结算结果（FR-SALE-06）：单号与找零回显，供小票预览打印（FR-RPT-09）。
+ * 结算结果（FR-SALE-06）：单号与找零回显，供小票预览打印（FR-RPT-09）；
+ * memberLevelUpgraded 为本次结算触发的升级等级名（未升级为 null，FR-MEM-06 收银台提示）。
  */
 public record CheckoutVO(
         Long orderId,
@@ -19,6 +20,7 @@ public record CheckoutVO(
         BigDecimal paidAmount,
         BigDecimal changeAmount,
         List<PaymentLineVO> payments,
+        String memberLevelUpgraded,
         LocalDateTime saleTime
 ) {
 

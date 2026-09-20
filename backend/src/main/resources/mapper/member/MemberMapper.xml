@@ -12,4 +12,51 @@
         LIMIT 1
         FOR UPDATE
     </select>
+
+    <!-- 会员行锁加载：储值扣减/积分累计并发防护（BR-MEM-07） -->
+    <select id="selectByIdForUpdate" resultType="com.smms.member.entity.Member">
+        SELECT *
+        FROM member
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+    <!-- 会员消费记录（FR-MEM-04）：销售单与退货单合并，时间倒序分页；
+         积分变动由服务层按单号回填 -->
+    <select id="selectConsumePage" resultType="com.smms.member.dto.MemberConsumeVO">
+        SELECT * FROM (
+            SELECT 'SALE'   AS type,
+                   so.order_no        AS orderNo,
+                   so.sale_time       AS time,
+                   so.goods_amount    AS goodsAmount,
+                   so.discount_amount AS discountAmount,
+                   so.payable_amount  AS amount,
+                   so.cashier_name    AS cashierName
+            FROM sales_order so
+            WHERE so.member_id = #{memberId}
+            <if test="begin != null and begin != ''">
+                AND so.sale_time &gt;= #{begin}
+            </if>
+            <if test="end != null and end != ''">
+                AND so.sale_time &lt;= CONCAT(#{end}, ' 23:59:59')
+            </if>
+            UNION ALL
+            SELECT 'RETURN' AS type,
+                   rt.order_no      AS orderNo,
+                   rt.return_time   AS time,
+                   0                AS goodsAmount,
+                   0                AS discountAmount,
+                   rt.refund_amount AS amount,
+                   rt.cashier_name  AS cashierName
+            FROM return_order rt
+            WHERE rt.member_id = #{memberId}
+            <if test="begin != null and begin != ''">
+                AND rt.return_time &gt;= #{begin}
+            </if>
+            <if test="end != null and end != ''">
+                AND rt.return_time &lt;= CONCAT(#{end}, ' 23:59:59')
+            </if>
+        ) t
+        ORDER BY t.time DESC, t.orderNo DESC
+    </select>
 </mapper>

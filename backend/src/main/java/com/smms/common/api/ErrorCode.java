@@ -81,7 +81,7 @@ public enum ErrorCode {
     SALE_DISCOUNT_AUTH_REQUIRED(1509, "整单折扣须店长授权（FR-SALE-07）"),
     SALE_MEMBER_DISABLED(1510, "会员已停用，请按散客结算（BR-MEM-03）"),
     SALE_MEMBER_NOT_FOUND(1511, "会员不存在"),
-    SALE_BALANCE_UNAVAILABLE(1512, "储值支付暂未开放"),
+    SALE_BALANCE_UNAVAILABLE(1512, "储值支付/退款仅限会员使用"),
     SALE_ORDER_NO_RETRY(1513, "单号生成冲突，请重试结算"),
     SALE_DAILY_NO_EXCEED(1514, "该收银台当日流水号已用尽"),
     SALE_TEMP_LINE_INVALID(1515, "无码商品明细不合法：名称必填、金额须大于 0（FR-SALE-13）"),
@@ -99,11 +99,13 @@ public enum ErrorCode {
     SHIFT_NOT_FOUND(1532, "班次不存在"),
     SHIFT_RETURN_FORBIDDEN(1533, "该销售单所属班次已交班，退货须店长处理（BR-SALE-09）"),
 
-    // ---------- 会员模块（FR-MEM-01~05） ----------
+    // ---------- 会员模块（FR-MEM-01~08） ----------
     MEMBER_NOT_FOUND(1601, "会员不存在或已被删除"),
     MEMBER_PHONE_EXISTS(1602, "该手机号已注册会员（BR-MEM-01 全局唯一）"),
     MEMBER_PHONE_INVALID(1603, "手机号须为大陆 11 位手机号（BR-MEM-01）"),
     MEMBER_NO_EXCEED(1604, "会员编号流水已用尽，请联系管理员处理"),
+    MEMBER_BALANCE_NOT_ENOUGH(1605, "储值余额不足（BR-MEM-07 余额不允许为负）"),
+    MEMBER_RECHARGE_AUTH_SELF(1606, "储值充值的授权人不得为发起人本人（FR-MEM-08）"),
     MEMBER_LEVEL_NOT_FOUND(1611, "会员等级不存在"),
     MEMBER_LEVEL_NAME_EXISTS(1612, "等级名称已存在"),
     MEMBER_LEVEL_NO_ENABLED(1613, "没有启用中的会员等级，无法注册会员");

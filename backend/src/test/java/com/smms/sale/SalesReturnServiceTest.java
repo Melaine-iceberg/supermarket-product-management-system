@@ -10,6 +10,7 @@ import com.smms.inv.dto.StockChange;
 import com.smms.inv.service.InventoryService;
 import com.smms.member.entity.Member;
 import com.smms.member.mapper.MemberMapper;
+import com.smms.member.service.MemberBusinessService;
 import com.smms.sale.dto.ReturnCreateRequest;
 import com.smms.sale.dto.ReturnOrderDetailVO;
 import com.smms.sale.entity.CashierShift;
@@ -50,6 +51,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -89,6 +91,7 @@ class SalesReturnServiceTest {
     @Mock private CashierShiftMapper shiftMapper;
     @Mock private InventoryService inventoryService;
     @Mock private SysConfigService configService;
+    @Mock private MemberBusinessService memberBusinessService;
 
     private SalesReturnService service;
     private final List<ReturnOrder> insertedReturns = new ArrayList<>();
@@ -99,7 +102,8 @@ class SalesReturnServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SalesOrderItem.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReturnOrderItem.class);
         service = new SalesReturnService(returnOrderMapper, returnOrderItemMapper, salesOrderMapper,
-                salesOrderItemMapper, goodsMapper, memberMapper, shiftMapper, inventoryService, configService);
+                salesOrderItemMapper, goodsMapper, memberMapper, shiftMapper, inventoryService,
+                configService, memberBusinessService);
 
         doAnswer(inv -> {
             ReturnOrder ro = inv.getArgument(0);
@@ -179,6 +183,7 @@ class SalesReturnServiceTest {
     /** 标准场景：原单 1 行（数量 3、实付 30、成本 5），退货数量由请求决定 */
     private void mockStandard(Long memberId, String paidAmount, String quantity, String returnedQty) {
         SalesOrder order = order(memberId, "NONE", LocalDateTime.now());
+        order.setPayableAmount(new BigDecimal(paidAmount));
         when(salesOrderMapper.selectById(ORDER_ID)).thenReturn(order);
         when(salesOrderMapper.selectById(RETURN_ID)).thenAnswer(inv -> order);
         when(salesOrderItemMapper.selectList(any())).thenReturn(List.of(item(paidAmount, quantity, returnedQty)));
@@ -221,10 +226,12 @@ class SalesReturnServiceTest {
         ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
         verify(salesOrderMapper).updateById(orderCaptor.capture());
         assertThat(orderCaptor.getValue().getReturnStatus()).isEqualTo("PARTIAL");
-        // 会员消费冲减：100 − 20 = 80（BR-MEM-06）
-        ArgumentCaptor<Member> memberCaptor = ArgumentCaptor.forClass(Member.class);
-        verify(memberMapper).updateById(memberCaptor.capture());
-        assertThat(memberCaptor.getValue().getTotalConsume()).isEqualByComparingTo("80.00");
+        // 会员退货回退（BR-MEM-05/06）：累计消费−退款、积分扣回交由 MemberBusinessService
+        verify(memberBusinessService).returnEffects(eq(10L), eq("XS20260920010001"),
+                argThat(p -> p.compareTo(new BigDecimal("30.00")) == 0),
+                argThat(r -> r.compareTo(new BigDecimal("20.00")) == 0),
+                eq("CASH"), argThat(n -> n.startsWith("XT")), eq("陈收银"), any());
+        verify(memberMapper, never()).updateById(any(Member.class));
     }
 
     @Test
@@ -239,6 +246,24 @@ class SalesReturnServiceTest {
         verify(salesOrderMapper).updateById(orderCaptor.capture());
         assertThat(orderCaptor.getValue().getReturnStatus()).isEqualTo("ALL");
         verify(memberMapper, never()).updateById(any(Member.class)); // 散客单不动会员
+        verify(memberBusinessService, never()).returnEffects(any(), any(), any(), any(),
+                any(), any(), any(), any());
+    }
+
+    // ---------- 会员储值退款（FR-MEM-08） ----------
+
+    @Test
+    @DisplayName("会员单 BALANCE 退款：退回会员储值余额，联动 returnEffects（FR-MEM-08）")
+    void createReturn_balanceRefund_memberOrder() {
+        mockStandard(10L, "30.00", "3", "0");
+
+        service.createReturn(request("BALANCE", "QUALITY", null, "1"), CASHIER);
+
+        assertThat(insertedReturns.get(0).getRefundAmount()).isEqualByComparingTo("10.00");
+        verify(memberBusinessService).returnEffects(eq(10L), eq("XS20260920010001"),
+                argThat(p -> p.compareTo(new BigDecimal("30.00")) == 0),
+                argThat(r -> r.compareTo(new BigDecimal("10.00")) == 0),
+                eq("BALANCE"), argThat(n -> n.startsWith("XT")), eq("陈收银"), any());
     }
 
     // ---------- 授权校验（FR-SALE-11） ----------

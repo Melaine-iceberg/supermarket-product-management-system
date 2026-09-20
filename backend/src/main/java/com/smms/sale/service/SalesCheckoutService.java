@@ -15,6 +15,7 @@ import com.smms.member.entity.Member;
 import com.smms.member.entity.MemberLevel;
 import com.smms.member.mapper.MemberLevelMapper;
 import com.smms.member.mapper.MemberMapper;
+import com.smms.member.service.MemberBusinessService;
 import com.smms.sale.dto.CheckoutCommand;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
@@ -63,8 +64,8 @@ public class SalesCheckoutService {
     private static final String CONFIG_MIN_DISCOUNT = "min_discount_rate";
     /** 营业日起始时刻（BR-RPT-02 跨零点归属） */
     private static final String CONFIG_BUSINESS_DAY_START = "business_day_start";
-    /** 收银台可用收款方式（BALANCE 储值支付待会员模块开放） */
-    private static final Set<String> PAY_TYPES = Set.of("CASH", "BANK", "MOBILE");
+    /** 收银台可用收款方式（BALANCE 储值支付仅限会员单，FR-MEM-08） */
+    private static final Set<String> PAY_TYPES = Set.of("CASH", "BANK", "MOBILE", "BALANCE");
     private static final DateTimeFormatter DATE_PART = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int MAX_RETRY = 3;
 
@@ -79,6 +80,7 @@ public class SalesCheckoutService {
     private final CashierShiftMapper shiftMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
+    private final MemberBusinessService memberBusinessService;
 
     // ==================== 结算（FR-SALE-06） ====================
 
@@ -103,8 +105,10 @@ public class SalesCheckoutService {
         BigDecimal memberRate = member.discountRate();
         CalculatedLines lines = calculateLines(cmd.items(), goodsMap, promoMap, member.hasMember(), memberRate, orderRate);
 
-        // 6. 收款校验：实收 ≥ 应收，找零 = 实收 − 应收（FR-SALE-06）
-        BigDecimal paid = validatePayments(cmd.payments());
+        // 6. 收款校验（FR-SALE-06）：实收 ≥ 应收，找零 = 实收 − 应收；
+        //    BALANCE 储值仅限会员、不超应收与余额（BR-MEM-07）
+        ValidatedPayments payments = validatePayments(cmd.payments(), member, lines.payable());
+        BigDecimal paid = payments.paid();
         if (paid.compareTo(lines.payable()) < 0) {
             throw new BusinessException(ErrorCode.SALE_PAID_NOT_ENOUGH,
                     "实收 " + paid + " 元不足应收 " + lines.payable() + " 元");
@@ -133,15 +137,19 @@ public class SalesCheckoutService {
             paymentLines.add(new CheckoutVO.PaymentLineVO(pay.payType(), pay.amount()));
         }
 
-        // 11. 会员消费统计（BR-MEM-06 口径：累计消费额 = Σ实付；积分累计待会员模块）
+        // 11. 会员结算联动（BR-MEM-05/06/07，FR-MEM-06）：
+        // 累计消费 + 实付、积分累计、储值扣余额、等级自动升降（返回升级等级名供收银台提示）
+        String memberLevelUpgraded = null;
         if (member.hasMember()) {
-            accumulateMember(member.member(), lines.payable(), now);
+            memberLevelUpgraded = memberBusinessService.settleEffects(member.member().getId(),
+                    lines.payable(), payments.balancePaid(), order.getOrderNo(),
+                    cashier.realName(), now);
         }
 
         return new CheckoutVO(order.getId(), order.getOrderNo(), order.getItemCount(),
                 lines.goodsAmount(), order.getMemberDiscountAmount(), order.getOrderDiscountAmount(),
                 order.getDiscountAmount(), lines.payable(), paid, change, paymentLines,
-                order.getSaleTime());
+                memberLevelUpgraded, order.getSaleTime());
     }
 
     // ==================== 收银台会员检索（FR-SALE-05） ====================
@@ -371,23 +379,49 @@ public class SalesCheckoutService {
         return goods.getRetailPrice().setScale(2, RoundingMode.HALF_UP);
     }
 
-    /** 收款校验：方式合法（储值待会员模块开放）、金额为正、实收 ≥ 应收 */
-    private BigDecimal validatePayments(List<CheckoutCommand.CheckoutPayment> payments) {
+    /**
+     * 收款校验（FR-SALE-06）：方式合法、金额为正；BALANCE 储值仅限会员单（FR-MEM-08）、
+     * 支付额不超应收（储值不参与找零）、不超会员余额（BR-MEM-07 余额不可为负，结算行锁兜底）。
+     *
+     * @return 实收合计与其中储值支付额
+     */
+    private ValidatedPayments validatePayments(List<CheckoutCommand.CheckoutPayment> payments,
+                                               MemberContext member, BigDecimal payable) {
         BigDecimal paid = BigDecimal.ZERO;
+        BigDecimal balancePaid = BigDecimal.ZERO;
         for (CheckoutCommand.CheckoutPayment pay : payments) {
-            if ("BALANCE".equals(pay.payType())) {
-                throw new BusinessException(ErrorCode.SALE_BALANCE_UNAVAILABLE);
-            }
             if (!PAY_TYPES.contains(pay.payType())) {
                 throw new BusinessException(ErrorCode.SALE_PAY_TYPE_INVALID,
-                        "收款方式不合法：" + pay.payType() + "（当前支持 CASH/BANK/MOBILE）");
+                        "收款方式不合法：" + pay.payType() + "（当前支持 CASH/BANK/MOBILE/BALANCE）");
             }
             if (pay.amount() == null || pay.amount().compareTo(BigDecimal.ZERO) <= 0) {
                 throw new BusinessException(ErrorCode.SALE_PAY_AMOUNT_INVALID);
             }
+            if ("BALANCE".equals(pay.payType())) {
+                if (!member.hasMember()) {
+                    throw new BusinessException(ErrorCode.SALE_BALANCE_UNAVAILABLE, "储值支付仅限会员使用");
+                }
+                balancePaid = balancePaid.add(pay.amount());
+            }
             paid = paid.add(pay.amount());
         }
-        return paid.setScale(2, RoundingMode.HALF_UP);
+        if (balancePaid.compareTo(payable) > 0) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "储值支付额不得超过应收 " + payable + " 元（储值不参与找零）");
+        }
+        if (balancePaid.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal balance = member.member().getBalance() == null
+                    ? BigDecimal.ZERO : member.member().getBalance();
+            if (balancePaid.compareTo(balance) > 0) {
+                throw new BusinessException(ErrorCode.MEMBER_BALANCE_NOT_ENOUGH);
+            }
+        }
+        return new ValidatedPayments(paid.setScale(2, RoundingMode.HALF_UP),
+                balancePaid.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    /** 收款校验结果：实收合计与其中储值支付额（settleEffects 扣余额用） */
+    private record ValidatedPayments(BigDecimal paid, BigDecimal balancePaid) {
     }
 
     /** 单号生成（BR-SALE-02）：XS+yyyyMMdd+收银台2位+4位当日流水；前缀范围行锁串行取号 */
@@ -490,15 +524,6 @@ public class SalesCheckoutService {
         record.setPayTime(now);
         record.setOperatorName(cashierName);
         return record;
-    }
-
-    /** 会员消费统计（BR-MEM-06）：累计消费额 += 应收、消费次数 +1、刷新最近消费时间 */
-    private void accumulateMember(Member member, BigDecimal payable, LocalDateTime now) {
-        member.setTotalConsume((member.getTotalConsume() == null ? BigDecimal.ZERO : member.getTotalConsume())
-                .add(payable));
-        member.setConsumeTimes((member.getConsumeTimes() == null ? 0 : member.getConsumeTimes()) + 1);
-        member.setLastConsumeTime(now);
-        memberMapper.updateById(member);
     }
 
     /** 营业日（BR-RPT-02）：结算时刻早于营业日起始时刻则归属前一日 */

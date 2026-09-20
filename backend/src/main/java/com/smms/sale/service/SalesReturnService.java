@@ -12,6 +12,7 @@ import com.smms.inv.dto.StockChange;
 import com.smms.inv.service.InventoryService;
 import com.smms.member.entity.Member;
 import com.smms.member.mapper.MemberMapper;
+import com.smms.member.service.MemberBusinessService;
 import com.smms.sale.dto.ReturnCreateRequest;
 import com.smms.sale.dto.ReturnOrderDetailVO;
 import com.smms.sale.dto.ReturnOrderVO;
@@ -51,7 +52,7 @@ import java.util.stream.Collectors;
  * 销售退货服务（FR-SALE-10/11）。
  * 单事务内：退货单落库（XT 单号，BR-SALE-02）→ 按原成交单价退款（BR-SALE-06）
  * → 逐行回补库存并按成本快照回冲（SALE_RETURN，BR-INV-06）
- * → 更新原单退货状态 → 冲减会员累计消费额（BR-MEM-06；积分随会员模块实现）。
+ * → 更新原单退货状态 → 会员退货回退（BR-MEM-05/06：累计消费、积分、BALANCE 储值退回）。
  * 授权（FR-SALE-11）：退款超阈值或原因为"误操作"须店长授权且授权人 ≠ 发起人；
  * 超过退货有效期须店长特批（BR-SALE-05）；收银员仅可办理本人单据退货（BR-SALE-09）。
  */
@@ -65,7 +66,7 @@ public class SalesReturnService {
     private static final String CONFIG_RETURN_VALID_DAYS = "return_valid_days";
     /** 营业日起始时刻（BR-RPT-02） */
     private static final String CONFIG_BUSINESS_DAY_START = "business_day_start";
-    private static final Set<String> REFUND_TYPES = Set.of("CASH", "BANK", "MOBILE");
+    private static final Set<String> REFUND_TYPES = Set.of("CASH", "BANK", "MOBILE", "BALANCE");
     private static final Set<String> RETURN_REASONS = Set.of("QUALITY", "WRONG_ITEM", "MISTAKE", "OTHER");
     private static final DateTimeFormatter DATE_PART = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int MAX_RETRY = 3;
@@ -79,6 +80,7 @@ public class SalesReturnService {
     private final CashierShiftMapper shiftMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
+    private final MemberBusinessService memberBusinessService;
 
     // ==================== 办理退货（FR-SALE-10） ====================
 
@@ -107,9 +109,10 @@ public class SalesReturnService {
             }
         }
 
-        // 2. 基础项校验：退款方式 / 退货原因
-        if ("BALANCE".equals(req.refundType())) {
-            throw new BusinessException(ErrorCode.SALE_BALANCE_UNAVAILABLE);
+        // 2. 基础项校验：退款方式（BALANCE 仅限会员单退回储值，FR-MEM-08）/ 退货原因
+        if ("BALANCE".equals(req.refundType()) && order.getMemberId() == null) {
+            throw new BusinessException(ErrorCode.SALE_BALANCE_UNAVAILABLE,
+                    "储值退款仅限会员单（退款将退回会员储值余额）");
         }
         if (!REFUND_TYPES.contains(req.refundType())) {
             throw new BusinessException(ErrorCode.SALE_REFUND_TYPE_INVALID, "退款方式不合法：" + req.refundType());
@@ -190,14 +193,12 @@ public class SalesReturnService {
         order.setReturnStatus(allReturned ? "ALL" : "PARTIAL");
         salesOrderMapper.updateById(order);
 
-        // 10. 冲减会员累计消费额（BR-MEM-06：累计消费额 = Σ实付 − Σ退款）
+        // 10. 会员退货回退（BR-MEM-05/06，FR-MEM-08）：
+        // 累计消费额 −= 退款、积分等比例扣回（扣至 0 为止）、BALANCE 退款退回储值余额
         if (order.getMemberId() != null) {
-            Member member = memberMapper.selectById(order.getMemberId());
-            if (member != null) {
-                member.setTotalConsume((member.getTotalConsume() == null
-                        ? BigDecimal.ZERO : member.getTotalConsume()).subtract(totalRefund));
-                memberMapper.updateById(member);
-            }
+            memberBusinessService.returnEffects(order.getMemberId(), order.getOrderNo(),
+                    order.getPayableAmount(), totalRefund, req.refundType(),
+                    returnOrder.getOrderNo(), operator.realName(), now);
         }
 
         return detail(returnOrder.getId());

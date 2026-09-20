@@ -16,6 +16,7 @@ import com.smms.member.entity.Member;
 import com.smms.member.entity.MemberLevel;
 import com.smms.member.mapper.MemberLevelMapper;
 import com.smms.member.mapper.MemberMapper;
+import com.smms.member.service.MemberBusinessService;
 import com.smms.sale.dto.CheckoutCommand;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
@@ -55,6 +56,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -95,6 +97,7 @@ class SalesCheckoutServiceTest {
     @Mock private CashierShiftMapper shiftMapper;
     @Mock private InventoryService inventoryService;
     @Mock private SysConfigService configService;
+    @Mock private MemberBusinessService memberBusinessService;
 
     private SalesCheckoutService service;
 
@@ -105,7 +108,7 @@ class SalesCheckoutServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Member.class);
         service = new SalesCheckoutService(salesOrderMapper, salesOrderItemMapper, paymentRecordMapper,
                 goodsMapper, promotionMapper, inventoryMapper, memberMapper, memberLevelMapper,
-                shiftMapper, inventoryService, configService);
+                shiftMapper, inventoryService, configService, memberBusinessService);
     }
 
     // ---------- 造数 ----------
@@ -303,11 +306,13 @@ class SalesCheckoutServiceTest {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(sumPaid).isEqualByComparingTo(order.getPayableAmount());
 
-        // 会员消费统计（BR-MEM-06）
-        ArgumentCaptor<Member> captor = ArgumentCaptor.forClass(Member.class);
-        verify(memberMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getTotalConsume()).isEqualByComparingTo("140.35");
-        assertThat(captor.getValue().getConsumeTimes()).isEqualTo(4);
+        // 会员结算联动（BR-MEM-05/06/07）：累计消费/积分/等级交由 MemberBusinessService
+        verify(memberBusinessService).settleEffects(eq(MEMBER_ID),
+                argThat(p -> p.compareTo(new BigDecimal("40.35")) == 0),
+                argThat(b -> b.compareTo(BigDecimal.ZERO) == 0),
+                argThat(n -> n != null && n.startsWith("XS")),
+                eq("陈收银"), any());
+        verify(memberMapper, never()).updateById(any(Member.class));
         assertThat(vo.payableAmount()).isEqualByComparingTo("40.35");
         assertThat(vo.changeAmount()).isEqualByComparingTo("0.00");
     }
@@ -416,6 +421,43 @@ class SalesCheckoutServiceTest {
         assertThat(vo.paidAmount()).isEqualByComparingTo("47.75");
         assertThat(vo.changeAmount()).isEqualByComparingTo("0.00");
         verify(paymentRecordMapper, times(2)).insert(any(PaymentRecord.class));
+    }
+
+    // ---------- 储值支付（FR-MEM-08，BR-MEM-07） ----------
+
+    @Test
+    @DisplayName("储值支付：会员单 BALANCE+现金组合联动收到储值额；超应收与余额不足拒绝")
+    void checkout_balancePayment() {
+        mockGoodsAndPromoAndStock();
+        mockOrderInsertSuccess();
+        Member m = member("100.00", 3, 1);
+        m.setBalance(new BigDecimal("30.00"));
+        when(memberMapper.selectById(MEMBER_ID)).thenReturn(m);
+        when(memberLevelMapper.selectById(1L)).thenReturn(level("1"));
+
+        // 会员单总额：9×2 + 15 + 8.5×1.5 = 45.75；储值 20 + 现金 25.75
+        CheckoutVO vo = service.checkout(command(MEMBER_ID, null, null,
+                List.of(pay("BALANCE", "20.00"), pay("CASH", "25.75"))), CASHIER);
+
+        assertThat(vo.payableAmount()).isEqualByComparingTo("45.75");
+        assertThat(vo.memberLevelUpgraded()).isNull();
+        verify(memberBusinessService).settleEffects(eq(MEMBER_ID),
+                argThat(p -> p.compareTo(new BigDecimal("45.75")) == 0),
+                argThat(b -> b.compareTo(new BigDecimal("20.00")) == 0),
+                argThat(n -> n != null && n.startsWith("XS")),
+                eq("陈收银"), any());
+
+        // 储值支付额超过应收拒绝（储值不参与找零）
+        assertThatThrownBy(() -> service.checkout(command(MEMBER_ID, null, null,
+                List.of(pay("BALANCE", "50.00"))), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不得超过应收");
+
+        // 储值余额不足拒绝（BR-MEM-07 余额不可为负）
+        assertThatThrownBy(() -> service.checkout(command(MEMBER_ID, null, null,
+                List.of(pay("BALANCE", "35.00"), pay("CASH", "20"))), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("储值余额不足");
     }
 
     // ---------- 整单折扣授权（FR-SALE-07，BR-SALE-05/10） ----------
