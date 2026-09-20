@@ -147,6 +147,12 @@ const router = createRouter({
           component: () => import('@/views/sale/return/index.vue'),
           meta: { perm: 'sys:ret:list', title: '退货管理' },
         },
+        {
+          path: 'sale/shift',
+          name: 'sale-shift',
+          component: () => import('@/views/sale/shift/index.vue'),
+          meta: { perm: 'sys:shift:list', title: '交班管理' },
+        },
       ],
     },
     {

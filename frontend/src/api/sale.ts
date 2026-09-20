@@ -287,3 +287,84 @@ export function pageReturns(params: ReturnQuery) {
 export function getReturnDetail(id: number) {
   return http.get<ReturnOrderDetailVO>(`/sales/returns/${id}`)
 }
+
+// ---------- 交班管理（FR-SALE-12） ----------
+
+/** 班次状态：WORKING在班 / CLOSED已交班 */
+export type ShiftStatus = 'WORKING' | 'CLOSED'
+
+export const SHIFT_STATUS_MAP: Record<string, { label: string; type: 'success' | 'info' }> = {
+  WORKING: { label: '在班', type: 'success' },
+  CLOSED: { label: '已交班', type: 'info' },
+}
+
+export interface ShiftVO {
+  id: number
+  cashierId: number
+  cashierName: string
+  counterNo: number
+  startTime: string
+  endTime: string | null
+  orderCount: number
+  /** 净销售 = Σ应收 − 退货额 */
+  salesAmount: number
+  cashAmount: number
+  bankAmount: number
+  mobileAmount: number
+  balanceAmount: number
+  returnAmount: number
+  /** 应收现金 = 现金收款 − 现金退款 */
+  expectedCash: number
+  status: ShiftStatus
+}
+
+export interface ShiftQuery {
+  cashierName?: string
+  counterNo?: number
+  status?: string
+  beginDate?: string
+  endDate?: string
+  page: number
+  size: number
+}
+
+/** 班次内销售单摘要行（交班单） */
+export interface ShiftOrderLine {
+  id: number
+  orderNo: string
+  saleTime: string
+  itemCount: number
+  payableAmount: number
+  paidAmount: number
+  changeAmount: number
+  returnStatus: string
+  refundAmount: number
+}
+
+export interface ShiftDetailVO {
+  shift: ShiftVO
+  orders: ShiftOrderLine[]
+}
+
+/** 开班登记（FR-SALE-12）：同一收银员同一时刻仅一个在班班次 */
+export function openShift(counterNo: number) {
+  return http.post<ShiftVO>(`/sales/shifts/open?counterNo=${counterNo}`)
+}
+
+/** 交班对账（FR-SALE-12）：返回交班单（含班次内销售单，供打印核对） */
+export function closeShift() {
+  return http.post<ShiftDetailVO>('/sales/shifts/close')
+}
+
+/** 当前在班班次（收银台展示；无在班班次返回 null） */
+export function getCurrentShift() {
+  return http.get<ShiftVO | null>('/sales/shifts/current')
+}
+
+export function pageShifts(params: ShiftQuery) {
+  return http.get<PageResult<ShiftVO>>('/sales/shifts', params)
+}
+
+export function getShiftDetail(id: number) {
+  return http.get<ShiftDetailVO>(`/sales/shifts/${id}`)
+}

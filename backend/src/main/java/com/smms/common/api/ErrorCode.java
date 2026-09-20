@@ -92,7 +92,11 @@ public enum ErrorCode {
     SALE_RETURN_AUTH_REQUIRED(1526, "退款超阈值或误操作退货须店长授权（FR-SALE-11）"),
     SALE_RETURN_AUTH_SELF(1527, "授权人不得为退货发起人（FR-SALE-11）"),
     SALE_REFUND_TYPE_INVALID(1528, "退款方式不合法"),
-    SALE_RETURN_REASON_INVALID(1529, "退货原因不合法");
+    SALE_RETURN_REASON_INVALID(1529, "退货原因不合法"),
+    SHIFT_ALREADY_OPEN(1530, "当前收银员已有在班班次，不可重复开班"),
+    SHIFT_NOT_OPEN(1531, "当前收银员没有在班班次，无法交班"),
+    SHIFT_NOT_FOUND(1532, "班次不存在"),
+    SHIFT_RETURN_FORBIDDEN(1533, "该销售单所属班次已交班，退货须店长处理（BR-SALE-09）");
 
     private final int code;
     private final String message;

@@ -12,10 +12,12 @@ import com.smms.member.entity.Member;
 import com.smms.member.mapper.MemberMapper;
 import com.smms.sale.dto.ReturnCreateRequest;
 import com.smms.sale.dto.ReturnOrderDetailVO;
+import com.smms.sale.entity.CashierShift;
 import com.smms.sale.entity.ReturnOrder;
 import com.smms.sale.entity.ReturnOrderItem;
 import com.smms.sale.entity.SalesOrder;
 import com.smms.sale.entity.SalesOrderItem;
+import com.smms.sale.mapper.CashierShiftMapper;
 import com.smms.sale.mapper.ReturnOrderItemMapper;
 import com.smms.sale.mapper.ReturnOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
@@ -84,6 +86,7 @@ class SalesReturnServiceTest {
     @Mock private SalesOrderItemMapper salesOrderItemMapper;
     @Mock private GoodsMapper goodsMapper;
     @Mock private MemberMapper memberMapper;
+    @Mock private CashierShiftMapper shiftMapper;
     @Mock private InventoryService inventoryService;
     @Mock private SysConfigService configService;
 
@@ -96,7 +99,7 @@ class SalesReturnServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SalesOrderItem.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReturnOrderItem.class);
         service = new SalesReturnService(returnOrderMapper, returnOrderItemMapper, salesOrderMapper,
-                salesOrderItemMapper, goodsMapper, memberMapper, inventoryService, configService);
+                salesOrderItemMapper, goodsMapper, memberMapper, shiftMapper, inventoryService, configService);
 
         doAnswer(inv -> {
             ReturnOrder ro = inv.getArgument(0);
@@ -358,5 +361,54 @@ class SalesReturnServiceTest {
         service.createReturn(request("CASH", "QUALITY", null, "1"), CASHIER);
 
         assertThat(insertedReturns.get(0).getOrderNo()).isEqualTo(prefix + "0008");
+    }
+
+    // ---------- 班次联动（FR-SALE-12 / BR-SALE-09） ----------
+
+    @Test
+    @DisplayName("已交班班次的单据：收银员退货被拒（SHIFT_RETURN_FORBIDDEN），店长仍可办理")
+    void createReturn_closedShift() {
+        mockStandard(null, "30.00", "3", "0");
+        SalesOrder order = order(null, "NONE", LocalDateTime.now());
+        order.setShiftId(88L);
+        when(salesOrderMapper.selectById(ORDER_ID)).thenReturn(order);
+        when(salesOrderMapper.selectById(RETURN_ID)).thenAnswer(inv -> order);
+
+        CashierShift closed = new CashierShift();
+        closed.setId(88L);
+        closed.setStatus(CashierShift.STATUS_CLOSED);
+        closed.setEndTime(LocalDateTime.now().minusHours(1));
+        when(shiftMapper.selectById(88L)).thenReturn(closed);
+
+        // 收银员（本人单据）被拒：交班后该班次单据的退货须店长处理
+        assertThatThrownBy(() -> service.createReturn(request("CASH", "QUALITY", null, "1"), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("交班");
+        verify(returnOrderMapper, never()).insert(any(ReturnOrder.class));
+
+        // 店长（全局销售角色）仍可办理
+        service.createReturn(request("CASH", "QUALITY", null, "1"), MANAGER);
+        assertThat(insertedReturns).hasSize(1);
+        assertThat(insertedReturns.get(0).getRefundAmount()).isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    @DisplayName("在班班次的单据：收银员本人可正常退货（班次未交班不拦截）")
+    void createReturn_workingShift_cashierAllowed() {
+        mockStandard(null, "30.00", "3", "0");
+        SalesOrder order = order(null, "NONE", LocalDateTime.now());
+        order.setShiftId(88L);
+        when(salesOrderMapper.selectById(ORDER_ID)).thenReturn(order);
+        when(salesOrderMapper.selectById(RETURN_ID)).thenAnswer(inv -> order);
+
+        CashierShift working = new CashierShift();
+        working.setId(88L);
+        working.setStatus(CashierShift.STATUS_WORKING);
+        when(shiftMapper.selectById(88L)).thenReturn(working);
+
+        service.createReturn(request("CASH", "QUALITY", null, "1"), CASHIER);
+
+        assertThat(insertedReturns).hasSize(1);
+        assertThat(insertedReturns.get(0).getRefundAmount()).isEqualByComparingTo("10.00");
     }
 }

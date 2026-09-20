@@ -16,10 +16,12 @@ import com.smms.sale.dto.ReturnCreateRequest;
 import com.smms.sale.dto.ReturnOrderDetailVO;
 import com.smms.sale.dto.ReturnOrderVO;
 import com.smms.sale.dto.ReturnQuery;
+import com.smms.sale.entity.CashierShift;
 import com.smms.sale.entity.ReturnOrder;
 import com.smms.sale.entity.ReturnOrderItem;
 import com.smms.sale.entity.SalesOrder;
 import com.smms.sale.entity.SalesOrderItem;
+import com.smms.sale.mapper.CashierShiftMapper;
 import com.smms.sale.mapper.ReturnOrderItemMapper;
 import com.smms.sale.mapper.ReturnOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
@@ -74,6 +76,7 @@ public class SalesReturnService {
     private final SalesOrderItemMapper salesOrderItemMapper;
     private final GoodsMapper goodsMapper;
     private final MemberMapper memberMapper;
+    private final CashierShiftMapper shiftMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
 
@@ -94,6 +97,14 @@ public class SalesReturnService {
         }
         if ("ALL".equals(order.getReturnStatus())) {
             throw new BusinessException(ErrorCode.SALE_RETURN_FULLY_RETURNED);
+        }
+        // 交班后该班次单据的退货须店长处理（FR-SALE-12 / BR-SALE-09）
+        if (!SalesQueryService.isGlobalSaleRole(operator) && order.getShiftId() != null) {
+            CashierShift shift = shiftMapper.selectById(order.getShiftId());
+            if (shift != null && CashierShift.STATUS_CLOSED.equals(shift.getStatus())) {
+                throw new BusinessException(ErrorCode.SHIFT_RETURN_FORBIDDEN,
+                        "该销售单所属班次已于 " + shift.getEndTime() + " 交班，退货须店长处理");
+            }
         }
 
         // 2. 基础项校验：退款方式 / 退货原因

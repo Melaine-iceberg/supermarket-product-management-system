@@ -19,9 +19,11 @@ import com.smms.member.mapper.MemberMapper;
 import com.smms.sale.dto.CheckoutCommand;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
+import com.smms.sale.entity.CashierShift;
 import com.smms.sale.entity.PaymentRecord;
 import com.smms.sale.entity.SalesOrder;
 import com.smms.sale.entity.SalesOrderItem;
+import com.smms.sale.mapper.CashierShiftMapper;
 import com.smms.sale.mapper.PaymentRecordMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
@@ -90,6 +92,7 @@ class SalesCheckoutServiceTest {
     @Mock private InventoryMapper inventoryMapper;
     @Mock private MemberMapper memberMapper;
     @Mock private MemberLevelMapper memberLevelMapper;
+    @Mock private CashierShiftMapper shiftMapper;
     @Mock private InventoryService inventoryService;
     @Mock private SysConfigService configService;
 
@@ -102,7 +105,7 @@ class SalesCheckoutServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Member.class);
         service = new SalesCheckoutService(salesOrderMapper, salesOrderItemMapper, paymentRecordMapper,
                 goodsMapper, promotionMapper, inventoryMapper, memberMapper, memberLevelMapper,
-                inventoryService, configService);
+                shiftMapper, inventoryService, configService);
     }
 
     // ---------- 造数 ----------
@@ -542,5 +545,28 @@ class SalesCheckoutServiceTest {
     void searchMembers_blankKeyword() {
         assertThat(service.searchMembers(" ")).isEmpty();
         verify(memberMapper, never()).selectList(any());
+    }
+
+    // ---------- 班次关联（FR-SALE-12） ----------
+
+    @Test
+    @DisplayName("结算关联在班班次：开班后单据写入 shiftId；未开班 shiftId 为空")
+    void checkout_bindsWorkingShift() {
+        mockGoodsAndPromoAndStock();
+        mockOrderInsertSuccess();
+
+        // 未开班：shiftId 为空
+        when(shiftMapper.selectWorking(CASHIER.userId())).thenReturn(null);
+        service.checkout(command(null, null, null, List.of(pay("CASH", "50.00"))), CASHIER);
+        assertThat(capturedOrder().getShiftId()).isNull();
+
+        // 在班：写入班次ID
+        CashierShift working = new CashierShift();
+        working.setId(88L);
+        working.setCashierId(CASHIER.userId());
+        working.setStatus(CashierShift.STATUS_WORKING);
+        when(shiftMapper.selectWorking(CASHIER.userId())).thenReturn(working);
+        service.checkout(command(null, null, null, List.of(pay("CASH", "50.00"))), CASHIER);
+        assertThat(capturedOrder().getShiftId()).isEqualTo(88L);
     }
 }

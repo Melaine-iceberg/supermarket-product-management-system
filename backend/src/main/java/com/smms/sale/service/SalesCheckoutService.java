@@ -18,9 +18,11 @@ import com.smms.member.mapper.MemberMapper;
 import com.smms.sale.dto.CheckoutCommand;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
+import com.smms.sale.entity.CashierShift;
 import com.smms.sale.entity.PaymentRecord;
 import com.smms.sale.entity.SalesOrder;
 import com.smms.sale.entity.SalesOrderItem;
+import com.smms.sale.mapper.CashierShiftMapper;
 import com.smms.sale.mapper.PaymentRecordMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
@@ -74,6 +76,7 @@ public class SalesCheckoutService {
     private final InventoryMapper inventoryMapper;
     private final MemberMapper memberMapper;
     private final MemberLevelMapper memberLevelMapper;
+    private final CashierShiftMapper shiftMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
 
@@ -378,6 +381,9 @@ public class SalesCheckoutService {
         order.setCounterNo(cmd.counterNo());
         order.setCashierId(cashier.userId());
         order.setCashierName(cashier.realName());
+        // 关联当前在班班次（FR-SALE-12；未开班时为空，交班统计仅覆盖开班后单据）
+        CashierShift workingShift = shiftMapper.selectWorking(cashier.userId());
+        order.setShiftId(workingShift == null ? null : workingShift.getId());
         order.setMemberId(cmd.memberId());
         order.setSaleTime(now);
         order.setBusinessDate(businessDate(now));

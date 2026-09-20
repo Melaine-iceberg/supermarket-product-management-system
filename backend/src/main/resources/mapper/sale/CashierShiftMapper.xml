@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.sale.mapper.CashierShiftMapper">
+
+    <!-- 班次分页（FR-SALE-12）：收银员/台号/状态/开班日期区间，开班时间倒序 -->
+    <select id="selectShiftPage" resultType="com.smms.sale.dto.ShiftVO">
+        SELECT
+            id              AS id,
+            cashier_id      AS cashierId,
+            cashier_name    AS cashierName,
+            counter_no      AS counterNo,
+            start_time      AS startTime,
+            end_time        AS endTime,
+            order_count     AS orderCount,
+            sales_amount    AS salesAmount,
+            cash_amount     AS cashAmount,
+            bank_amount     AS bankAmount,
+            mobile_amount   AS mobileAmount,
+            balance_amount  AS balanceAmount,
+            return_amount   AS returnAmount,
+            expected_cash   AS expectedCash,
+            status          AS status
+        FROM cashier_shift
+        <where>
+            <if test="q.cashierName != null and q.cashierName != ''">
+                AND cashier_name LIKE CONCAT('%', #{q.cashierName}, '%')
+            </if>
+            <if test="q.counterNo != null">
+                AND counter_no = #{q.counterNo}
+            </if>
+            <if test="q.status != null and q.status != ''">
+                AND status = #{q.status}
+            </if>
+            <if test="q.cashierId != null">
+                AND cashier_id = #{q.cashierId}
+            </if>
+            <if test="q.beginDate != null and q.beginDate != ''">
+                AND start_time &gt;= CONCAT(#{q.beginDate}, ' 00:00:00')
+            </if>
+            <if test="q.endDate != null and q.endDate != ''">
+                AND start_time &lt;= CONCAT(#{q.endDate}, ' 23:59:59')
+            </if>
+        </where>
+        ORDER BY start_time DESC, id DESC
+    </select>
+
+    <!-- 班次内销售单摘要（交班单打印视图），退款额为该单关联退货合计 -->
+    <select id="selectShiftOrders" resultType="com.smms.sale.dto.ShiftVO$OrderLine">
+        SELECT
+            so.id               AS id,
+            so.order_no         AS orderNo,
+            so.sale_time        AS saleTime,
+            so.item_count       AS itemCount,
+            so.payable_amount   AS payableAmount,
+            so.paid_amount      AS paidAmount,
+            so.change_amount    AS changeAmount,
+            so.return_status    AS returnStatus,
+            COALESCE((SELECT SUM(ro.refund_amount) FROM return_order ro
+                      WHERE ro.sales_order_id = so.id), 0) AS refundAmount
+        FROM sales_order so
+        WHERE so.shift_id = #{shiftId}
+        ORDER BY so.sale_time ASC, so.id ASC
+    </select>
+</mapper>
