@@ -103,6 +103,13 @@ const router = createRouter({
           component: () => import('@/views/goods/brand/index.vue'),
           meta: { perm: 'sys:brand:list', title: '品牌管理' },
         },
+        // 库存管理（FR-INV）
+        {
+          path: 'inventory/check',
+          name: 'inventory-check',
+          component: () => import('@/views/inventory/check/index.vue'),
+          meta: { perm: 'sys:check:list', title: '盘点管理' },
+        },
       ],
     },
     {

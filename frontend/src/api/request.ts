@@ -99,6 +99,16 @@ export const http = {
     })
     return res.data as Blob
   },
+  /** 上传文件（Excel 导入等，multipart/form-data） */
+  async upload<T>(url: string, file: File, field = 'file'): Promise<T> {
+    const form = new FormData()
+    form.append(field, file)
+    const res = await instance.post<ApiResponse<T>>(url, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    })
+    return res.data.data
+  },
 }
 
 /** 导出文件保存到本地 */
