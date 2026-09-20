@@ -105,6 +105,24 @@ const router = createRouter({
         },
         // 库存管理（FR-INV）
         {
+          path: 'inventory/list',
+          name: 'inventory-list',
+          component: () => import('@/views/inventory/list/index.vue'),
+          meta: { perm: 'sys:inv:list', title: '库存查询' },
+        },
+        {
+          path: 'inventory/record',
+          name: 'inventory-record',
+          component: () => import('@/views/inventory/record/index.vue'),
+          meta: { perm: 'sys:inv-record:list', title: '库存流水' },
+        },
+        {
+          path: 'inventory/warning',
+          name: 'inventory-warning',
+          component: () => import('@/views/inventory/warning/index.vue'),
+          meta: { perm: 'sys:inv-warning:list', title: '库存预警' },
+        },
+        {
           path: 'inventory/check',
           name: 'inventory-check',
           component: () => import('@/views/inventory/check/index.vue'),

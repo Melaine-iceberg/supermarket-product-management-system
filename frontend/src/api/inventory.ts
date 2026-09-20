@@ -150,3 +150,160 @@ export function importCheckActual(id: number, file: File) {
     file,
   )
 }
+
+// ---------- 实时库存查询（FR-INV-01，只读：结存为派生数据 BR-INV-11） ----------
+
+/** 库存状态：NORMAL正常 / WARNING预警 / OUT缺货 / OVERSTOCK积压（FR-INV-05 口径） */
+export type StockStatus = 'NORMAL' | 'WARNING' | 'OUT' | 'OVERSTOCK'
+
+export interface InventoryItemVO {
+  goodsId: number
+  goodsCode: string
+  barcode: string | null
+  name: string
+  categoryId: number
+  categoryName: string
+  unitName: string
+  spec: string | null
+  isWeighed: number
+  quantity: number
+  costPrice: number
+  costAmount: number
+  retailPrice: number
+  safetyStockLower: number
+  safetyStockUpper: number | null
+  stockStatus: StockStatus
+  lastChangeTime: string | null
+}
+
+/** 库存分页 + 合计：totalCostAmount 为当前筛选范围库存总成本 */
+export interface InventoryPageVO {
+  list: InventoryItemVO[]
+  total: number
+  totalCostAmount: number
+}
+
+/** 排序白名单（与后端 InventoryMapper 一致）：goodsCode/name/quantity/costAmount/lastChangeTime */
+export interface InventoryQuery {
+  name?: string
+  goodsCode?: string
+  categoryId?: number
+  stockStatus?: string
+  page: number
+  size: number
+  sortBy?: string
+  sortDir?: string
+}
+
+export function pageInventory(params: InventoryQuery) {
+  return http.get<InventoryPageVO>('/inventory', params)
+}
+
+// ---------- 安全库存阈值维护（FR-INV-06） ----------
+
+/** 逐商品设置阈值（全量覆盖目标值），返回实际变更数 */
+export function updateSafetyStock(items: {
+  goodsId: number
+  safetyStockLower?: number
+  safetyStockUpper?: number | null
+}[]) {
+  return http.put<number>('/inventory/safety-stock', { items })
+}
+
+/** 按分类（含子分类）批量设置默认阈值，返回实际变更数 */
+export function updateSafetyStockByCategory(data: {
+  categoryId: number
+  safetyStockLower?: number
+  safetyStockUpper?: number | null
+}) {
+  return http.put<number>('/inventory/safety-stock/by-category', data)
+}
+
+// ---------- 库存流水（FR-INV-03，只读 BR-INV-04） ----------
+
+export interface InventoryRecordVO {
+  id: number
+  goodsId: number
+  goodsCode: string
+  goodsName: string
+  unitName: string
+  recordType: string
+  changeQty: number
+  beforeQty: number
+  afterQty: number
+  unitCost: number
+  bizType: string | null
+  bizNo: string | null
+  operatorName: string
+  remark: string | null
+  operateTime: string
+}
+
+export function pageInventoryRecords(params: {
+  goodsName?: string
+  recordType?: string
+  bizNo?: string
+  operatorName?: string
+  beginDate?: string
+  endDate?: string
+  page: number
+  size: number
+}) {
+  return http.get<PageResult<InventoryRecordVO>>('/inventory/records', params)
+}
+
+// ---------- 库存预警（FR-INV-05） ----------
+
+export type AlertType = 'OUT' | 'WARNING' | 'OVERSTOCK'
+
+export interface AlertItemVO {
+  goodsId: number
+  goodsCode: string
+  barcode: string | null
+  name: string
+  categoryId: number
+  categoryName: string
+  unitName: string
+  spec: string | null
+  isWeighed: number
+  quantity: number
+  safetyStockLower: number
+  safetyStockUpper: number | null
+  alertType: AlertType
+  /** 缺口量：缺货/预警=下限-结存，积压=结存-上限 */
+  gapQty: number
+}
+
+/** 预警数量汇总（看板角标 / 页签数量） */
+export interface AlertSummaryVO {
+  outCount: number
+  warningCount: number
+  overstockCount: number
+}
+
+export interface AlertPageVO {
+  list: AlertItemVO[]
+  total: number
+  summary: AlertSummaryVO
+}
+
+/** 排序白名单：gap缺口量/quantity/goodsCode/name */
+export interface AlertQuery {
+  name?: string
+  goodsCode?: string
+  categoryId?: number
+  alertType?: string
+  page: number
+  size: number
+  sortBy?: string
+  sortDir?: string
+}
+
+export function pageAlerts(params: AlertQuery) {
+  return http.get<AlertPageVO>('/inventory/alerts', params)
+}
+
+/** 预警清单导出（FR-INV-05）：与列表同一筛选条件，返回 xlsx blob */
+export function exportAlerts(params: Omit<AlertQuery, 'page' | 'size'>) {
+  return http.download('/inventory/alerts/export', params)
+}
