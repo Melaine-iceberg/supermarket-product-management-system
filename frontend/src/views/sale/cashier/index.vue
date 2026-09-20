@@ -1,0 +1,1169 @@
+<script setup lang="ts">
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
+import { pageGoods, type GoodsListVO } from '@/api/goods'
+import {
+  checkout,
+  searchMembers,
+  PAY_TYPE_MAP,
+  type CheckoutVO,
+  type MemberSearchVO,
+  type PayType,
+} from '@/api/sale'
+
+const auth = useAuthStore()
+
+function money(v: number | null | undefined) {
+  return v == null ? '0.00' : Number(v).toFixed(2)
+}
+
+// ---------- 购物车明细（FR-SALE-01/03） ----------
+interface CartLine {
+  goodsId: number
+  name: string
+  spec: string | null
+  barcode: string | null
+  unitName: string
+  /** 零售价（展示参考；实际取价由后端按 BR-GOODS-04 解析） */
+  retailPrice: number
+  isWeighed: number
+  quantity: number
+  remark: string
+}
+
+const cart = ref<CartLine[]>([])
+
+const itemCount = computed(() =>
+  cart.value.reduce((s, l) => s + (l.isWeighed ? 1 : l.quantity), 0),
+)
+
+/** 预估商品总额（零售价口径；促销价/会员价以后端结算为准） */
+const estGoodsAmount = computed(() =>
+  cart.value.reduce((s, l) => s + l.retailPrice * l.quantity, 0),
+)
+
+/** 预估应收 = 零售总额 × 会员折扣率 × 整单折扣率（BR-MEM-04 口径的近似，实际以后端结算为准） */
+const estPayable = computed(() => {
+  const memberRate = member.value ? Number(member.value.discountRate) : 1
+  const orderRate = orderRateInput.value ?? 1
+  return Math.round(estGoodsAmount.value * memberRate * orderRate * 100) / 100
+})
+
+// ---------- 收银台号（BR-SALE-02 单号组成部分） ----------
+const COUNTER_KEY = 'smms_counter_no'
+const counterNo = ref<number>(Number(localStorage.getItem(COUNTER_KEY)) || 1)
+
+function saveCounter() {
+  if (counterNo.value >= 1 && counterNo.value <= 99) {
+    localStorage.setItem(COUNTER_KEY, String(counterNo.value))
+  }
+}
+
+// ---------- 商品录入（FR-SALE-02：条码精确 + 关键字候选） ----------
+const inputRef = ref()
+const input = ref('')
+const searching = ref(false)
+
+/** 录入框回车：先条码/编码精确匹配，唯一命中直接入单；否则弹候选列表（关键字模糊） */
+async function onInputEnter() {
+  const kw = input.value.trim()
+  if (!kw) return
+  searching.value = true
+  try {
+    // 条码按后端模糊查询，前端再筛精确相等；同时带名称关键字候选
+    const [byBarcode, byKeyword] = await Promise.all([
+      pageGoods({ barcode: kw, status: 1, page: 1, size: 10 }),
+      pageGoods({ name: kw, status: 1, page: 1, size: 10 }),
+    ])
+    const exact = byBarcode.list.filter((g) => g.barcode === kw)
+    const merged = [...exact, ...byKeyword.list.filter((g) => !exact.some((e) => e.id === g.id))]
+    if (exact.length === 1 && merged.length === 1) {
+      addToCart(exact[0])
+      input.value = ''
+      return
+    }
+    candidates.value = merged
+    candidateVisible.value = merged.length > 0
+    if (merged.length === 0) {
+      ElMessage.warning(`未找到匹配【${kw}】的商品`)
+    }
+  } finally {
+    searching.value = false
+  }
+}
+
+/** 候选列表选择入单 */
+const candidates = ref<GoodsListVO[]>([])
+const candidateVisible = ref(false)
+
+function pickCandidate(goods: GoodsListVO) {
+  candidateVisible.value = false
+  addToCart(goods)
+  input.value = ''
+}
+
+/** 入单：称重商品弹净重输入（FR-SALE-04）；同商品累加数量（BR-SALE-01） */
+const weightDialog = reactive({
+  visible: false,
+  saving: false,
+  goods: null as GoodsListVO | null,
+  netWeight: null as number | null,
+})
+
+function addToCart(goods: GoodsListVO) {
+  if (goods.isWeighed === 1) {
+    weightDialog.goods = goods
+    weightDialog.netWeight = null
+    weightDialog.visible = true
+    return
+  }
+  doAdd(goods, 1)
+}
+
+function confirmWeight() {
+  const w = weightDialog.netWeight
+  if (w == null || w <= 0) {
+    ElMessage.warning('净重必须大于 0（FR-SALE-04）')
+    return
+  }
+  weightDialog.visible = false
+  doAdd(weightDialog.goods!, Math.round(w * 1000) / 1000)
+}
+
+function doAdd(goods: GoodsListVO, quantity: number) {
+  const exist = cart.value.find((l) => l.goodsId === goods.id)
+  if (exist) {
+    // 同商品重复录入累加数量而非新增行（BR-SALE-01）
+    exist.quantity = Math.round((exist.quantity + quantity) * 1000) / 1000
+  } else {
+    cart.value.push({
+      goodsId: goods.id,
+      name: goods.name,
+      spec: goods.spec,
+      barcode: goods.barcode,
+      unitName: goods.unitName,
+      retailPrice: Number(goods.retailPrice),
+      isWeighed: goods.isWeighed,
+      quantity,
+      remark: '',
+    })
+  }
+}
+
+/** 数量修改（普通商品正整数、称重 3 位小数，FR-SALE-03） */
+function onQtyChange(line: CartLine) {
+  if (line.quantity <= 0) line.quantity = 1
+  if (line.isWeighed === 1) {
+    line.quantity = Math.round(line.quantity * 1000) / 1000
+    if (line.quantity <= 0) removeLine(line)
+  } else {
+    line.quantity = Math.floor(line.quantity) || 1
+  }
+}
+
+function removeLine(line: CartLine) {
+  cart.value = cart.value.filter((l) => l.goodsId !== line.goodsId)
+}
+
+async function clearCart() {
+  if (cart.value.length === 0) return
+  await ElMessageBox.confirm('确认清空当前全部明细？', '整单清空', { type: 'warning' })
+  resetOrder()
+}
+
+/** 重置单据（不含收银台号） */
+function resetOrder() {
+  cart.value = []
+  member.value = null
+  orderRateInput.value = null
+  orderRateDialog.authorizer = ''
+  remark.value = ''
+}
+
+const remark = ref('')
+
+// ---------- 会员识别（FR-SALE-05） ----------
+const member = ref<MemberSearchVO | null>(null)
+const memberDialog = reactive({ visible: false, keyword: '', loading: false })
+const memberCandidates = ref<MemberSearchVO[]>([])
+
+function openMemberDialog() {
+  memberDialog.keyword = ''
+  memberCandidates.value = []
+  memberDialog.visible = true
+}
+
+async function doSearchMembers() {
+  const kw = memberDialog.keyword.trim()
+  if (!kw) return
+  memberDialog.loading = true
+  try {
+    memberCandidates.value = await searchMembers(kw)
+    if (memberCandidates.value.length === 0) {
+      ElMessage.warning('未找到匹配会员')
+    }
+  } finally {
+    memberDialog.loading = false
+  }
+}
+
+function pickMember(m: MemberSearchVO) {
+  if (m.status !== 1) {
+    ElMessage.warning('该会员已停用，不享受会员价与折扣（BR-MEM-03）')
+  }
+  member.value = m
+  memberDialog.visible = false
+}
+
+function clearMember() {
+  member.value = null
+}
+
+// ---------- 整单折扣（FR-SALE-07，店长授权） ----------
+const orderRateInput = ref<number | null>(null)
+const orderRateDialog = reactive({
+  visible: false,
+  rate: null as number | null,
+  authorizer: '',
+  saving: false,
+})
+
+function openOrderRateDialog() {
+  orderRateDialog.rate = orderRateInput.value
+  orderRateDialog.authorizer = ''
+  orderRateDialog.visible = true
+}
+
+function confirmOrderRate() {
+  const rate = orderRateDialog.rate
+  if (rate == null || rate < 0.7 || rate > 1) {
+    ElMessage.warning('整单折扣率须在 0.7~1 之间（BR-SALE-10）')
+    return
+  }
+  if (rate < 1 && !orderRateDialog.authorizer.trim()) {
+    ElMessage.warning('整单折扣须店长授权，请填写授权人姓名（FR-SALE-07）')
+    return
+  }
+  orderRateInput.value = rate
+  orderRateDialog.visible = false
+}
+
+function clearOrderRate() {
+  orderRateInput.value = null
+}
+
+const orderAuthorizer = computed(() =>
+  orderRateInput.value != null && orderRateInput.value < 1 ? orderRateDialog.authorizer.trim() : undefined,
+)
+const orderRate = computed(() =>
+  orderRateInput.value != null && orderRateInput.value < 1 ? orderRateInput.value : undefined,
+)
+
+// ---------- 结算（FR-SALE-06，F2） ----------
+const payDialog = reactive({
+  visible: false,
+  submitting: false,
+  lines: [] as { payType: PayType; amount: number | null }[],
+})
+
+const paidTotal = computed(() =>
+  payDialog.lines.reduce((s, l) => s + (l.amount ?? 0), 0),
+)
+
+const estChange = computed(() =>
+  Math.round((paidTotal.value - estPayable.value) * 100) / 100,
+)
+
+function openPayDialog() {
+  if (cart.value.length === 0) {
+    ElMessage.warning('销售明细为空')
+    return
+  }
+  if (counterNo.value < 1 || counterNo.value > 99) {
+    ElMessage.warning('请先设置收银台号（1~99）')
+    return
+  }
+  payDialog.lines = [{ payType: 'CASH', amount: null }]
+  payDialog.visible = true
+}
+
+function addPayLine() {
+  payDialog.lines.push({ payType: 'MOBILE', amount: null })
+}
+
+function removePayLine(idx: number) {
+  if (payDialog.lines.length <= 1) return
+  payDialog.lines.splice(idx, 1)
+}
+
+/** 快捷填入：现金金额 = 应收 */
+function fillExact() {
+  payDialog.lines.forEach((l) => (l.amount = null))
+  payDialog.lines[0].amount = estPayable.value
+}
+
+/** 现金快捷：实收额（如 100/50 整钞），找零自动计算 */
+function fillCash(amount: number) {
+  const cashLine = payDialog.lines.find((l) => l.payType === 'CASH')
+  if (cashLine) cashLine.amount = amount
+}
+
+const CASH_QUICK = [10, 20, 50, 100]
+
+async function submitCheckout() {
+  const pays = payDialog.lines.filter((l) => l.amount != null && l.amount > 0)
+  if (pays.length === 0) {
+    ElMessage.warning('请录入收款金额')
+    return
+  }
+  const paid = pays.reduce((s, l) => s + (l.amount ?? 0), 0)
+  if (paid < estPayable.value - 0.005) {
+    ElMessage.warning(`实收 ${money(paid)} 元不足应收 ${money(estPayable.value)} 元`)
+    return
+  }
+  payDialog.submitting = true
+  try {
+    const result = await checkout({
+      counterNo: counterNo.value,
+      memberId: member.value?.id,
+      orderDiscountRate: orderRate.value,
+      authorizerName: orderAuthorizer.value,
+      remark: remark.value || undefined,
+      items: cart.value.map((l) => ({
+        goodsId: l.goodsId,
+        quantity: l.quantity,
+        netWeight: l.isWeighed === 1 ? l.quantity : undefined,
+        remark: l.remark || undefined,
+      })),
+      payments: pays.map((l) => ({ payType: l.payType, amount: l.amount! })),
+    })
+    payDialog.visible = false
+    doneDialog.result = result
+    doneDialog.visible = true
+  } catch {
+    // 拦截器已提示（如库存不足/金额不足以后端校验为准）
+  } finally {
+    payDialog.submitting = false
+  }
+}
+
+const doneDialog = reactive({ visible: false, result: null as CheckoutVO | null })
+
+function closeDone() {
+  doneDialog.visible = false
+  resetOrder()
+  focusInput()
+}
+
+// ---------- 挂单与取单（FR-SALE-08，会话级） ----------
+interface HoldOrder {
+  id: number
+  time: string
+  counterNo: number
+  memberId: number | null
+  memberName: string | null
+  items: CartLine[]
+  itemCount: number
+  amount: number
+  orderRate: number | null
+  authorizer: string
+  remark: string
+}
+
+function holdKey() {
+  return `smms_holds_${auth.user?.id ?? 0}`
+}
+
+function loadHolds(): HoldOrder[] {
+  try {
+    return JSON.parse(localStorage.getItem(holdKey()) || '[]')
+  } catch {
+    return []
+  }
+}
+
+function saveHolds(holds: HoldOrder[]) {
+  localStorage.setItem(holdKey(), JSON.stringify(holds))
+}
+
+const holdDialog = reactive({ visible: false, holds: [] as HoldOrder[] })
+
+/** 当前挂单数（角标展示），挂单/取单/删除时刷新 */
+const holdCount = ref(0)
+
+function refreshHoldCount() {
+  holdCount.value = loadHolds().length
+}
+
+function holdOrder() {
+  if (cart.value.length === 0) {
+    ElMessage.warning('销售明细为空，无需挂单')
+    return
+  }
+  const holds = loadHolds()
+  holds.unshift({
+    id: Date.now(),
+    time: new Date().toLocaleString('zh-CN', { hour12: false }),
+    counterNo: counterNo.value,
+    memberId: member.value?.id ?? null,
+    memberName: member.value?.name ?? null,
+    items: JSON.parse(JSON.stringify(cart.value)),
+    itemCount: itemCount.value,
+    amount: estGoodsAmount.value,
+    orderRate: orderRateInput.value,
+    authorizer: orderRateDialog.authorizer,
+    remark: remark.value,
+  })
+  saveHolds(holds)
+  resetOrder()
+  refreshHoldCount()
+  ElMessage.success('已挂单（挂单不扣库存，交班前请及时取单结算）')
+  focusInput()
+}
+
+function openHoldDialog() {
+  holdDialog.holds = loadHolds()
+  holdDialog.visible = true
+}
+
+function resumeHold(hold: HoldOrder) {
+  if (cart.value.length > 0) {
+    ElMessage.warning('当前已有明细，请先结算或清空再取单')
+    return
+  }
+  cart.value = hold.items
+  if (hold.memberId) {
+    member.value = {
+      id: hold.memberId,
+      memberNo: '',
+      name: hold.memberName ?? '',
+      phone: '',
+      levelName: '',
+      discountRate: 1,
+      points: 0,
+      status: 1,
+    }
+    // 折扣率重新检索一次，保证最新等级
+    searchMembers(hold.memberName ?? '').then((list) => {
+      const m = list.find((x) => x.id === hold.memberId)
+      if (m) member.value = m
+    })
+  }
+  orderRateInput.value = hold.orderRate
+  orderRateDialog.authorizer = hold.authorizer
+  remark.value = hold.remark
+  removeHold(hold)
+  holdDialog.visible = false
+  focusInput()
+}
+
+function removeHold(hold: HoldOrder) {
+  saveHolds(loadHolds().filter((h) => h.id !== hold.id))
+  holdDialog.holds = loadHolds()
+  refreshHoldCount()
+}
+
+// ---------- 键盘操作（NFR-USE-02：回车录入 / F2 结算 / F4 挂单） ----------
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'F2') {
+    e.preventDefault()
+    if (!payDialog.visible && !doneDialog.visible) openPayDialog()
+  } else if (e.key === 'F4') {
+    e.preventDefault()
+    holdOrder()
+  }
+}
+
+function focusInput() {
+  nextTick(() => inputRef.value?.focus())
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  refreshHoldCount()
+  focusInput()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
+</script>
+
+<template>
+  <div class="cashier-page">
+    <!-- 顶部：录入区（FR-SALE-01 自动聚焦） -->
+    <el-card class="input-card" shadow="never">
+      <div class="input-row">
+        <span class="counter-label">收银台</span>
+        <el-input-number
+          v-model="counterNo"
+          :min="1"
+          :max="99"
+          :controls="false"
+          size="large"
+          style="width: 72px"
+          @change="saveCounter"
+        />
+        <el-input
+          ref="inputRef"
+          v-model="input"
+          size="large"
+          class="scan-input"
+          placeholder="扫码 / 输入条码、商品编码或名称后回车录入"
+          clearable
+          :loading="searching"
+          @keyup.enter="onInputEnter"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <div class="hotkeys">回车 录入 ｜ F2 结算 ｜ F4 挂单</div>
+      </div>
+
+      <!-- 候选列表（FR-SALE-02 关键字检索） -->
+      <div v-if="candidateVisible" class="candidates">
+        <el-table :data="candidates" size="small" max-height="260" highlight-current-row @row-click="pickCandidate">
+          <el-table-column prop="goodsCode" label="编码" width="120" />
+          <el-table-column prop="name" label="名称" min-width="180">
+            <template #default="{ row }">
+              {{ row.name }}<span v-if="row.spec" class="spec">（{{ row.spec }}）</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="barcode" label="条码" width="140" />
+          <el-table-column prop="unitName" label="单位" width="60" align="center" />
+          <el-table-column label="零售价" width="90" align="right">
+            <template #default="{ row }">￥{{ money(row.retailPrice) }}</template>
+          </el-table-column>
+          <el-table-column label="称重" width="60" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.isWeighed === 1" size="small" type="warning">称重</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="candidates-tip">点击行选择商品（称重商品将要求输入净重）</div>
+      </div>
+    </el-card>
+
+    <div class="main-area">
+      <!-- 左侧：明细区（FR-SALE-01/03） -->
+      <el-card class="cart-card" shadow="never">
+        <template #header>
+          <div class="card-head">
+            <span>销售明细（{{ cart.length }} 行 / {{ itemCount }} 件）</span>
+            <el-button text type="danger" :disabled="cart.length === 0" @click="clearCart">
+              整单清空
+            </el-button>
+          </div>
+        </template>
+        <el-table :data="cart" height="100%" class="cart-table" empty-text="暂无商品，请扫码或搜索录入">
+          <el-table-column type="index" label="#" width="44" align="center" />
+          <el-table-column label="商品名称" min-width="200">
+            <template #default="{ row }">
+              <div class="goods-name">
+                {{ row.name }}
+                <el-tag v-if="row.isWeighed === 1" size="small" type="warning">称重</el-tag>
+              </div>
+              <div v-if="row.spec || row.barcode" class="goods-sub">
+                <span v-if="row.spec">{{ row.spec }}</span>
+                <span v-if="row.barcode">{{ row.barcode }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="单价" width="100" align="right">
+            <template #default="{ row }">￥{{ money(row.retailPrice) }}<span class="unit">/{{ row.unitName }}</span></template>
+          </el-table-column>
+          <el-table-column label="数量" width="170" align="center">
+            <template #default="{ row }">
+              <el-input-number
+                v-model="row.quantity"
+                :min="row.isWeighed === 1 ? 0.001 : 1"
+                :precision="row.isWeighed === 1 ? 3 : 0"
+                :step="row.isWeighed === 1 ? 0.1 : 1"
+                size="small"
+                @change="onQtyChange(row as CartLine)"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="行备注" width="130">
+            <template #default="{ row }">
+              <el-input v-model="row.remark" size="small" placeholder="选填" />
+            </template>
+          </el-table-column>
+          <el-table-column label="小计（预估）" width="120" align="right">
+            <template #default="{ row }">￥{{ money(row.retailPrice * row.quantity) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="70" align="center">
+            <template #default="{ row }">
+              <el-button link type="danger" @click="removeLine(row as CartLine)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <!-- 右侧：汇总与操作区（FR-SALE-01） -->
+      <div class="summary-col">
+        <!-- 会员卡（FR-SALE-05） -->
+        <el-card shadow="never" class="member-card">
+          <template #header>
+            <div class="card-head">
+              <span>会员</span>
+              <el-button v-if="member" link type="danger" @click="clearMember">移除</el-button>
+            </div>
+          </template>
+          <template v-if="member">
+            <div class="member-name">{{ member.name }}</div>
+            <div class="member-meta">
+              {{ member.levelName }} ｜ 积分 {{ member.points }}
+              <el-tag v-if="member.status !== 1" size="small" type="danger">已停用</el-tag>
+            </div>
+            <div class="member-rate">等级折扣率：{{ Number(member.discountRate).toFixed(2) }}</div>
+          </template>
+          <template v-else>
+            <el-button class="member-btn" size="large" plain @click="openMemberDialog">
+              <el-icon><User /></el-icon>识别会员
+            </el-button>
+          </template>
+        </el-card>
+
+        <!-- 金额汇总 -->
+        <el-card shadow="never" class="amount-card">
+          <div class="amount-row"><span>件数</span><b>{{ itemCount }}</b></div>
+          <div class="amount-row"><span>商品总额（预估）</span><b>￥{{ money(estGoodsAmount) }}</b></div>
+          <div class="amount-row">
+            <span>会员折扣</span>
+            <b>{{ member ? Number(member.discountRate).toFixed(2) + ' 折' : '—' }}</b>
+          </div>
+          <div class="amount-row">
+            <span>整单折扣</span>
+            <b>
+              {{ orderRateInput != null && orderRateInput < 1 ? orderRateInput.toFixed(2) + ' 折' : '—' }}
+              <el-button link type="primary" size="small" @click="openOrderRateDialog">设置</el-button>
+              <el-button v-if="orderRateInput != null && orderRateInput < 1" link size="small" @click="clearOrderRate">清除</el-button>
+            </b>
+          </div>
+          <div class="amount-row payable">
+            <span>应收（预估）</span>
+            <b>￥{{ money(estPayable) }}</b>
+          </div>
+          <div class="amount-note">促销价 / 会员价以后端结算取价为准（BR-GOODS-04）</div>
+          <el-input v-model="remark" placeholder="单据备注（选填）" size="small" class="order-remark" />
+        </el-card>
+
+        <!-- 操作按钮（FR-SALE-01：结算/挂单/清空/会员/退货） -->
+        <div class="action-col">
+          <el-button type="primary" size="large" class="settle-btn" @click="openPayDialog">
+            结算（F2）
+          </el-button>
+          <div class="action-row">
+            <el-button size="large" @click="holdOrder">挂单（F4）</el-button>
+            <el-button size="large" @click="openHoldDialog">
+              取单<el-badge v-if="holdCount > 0" :value="holdCount" class="hold-badge" />
+            </el-button>
+          </div>
+          <div class="action-row">
+            <el-button size="large" @click="clearCart">清空</el-button>
+            <el-button size="large" @click="$router.push('/sale/return')">退货</el-button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 称重商品净重录入（FR-SALE-04） -->
+    <el-dialog
+      v-model="weightDialog.visible"
+      :title="`净重录入：${weightDialog.goods?.name ?? ''}`"
+      width="380px"
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="90px" @submit.prevent>
+        <el-form-item :label="`净重(${weightDialog.goods?.unitName ?? 'kg'})`">
+          <el-input-number
+            v-model="weightDialog.netWeight"
+            :min="0.001"
+            :precision="3"
+            :controls="false"
+            autofocus
+            placeholder="支持 3 位小数"
+            style="width: 100%"
+            @keyup.enter="confirmWeight"
+          />
+        </el-form-item>
+        <el-form-item v-if="weightDialog.goods" label="单价">
+          ￥{{ money(weightDialog.goods.retailPrice) }} / {{ weightDialog.goods.unitName }}
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="weightDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="confirmWeight">加入明细</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 会员检索（FR-SALE-05） -->
+    <el-dialog v-model="memberDialog.visible" title="会员识别" width="560px" @open="focusInput">
+      <div class="member-search-row">
+        <el-input
+          v-model="memberDialog.keyword"
+          placeholder="手机号 / 会员编号 / 姓名"
+          clearable
+          @keyup.enter="doSearchMembers"
+        />
+        <el-button type="primary" :loading="memberDialog.loading" @click="doSearchMembers">查询</el-button>
+      </div>
+      <el-table
+        v-if="memberCandidates.length"
+        :data="memberCandidates"
+        size="small"
+        max-height="300"
+        highlight-current-row
+        @row-click="pickMember"
+      >
+        <el-table-column prop="memberNo" label="会员编号" width="120" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="phone" label="手机号" width="130" />
+        <el-table-column prop="levelName" label="等级" width="90" />
+        <el-table-column label="折扣率" width="80" align="center">
+          <template #default="{ row }">{{ Number(row.discountRate).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column prop="points" label="积分" width="70" align="right" />
+        <el-table-column label="状态" width="70" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+              {{ row.status === 1 ? '正常' : '停用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <!-- 整单折扣（FR-SALE-07 店长授权） -->
+    <el-dialog v-model="orderRateDialog.visible" title="整单折扣（店长授权）" width="400px" :close-on-click-modal="false">
+      <el-alert type="info" :closable="false" show-icon title="收银员不可改价；整单折扣须店长授权（FR-SALE-03/07）" class="dialog-alert" />
+      <el-form label-width="90px" @submit.prevent>
+        <el-form-item label="折扣率">
+          <el-input-number
+            v-model="orderRateDialog.rate"
+            :min="0.7"
+            :max="1"
+            :step="0.05"
+            :precision="2"
+            :controls="false"
+            style="width: 100%"
+          />
+          <div class="form-tip">范围 0.7~1（BR-SALE-10），1 为不打折</div>
+        </el-form-item>
+        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="授权人">
+          <el-input v-model="orderRateDialog.authorizer" placeholder="店长姓名（须 ≠ 当前收银员）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="orderRateDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="confirmOrderRate">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 收款结算（FR-SALE-06：一单多方式） -->
+    <el-dialog v-model="payDialog.visible" title="收款结算" width="520px" :close-on-click-modal="false">
+      <div class="pay-summary">
+        <div class="pay-row"><span>件数</span><b>{{ itemCount }}</b></div>
+        <div class="pay-row"><span>应收（预估）</span><b class="payable">￥{{ money(estPayable) }}</b></div>
+      </div>
+      <div v-for="(line, idx) in payDialog.lines" :key="idx" class="pay-line">
+        <el-select v-model="line.payType" style="width: 120px">
+          <el-option v-for="(label, type) in PAY_TYPE_MAP" :key="type" :label="label" :value="type" :disabled="type === 'BALANCE'" />
+        </el-select>
+        <el-input-number
+          v-model="line.amount"
+          :min="0.01"
+          :precision="2"
+          :controls="false"
+          placeholder="收款金额"
+          style="flex: 1"
+        />
+        <el-button
+          v-if="payDialog.lines.length > 1"
+          link
+          type="danger"
+          @click="removePayLine(idx)"
+        >删除</el-button>
+      </div>
+      <div class="pay-actions">
+        <el-button size="small" @click="addPayLine">+ 添加收款方式</el-button>
+        <el-button size="small" @click="fillExact">金额=应收</el-button>
+        <template v-if="payDialog.lines[0]?.payType === 'CASH'">
+          <el-button v-for="c in CASH_QUICK" :key="c" size="small" @click="fillCash(c)">￥{{ c }}</el-button>
+        </template>
+      </div>
+      <div class="pay-summary">
+        <div class="pay-row"><span>实收合计</span><b>￥{{ money(paidTotal) }}</b></div>
+        <div class="pay-row" :class="{ short: estChange < 0 }">
+          <span>{{ estChange >= 0 ? '找零（预估）' : '收款不足' }}</span>
+          <b>￥{{ money(Math.abs(estChange)) }}</b>
+        </div>
+      </div>
+      <div class="pay-note">实收不得低于应收；实际应收以后端结算取价为准，如有差异以结算结果为准</div>
+      <template #footer>
+        <el-button @click="payDialog.visible = false">取消（Esc）</el-button>
+        <el-button type="primary" :loading="payDialog.submitting" @click="submitCheckout">确认结算</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 结算成功（FR-SALE-06 小票回显） -->
+    <el-dialog v-model="doneDialog.visible" title="结算成功" width="420px" :close-on-click-modal="false">
+      <div v-if="doneDialog.result" class="done-body">
+        <div class="done-icon"><el-icon color="#67c23a" :size="42"><CircleCheckFilled /></el-icon></div>
+        <div class="done-order">{{ doneDialog.result.orderNo }}</div>
+        <div class="done-grid">
+          <span>件数</span><b>{{ doneDialog.result.itemCount }}</b>
+          <span>商品总额</span><b>￥{{ money(doneDialog.result.goodsAmount) }}</b>
+          <span>优惠合计</span><b>-￥{{ money(doneDialog.result.discountAmount) }}</b>
+          <span>应收</span><b>￥{{ money(doneDialog.result.payableAmount) }}</b>
+          <span>实收</span><b>￥{{ money(doneDialog.result.paidAmount) }}</b>
+          <span>找零</span><b class="change">￥{{ money(doneDialog.result.changeAmount) }}</b>
+        </div>
+        <div class="done-pays">
+          <span v-for="(p, i) in doneDialog.result.payments" :key="i" class="pay-tag">
+            {{ PAY_TYPE_MAP[p.payType] ?? p.payType }} ￥{{ money(p.amount) }}
+          </span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="closeDone">完成</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 挂单列表（FR-SALE-08） -->
+    <el-dialog v-model="holdDialog.visible" title="挂单列表" width="640px">
+      <el-table v-if="holdDialog.holds.length" :data="holdDialog.holds" size="small">
+        <el-table-column prop="time" label="挂单时间" width="160" />
+        <el-table-column prop="counterNo" label="台号" width="60" align="center" />
+        <el-table-column prop="memberName" label="会员" width="90">
+          <template #default="{ row }">{{ row.memberName ?? '散客' }}</template>
+        </el-table-column>
+        <el-table-column prop="itemCount" label="件数" width="70" align="right" />
+        <el-table-column label="金额" width="100" align="right">
+          <template #default="{ row }">￥{{ money(row.amount) }}</template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.remark || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="130" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="resumeHold(row as HoldOrder)">取单</el-button>
+            <el-button link type="danger" @click="removeHold(row as HoldOrder)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else description="暂无挂单" :image-size="60" />
+    </el-dialog>
+  </div>
+</template>
+
+<style scoped lang="scss">
+.cashier-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 10px;
+
+  .input-card {
+    :deep(.el-card__body) {
+      padding: 12px 16px;
+    }
+
+    .input-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .counter-label {
+        font-size: 13px;
+        color: #606266;
+      }
+
+      .scan-input {
+        flex: 1;
+
+        :deep(.el-input__wrapper) {
+          font-size: 15px;
+        }
+      }
+
+      .hotkeys {
+        font-size: 12px;
+        color: #909399;
+        white-space: nowrap;
+      }
+    }
+
+    .candidates {
+      margin-top: 10px;
+
+      .candidates-tip {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #909399;
+      }
+    }
+  }
+
+  .main-area {
+    flex: 1;
+    display: flex;
+    gap: 10px;
+    min-height: 0;
+
+    .cart-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+
+      :deep(.el-card__body) {
+        flex: 1;
+        min-height: 0;
+        padding: 0;
+      }
+
+      .cart-table {
+        height: 100%;
+      }
+
+      .goods-name {
+        font-weight: 500;
+      }
+
+      .goods-sub {
+        font-size: 12px;
+        color: #909399;
+
+        span + span::before {
+          content: ' · ';
+        }
+      }
+
+      .unit {
+        font-size: 12px;
+        color: #909399;
+      }
+    }
+
+    .summary-col {
+      width: 330px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      .card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .member-card {
+        .member-name {
+          font-size: 16px;
+          font-weight: 600;
+        }
+
+        .member-meta {
+          margin-top: 4px;
+          font-size: 13px;
+          color: #606266;
+        }
+
+        .member-rate {
+          margin-top: 4px;
+          font-size: 13px;
+          color: #409eff;
+        }
+
+        .member-btn {
+          width: 100%;
+        }
+      }
+
+      .amount-card {
+        :deep(.el-card__body) {
+          padding: 14px 16px;
+        }
+
+        .amount-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 5px 0;
+          font-size: 14px;
+          color: #606266;
+
+          b {
+            font-variant-numeric: tabular-nums;
+          }
+        }
+
+        .payable {
+          margin-top: 4px;
+          padding-top: 10px;
+          border-top: 1px dashed #dcdfe6;
+          font-size: 16px;
+
+          b {
+            color: #f56c6c;
+            font-size: 22px;
+          }
+        }
+
+        .amount-note {
+          margin-top: 6px;
+          font-size: 12px;
+          color: #c0c4cc;
+        }
+
+        .order-remark {
+          margin-top: 8px;
+        }
+      }
+
+      .action-col {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+
+        .settle-btn {
+          height: 58px;
+          font-size: 18px;
+        }
+
+        .action-row {
+          display: flex;
+          gap: 10px;
+
+          .el-button {
+            flex: 1;
+            margin-left: 0;
+          }
+        }
+
+        .hold-badge {
+          :deep(.el-badge__content) {
+            top: -14px;
+          }
+        }
+      }
+    }
+  }
+
+  .dialog-alert {
+    margin-bottom: 12px;
+  }
+
+  .form-tip {
+    font-size: 12px;
+    color: #909399;
+    line-height: 1.4;
+  }
+
+  .member-search-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .pay-summary {
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    background: #f5f7fa;
+    border-radius: 6px;
+
+    .pay-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 14px;
+      color: #606266;
+
+      .payable {
+        color: #f56c6c;
+        font-size: 18px;
+      }
+
+      &.short b {
+        color: #f56c6c;
+      }
+    }
+  }
+
+  .pay-line {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .pay-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .pay-note {
+    font-size: 12px;
+    color: #c0c4cc;
+  }
+
+  .done-body {
+    text-align: center;
+
+    .done-icon {
+      margin-bottom: 4px;
+    }
+
+    .done-order {
+      font-size: 17px;
+      font-weight: 600;
+      color: #303133;
+      margin-bottom: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .done-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 24px;
+      text-align: left;
+      font-size: 14px;
+      color: #606266;
+      padding: 10px 14px;
+      background: #f5f7fa;
+      border-radius: 6px;
+
+      b {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .change {
+        color: #e6a23c;
+      }
+    }
+
+    .done-pays {
+      margin-top: 10px;
+
+      .pay-tag {
+        display: inline-block;
+        margin: 0 4px;
+        padding: 2px 10px;
+        font-size: 13px;
+        background: #ecf5ff;
+        color: #409eff;
+        border-radius: 4px;
+      }
+    }
+  }
+
+  .spec {
+    color: #909399;
+  }
+}
+</style>

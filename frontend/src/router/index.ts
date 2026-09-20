@@ -128,6 +128,25 @@ const router = createRouter({
           component: () => import('@/views/inventory/check/index.vue'),
           meta: { perm: 'sys:check:list', title: '盘点管理' },
         },
+        // 销售管理（FR-SALE）
+        {
+          path: 'sale/cashier',
+          name: 'sale-cashier',
+          component: () => import('@/views/sale/cashier/index.vue'),
+          meta: { perm: 'sys:cashier:enter', title: '收银台' },
+        },
+        {
+          path: 'sale/order',
+          name: 'sale-order',
+          component: () => import('@/views/sale/order/index.vue'),
+          meta: { perm: 'sys:so:list', title: '销售单' },
+        },
+        {
+          path: 'sale/return',
+          name: 'sale-return',
+          component: () => import('@/views/sale/return/index.vue'),
+          meta: { perm: 'sys:ret:list', title: '退货管理' },
+        },
       ],
     },
     {
