@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.sale.mapper.ReturnOrderMapper">
+
+    <!-- 当日该收银台最大退货单号（BR-SALE-02，XT 前缀独立流水） -->
+    <select id="selectLastReturnNoForUpdate" resultType="java.lang.String">
+        SELECT order_no
+        FROM return_order
+        WHERE order_no LIKE CONCAT(#{prefix}, '%')
+        ORDER BY order_no DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <!-- 退货单分页（FR-SALE-10）：关联原销售单号与会员，退货时间倒序 -->
+    <select id="selectReturnPage" resultType="com.smms.sale.dto.ReturnOrderVO">
+        SELECT
+            rt.id             AS id,
+            rt.order_no       AS orderNo,
+            rt.sales_order_id AS salesOrderId,
+            so.order_no       AS salesOrderNo,
+            m.name            AS memberName,
+            m.phone           AS memberPhone,
+            rt.refund_amount  AS refundAmount,
+            rt.return_reason  AS returnReason,
+            rt.refund_type    AS refundType,
+            rt.cashier_name   AS cashierName,
+            rt.authorizer_name AS authorizerName,
+            rt.return_time    AS returnTime
+        FROM return_order rt
+        JOIN sales_order so ON so.id = rt.sales_order_id
+        LEFT JOIN member m ON m.id = rt.member_id
+        <where>
+            <if test="q.orderNo != null and q.orderNo != ''">
+                AND rt.order_no LIKE CONCAT('%', #{q.orderNo}, '%')
+            </if>
+            <if test="q.salesOrderNo != null and q.salesOrderNo != ''">
+                AND so.order_no LIKE CONCAT('%', #{q.salesOrderNo}, '%')
+            </if>
+            <if test="q.memberKeyword != null and q.memberKeyword != ''">
+                AND (m.name LIKE CONCAT('%', #{q.memberKeyword}, '%')
+                     OR m.phone LIKE CONCAT('%', #{q.memberKeyword}, '%')
+                     OR m.member_no LIKE CONCAT('%', #{q.memberKeyword}, '%'))
+            </if>
+            <if test="q.refundType != null and q.refundType != ''">
+                AND rt.refund_type = #{q.refundType}
+            </if>
+            <if test="q.returnReason != null and q.returnReason != ''">
+                AND rt.return_reason = #{q.returnReason}
+            </if>
+            <if test="q.operatorName != null and q.operatorName != ''">
+                AND rt.cashier_name = #{q.operatorName}
+            </if>
+            <if test="q.beginDate != null">
+                AND rt.return_time &gt;= #{q.beginDate}
+            </if>
+            <if test="q.endDate != null">
+                AND rt.return_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+            </if>
+        </where>
+        ORDER BY rt.return_time DESC, rt.id DESC
+    </select>
+</mapper>

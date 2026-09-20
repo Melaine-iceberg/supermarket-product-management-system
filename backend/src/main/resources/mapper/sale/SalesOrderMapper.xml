@@ -13,4 +13,74 @@
         LIMIT 1
         FOR UPDATE
     </select>
+
+    <!-- 销售单分页（FR-SALE-09）：单号/收银员/收银台/会员/收款方式/日期区间/
+         金额区间/退货状态/是否会员单组合筛选；累计退款额来自退货单汇总 -->
+    <select id="selectOrderPage" resultType="com.smms.sale.dto.SalesOrderVO">
+        SELECT
+            so.id            AS id,
+            so.order_no      AS orderNo,
+            so.counter_no    AS counterNo,
+            so.cashier_name  AS cashierName,
+            m.name           AS memberName,
+            m.phone          AS memberPhone,
+            so.sale_time     AS saleTime,
+            so.item_count    AS itemCount,
+            so.goods_amount  AS goodsAmount,
+            so.discount_amount AS discountAmount,
+            so.payable_amount AS payableAmount,
+            so.paid_amount   AS paidAmount,
+            so.change_amount AS changeAmount,
+            so.return_status AS returnStatus,
+            COALESCE(r.refund_amount, 0) AS refundAmount
+        FROM sales_order so
+        LEFT JOIN member m ON m.id = so.member_id
+        LEFT JOIN (SELECT sales_order_id, SUM(refund_amount) AS refund_amount
+                   FROM return_order GROUP BY sales_order_id) r ON r.sales_order_id = so.id
+        <where>
+            <if test="q.orderNo != null and q.orderNo != ''">
+                AND so.order_no LIKE CONCAT('%', #{q.orderNo}, '%')
+            </if>
+            <if test="q.cashierName != null and q.cashierName != ''">
+                AND so.cashier_name LIKE CONCAT('%', #{q.cashierName}, '%')
+            </if>
+            <if test="q.cashierId != null">
+                AND so.cashier_id = #{q.cashierId}
+            </if>
+            <if test="q.counterNo != null">
+                AND so.counter_no = #{q.counterNo}
+            </if>
+            <if test="q.memberKeyword != null and q.memberKeyword != ''">
+                AND (m.name LIKE CONCAT('%', #{q.memberKeyword}, '%')
+                     OR m.phone LIKE CONCAT('%', #{q.memberKeyword}, '%')
+                     OR m.member_no LIKE CONCAT('%', #{q.memberKeyword}, '%'))
+            </if>
+            <if test="q.payType != null and q.payType != ''">
+                AND EXISTS (SELECT 1 FROM payment_record pr
+                            WHERE pr.order_id = so.id AND pr.pay_type = #{q.payType})
+            </if>
+            <if test="beginTime != null">
+                AND so.sale_time &gt;= #{beginTime}
+            </if>
+            <if test="endTime != null">
+                AND so.sale_time &lt; #{endTime}
+            </if>
+            <if test="q.amountMin != null">
+                AND so.payable_amount &gt;= #{q.amountMin}
+            </if>
+            <if test="q.amountMax != null">
+                AND so.payable_amount &lt;= #{q.amountMax}
+            </if>
+            <if test="q.returnStatus != null and q.returnStatus != ''">
+                AND so.return_status = #{q.returnStatus}
+            </if>
+            <if test="q.memberOnly != null and q.memberOnly">
+                AND so.member_id IS NOT NULL
+            </if>
+            <if test="q.memberOnly != null and !q.memberOnly">
+                AND so.member_id IS NULL
+            </if>
+        </where>
+        ORDER BY so.sale_time DESC, so.id DESC
+    </select>
 </mapper>

@@ -83,7 +83,16 @@ public enum ErrorCode {
     SALE_MEMBER_NOT_FOUND(1511, "会员不存在"),
     SALE_BALANCE_UNAVAILABLE(1512, "储值支付暂未开放"),
     SALE_ORDER_NO_RETRY(1513, "单号生成冲突，请重试结算"),
-    SALE_DAILY_NO_EXCEED(1514, "该收银台当日流水号已用尽");
+    SALE_DAILY_NO_EXCEED(1514, "该收银台当日流水号已用尽"),
+    SALE_RETURN_ORDER_NOT_FOUND(1521, "原销售单不存在"),
+    SALE_RETURN_FULLY_RETURNED(1522, "该销售单已全部退货"),
+    SALE_RETURN_LINE_INVALID(1523, "退货明细不合法：超出可退数量或不属于原单"),
+    SALE_RETURN_NOT_ALLOWED(1524, "该商品不允许退货（BR-SALE-07）"),
+    SALE_RETURN_EXPIRED(1525, "已超过退货有效期，须店长特批（BR-SALE-05）"),
+    SALE_RETURN_AUTH_REQUIRED(1526, "退款超阈值或误操作退货须店长授权（FR-SALE-11）"),
+    SALE_RETURN_AUTH_SELF(1527, "授权人不得为退货发起人（FR-SALE-11）"),
+    SALE_REFUND_TYPE_INVALID(1528, "退款方式不合法"),
+    SALE_RETURN_REASON_INVALID(1529, "退货原因不合法");
 
     private final int code;
     private final String message;
