@@ -67,7 +67,23 @@ public enum ErrorCode {
     CHECK_OVERLAP(1412, "范围内已存在未审核盘点单，不可重复创建（BR-INV-09）"),
     CHECK_STATUS_INVALID(1413, "盘点单当前状态不允许该操作"),
     CHECK_AUDIT_SELF(1414, "审核人与盘点人必须为不同用户（BR-SYS-01）"),
-    CHECK_REASON_REQUIRED(1415, "差异原因或驳回意见不能为空");
+    CHECK_REASON_REQUIRED(1415, "差异原因或驳回意见不能为空"),
+
+    // ---------- SALE 销售模块（1500 ~ 1599，FR-SALE-01 ~ 13） ----------
+    SALE_GOODS_INVALID(1501, "商品不存在或已停用，不可销售"),
+    SALE_GOODS_DUPLICATED(1502, "同一商品在同一单内只能占一行（BR-SALE-01）"),
+    SALE_QTY_INVALID(1503, "普通商品数量必须为正整数"),
+    SALE_NET_WEIGHT_REQUIRED(1504, "称重商品必须录入净重（最多 3 位小数）"),
+    SALE_PAY_TYPE_INVALID(1505, "收款方式不合法"),
+    SALE_PAY_AMOUNT_INVALID(1506, "收款金额必须大于 0"),
+    SALE_PAID_NOT_ENOUGH(1507, "实收金额不足应收金额"),
+    SALE_DISCOUNT_BELOW_MIN(1508, "整单折扣率低于系统下限（BR-SALE-05）"),
+    SALE_DISCOUNT_AUTH_REQUIRED(1509, "整单折扣须店长授权（FR-SALE-07）"),
+    SALE_MEMBER_DISABLED(1510, "会员已停用，请按散客结算（BR-MEM-03）"),
+    SALE_MEMBER_NOT_FOUND(1511, "会员不存在"),
+    SALE_BALANCE_UNAVAILABLE(1512, "储值支付暂未开放"),
+    SALE_ORDER_NO_RETRY(1513, "单号生成冲突，请重试结算"),
+    SALE_DAILY_NO_EXCEED(1514, "该收银台当日流水号已用尽");
 
     private final int code;
     private final String message;
