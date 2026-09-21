@@ -160,6 +160,12 @@ const router = createRouter({
           component: () => import('@/views/member/list/index.vue'),
           meta: { perm: 'sys:mem:list', title: '会员档案' },
         },
+        {
+          path: 'member/level',
+          name: 'member-level',
+          component: () => import('@/views/member/level/index.vue'),
+          meta: { perm: 'sys:mem-level:list', title: '会员等级' },
+        },
       ],
     },
     {

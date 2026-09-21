@@ -377,8 +377,8 @@ function openImport() {
   importDialog.visible = true
 }
 
-async function onImportFileChange(file: File) {
-  importDialog.file = file
+async function onImportFileChange(file: { raw?: File }) {
+  importDialog.file = file.raw ?? null
 }
 
 async function doValidate() {
