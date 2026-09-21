@@ -253,7 +253,7 @@ async function submitReturn() {
   try {
     const result = await createReturn({
       salesOrderId: createDialog.order!.id,
-      refundType: createDialog.refundType as 'CASH' | 'BANK' | 'MOBILE',
+      refundType: createDialog.refundType as 'CASH' | 'BANK' | 'MOBILE' | 'BALANCE',
       returnReason: createDialog.returnReason as 'QUALITY' | 'WRONG_ITEM' | 'MISTAKE' | 'OTHER',
       reasonRemark: createDialog.reasonRemark.trim() || undefined,
       authorizerName: needAuth.value || expired.value ? createDialog.authorizer.trim() : undefined,
@@ -484,7 +484,15 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
                 <el-option label="现金" value="CASH" />
                 <el-option label="银行卡" value="BANK" />
                 <el-option label="移动支付" value="MOBILE" />
+                <el-option
+                  label="退回储值"
+                  value="BALANCE"
+                  :disabled="!createDialog.order?.memberId"
+                />
               </el-select>
+              <div v-if="createDialog.order?.memberId" class="form-tip">
+                会员单可选"退回储值"，退款直接回充会员余额（FR-MEM-08）
+              </div>
             </el-form-item>
             <el-form-item label="退货原因">
               <el-select v-model="createDialog.returnReason" placeholder="必选" style="width: 130px">
@@ -656,6 +664,12 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
     margin: 18px 0 8px;
     font-size: 14px;
     color: #303133;
+  }
+
+  .form-tip {
+    font-size: 12px;
+    color: #909399;
+    line-height: 1.4;
   }
 }
 </style>

@@ -27,7 +27,9 @@ import com.smms.sale.mapper.ReturnOrderItemMapper;
 import com.smms.sale.mapper.ReturnOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
+import com.smms.common.util.MaskUtils;
 import com.smms.security.LoginUser;
+import com.smms.security.SecurityUtils;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -215,6 +217,13 @@ public class SalesReturnService {
                         q.returnReason(), q.beginDate(), q.endDate(), operator.realName(), q.page(), q.size());
         IPage<ReturnOrderVO> result =
                 returnOrderMapper.selectReturnPage(new Page<>(pageNo, size), scoped);
+        // 会员手机号按角色脱敏（BR-MEM-08：完整手机号仅店长及以上可见）
+        if (!SecurityUtils.canViewMemberPhone()) {
+            List<ReturnOrderVO> masked = result.getRecords().stream()
+                    .map(r -> r.withMemberPhone(MaskUtils.maskPhone(r.memberPhone())))
+                    .toList();
+            result.setRecords(masked);
+        }
         return PageVO.of(result);
     }
 
@@ -239,7 +248,10 @@ public class SalesReturnService {
                 returnOrder.getId(), returnOrder.getOrderNo(),
                 returnOrder.getSalesOrderId(), order == null ? null : order.getOrderNo(),
                 order == null ? null : order.getSaleTime(),
-                member == null ? null : member.getName(), member == null ? null : member.getPhone(),
+                member == null ? null : member.getName(),
+                // 手机号按角色脱敏（BR-MEM-08）
+                member == null ? null
+                        : SecurityUtils.canViewMemberPhone() ? member.getPhone() : MaskUtils.maskPhone(member.getPhone()),
                 returnOrder.getReturnReason(), returnOrder.getReasonRemark(),
                 returnOrder.getRefundAmount(), returnOrder.getRefundType(),
                 returnOrder.getCashierName(), returnOrder.getAuthorizerName(),

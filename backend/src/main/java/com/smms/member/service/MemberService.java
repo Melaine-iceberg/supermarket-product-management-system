@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.MaskUtils;
 import com.smms.member.dto.MemberCreateRequest;
 import com.smms.member.dto.MemberListVO;
 import com.smms.member.dto.MemberQuery;
@@ -14,6 +15,7 @@ import com.smms.member.entity.Member;
 import com.smms.member.entity.MemberLevel;
 import com.smms.member.mapper.MemberLevelMapper;
 import com.smms.member.mapper.MemberMapper;
+import com.smms.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -221,7 +223,8 @@ public class MemberService {
         vo.setId(member.getId());
         vo.setMemberNo(member.getMemberNo());
         vo.setName(member.getName());
-        vo.setPhone(member.getPhone());
+        // 手机号按角色脱敏（BR-MEM-08：完整手机号仅店长及以上可见）
+        vo.setPhone(SecurityUtils.canViewMemberPhone() ? member.getPhone() : MaskUtils.maskPhone(member.getPhone()));
         vo.setGender(member.getGender());
         vo.setBirthday(member.getBirthday());
         vo.setAddress(member.getAddress());

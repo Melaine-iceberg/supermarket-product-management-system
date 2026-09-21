@@ -3,8 +3,8 @@ import type { PageResult } from './request'
 
 // ---------- 收银结算（FR-SALE-06） ----------
 
-/** 收款方式：CASH现金 / BANK银行卡 / MOBILE移动支付（BALANCE 储值待会员模块开放） */
-export type PayType = 'CASH' | 'BANK' | 'MOBILE'
+/** 收款方式：CASH现金 / BANK银行卡 / MOBILE移动支付 / BALANCE会员储值（仅会员单，FR-MEM-08） */
+export type PayType = 'CASH' | 'BANK' | 'MOBILE' | 'BALANCE'
 
 export const PAY_TYPE_MAP: Record<string, string> = {
   CASH: '现金',
@@ -71,6 +71,8 @@ export interface CheckoutVO {
   paidAmount: number
   changeAmount: number
   payments: { payType: PayType; amount: number }[]
+  /** 本次结算触发的升级等级名（未升级为 null，FR-MEM-06 收银台提示） */
+  memberLevelUpgraded: string | null
   saleTime: string
 }
 
@@ -85,11 +87,14 @@ export interface MemberSearchVO {
   id: number
   memberNo: string
   name: string
+  /** 手机号（脱敏 138****5678，BR-MEM-08 收银台场景） */
   phone: string
   levelName: string
   /** 等级折扣率（停用会员返回 1，不享受折扣，BR-MEM-03） */
   discountRate: number
   points: number
+  /** 储值余额（BALANCE 支付上限参考，BR-MEM-07） */
+  balance: number
   /** 状态：1正常 0停用 */
   status: number
 }

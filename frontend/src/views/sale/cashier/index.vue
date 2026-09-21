@@ -325,6 +325,12 @@ const estChange = computed(() =>
   Math.round((paidTotal.value - estPayable.value) * 100) / 100,
 )
 
+/** 储值可用上限 = min(应收, 会员余额)（BR-MEM-07：储值不参与找零、余额不可为负） */
+const balanceCap = computed(() => {
+  if (!member.value) return 0
+  return Math.round(Math.min(estPayable.value, Number(member.value.balance)) * 100) / 100
+})
+
 function openPayDialog() {
   if (cart.value.length === 0) {
     ElMessage.warning('销售明细为空')
@@ -353,6 +359,20 @@ function fillExact() {
   payDialog.lines[0].amount = estPayable.value
 }
 
+/** 储值快捷：BALANCE 行金额 = min(应收, 余额)；无 BALANCE 行则追加（FR-MEM-08） */
+function fillBalance() {
+  if (!member.value) {
+    ElMessage.warning('请先识别会员（储值支付仅限会员）')
+    return
+  }
+  let line = payDialog.lines.find((l) => l.payType === 'BALANCE')
+  if (!line) {
+    line = { payType: 'BALANCE', amount: null }
+    payDialog.lines.push(line)
+  }
+  line.amount = balanceCap.value
+}
+
 /** 现金快捷：实收额（如 100/50 整钞），找零自动计算 */
 function fillCash(amount: number) {
   const cashLine = payDialog.lines.find((l) => l.payType === 'CASH')
@@ -366,6 +386,20 @@ async function submitCheckout() {
   if (pays.length === 0) {
     ElMessage.warning('请录入收款金额')
     return
+  }
+  // 储值支付前端预检（后端兜底）：仅限会员、合计不超应收（不参与找零）与余额（BR-MEM-07）
+  const balancePaid = pays
+    .filter((l) => l.payType === 'BALANCE')
+    .reduce((s, l) => s + (l.amount ?? 0), 0)
+  if (balancePaid > 0) {
+    if (!member.value) {
+      ElMessage.warning('储值支付仅限会员使用（FR-MEM-08）')
+      return
+    }
+    if (balancePaid > balanceCap.value + 0.005) {
+      ElMessage.warning(`储值支付不得超过 ￥${money(balanceCap.value)}（应收/余额限制，BR-MEM-07）`)
+      return
+    }
   }
   const paid = pays.reduce((s, l) => s + (l.amount ?? 0), 0)
   if (paid < estPayable.value - 0.005) {
@@ -501,6 +535,7 @@ function resumeHold(hold: HoldOrder) {
       levelName: '',
       discountRate: 1,
       points: 0,
+      balance: 0,
       status: 1,
     }
     // 折扣率重新检索一次，保证最新等级
@@ -687,7 +722,7 @@ onUnmounted(() => {
           <template v-if="member">
             <div class="member-name">{{ member.name }}</div>
             <div class="member-meta">
-              {{ member.levelName }} ｜ 积分 {{ member.points }}
+              {{ member.levelName }} ｜ 积分 {{ member.points }} ｜ 储值 ￥{{ money(member.balance) }}
               <el-tag v-if="member.status !== 1" size="small" type="danger">已停用</el-tag>
             </div>
             <div class="member-rate">等级折扣率：{{ Number(member.discountRate).toFixed(2) }}</div>
@@ -841,6 +876,9 @@ onUnmounted(() => {
           <template #default="{ row }">{{ Number(row.discountRate).toFixed(2) }}</template>
         </el-table-column>
         <el-table-column prop="points" label="积分" width="70" align="right" />
+        <el-table-column label="储值余额" width="95" align="right">
+          <template #default="{ row }">￥{{ money(row.balance) }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
@@ -885,7 +923,13 @@ onUnmounted(() => {
       </div>
       <div v-for="(line, idx) in payDialog.lines" :key="idx" class="pay-line">
         <el-select v-model="line.payType" style="width: 120px">
-          <el-option v-for="(label, type) in PAY_TYPE_MAP" :key="type" :label="label" :value="type" :disabled="type === 'BALANCE'" />
+          <el-option
+            v-for="(label, type) in PAY_TYPE_MAP"
+            :key="type"
+            :label="label"
+            :value="type"
+            :disabled="type === 'BALANCE' && (!member || member.status !== 1)"
+          />
         </el-select>
         <el-input-number
           v-model="line.amount"
@@ -905,6 +949,12 @@ onUnmounted(() => {
       <div class="pay-actions">
         <el-button size="small" @click="addPayLine">+ 添加收款方式</el-button>
         <el-button size="small" @click="fillExact">金额=应收</el-button>
+        <el-button
+          v-if="member && member.status === 1"
+          size="small"
+          type="warning"
+          @click="fillBalance"
+        >储值￥{{ money(balanceCap) }}</el-button>
         <template v-if="payDialog.lines[0]?.payType === 'CASH'">
           <el-button v-for="c in CASH_QUICK" :key="c" size="small" @click="fillCash(c)">￥{{ c }}</el-button>
         </template>
@@ -928,6 +978,15 @@ onUnmounted(() => {
       <div v-if="doneDialog.result" class="done-body">
         <div class="done-icon"><el-icon color="#67c23a" :size="42"><CircleCheckFilled /></el-icon></div>
         <div class="done-order">{{ doneDialog.result.orderNo }}</div>
+        <el-alert
+          v-if="doneDialog.result.memberLevelUpgraded"
+          type="success"
+          :closable="false"
+          show-icon
+          class="upgrade-alert"
+          :title="`恭喜！会员已升级为【${doneDialog.result.memberLevelUpgraded}】（BR-MEM-06）`"
+          description="升级折扣率与新积分倍率自下一单生效"
+        />
         <div class="done-grid">
           <span>件数</span><b>{{ doneDialog.result.itemCount }}</b>
           <span>商品总额</span><b>￥{{ money(doneDialog.result.goodsAmount) }}</b>
@@ -1237,6 +1296,11 @@ onUnmounted(() => {
 
   .done-body {
     text-align: center;
+
+    .upgrade-alert {
+      margin-bottom: 10px;
+      text-align: left;
+    }
 
     .done-icon {
       margin-bottom: 4px;

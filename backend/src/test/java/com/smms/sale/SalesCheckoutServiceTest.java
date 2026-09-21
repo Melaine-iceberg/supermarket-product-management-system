@@ -681,6 +681,7 @@ class SalesCheckoutServiceTest {
     @DisplayName("会员检索：手机号/编号/姓名命中并带出等级折扣率，停用会员折扣率为 1（BR-MEM-03）")
     void searchMembers_mapsAndFiltersDisabled() {
         Member normal = member("0", 0, 1);
+        normal.setBalance(new BigDecimal("88.50"));
         Member disabled = member("500.00", 5, 0);
         disabled.setId(11L);
         when(memberMapper.selectList(any())).thenReturn(List.of(disabled, normal));
@@ -693,6 +694,9 @@ class SalesCheckoutServiceTest {
         assertThat(normalVO.memberNo()).isEqualTo("M00000001");
         assertThat(normalVO.levelName()).isEqualTo("银卡会员");
         assertThat(normalVO.discountRate()).isEqualByComparingTo("0.98");
+        // 手机号脱敏（BR-MEM-08：收银台仅显示后 4 位）与储值余额回显（BR-MEM-07）
+        assertThat(normalVO.phone()).isEqualTo("138****0001");
+        assertThat(normalVO.balance()).isEqualByComparingTo("88.50");
         MemberSearchVO disabledVO = result.get(0);
         assertThat(disabledVO.status()).isZero();
         assertThat(disabledVO.discountRate()).isEqualByComparingTo("1");

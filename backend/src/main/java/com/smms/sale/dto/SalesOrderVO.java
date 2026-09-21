@@ -25,4 +25,11 @@ public record SalesOrderVO(
         /** 累计退款金额 */
         BigDecimal refundAmount
 ) {
+
+    /** 返回手机号替换为指定值的新实例（BR-MEM-08 按角色脱敏） */
+    public SalesOrderVO withMemberPhone(String maskedPhone) {
+        return new SalesOrderVO(id, orderNo, counterNo, cashierName, memberName, maskedPhone,
+                saleTime, itemCount, goodsAmount, discountAmount, payableAmount, paidAmount,
+                changeAmount, returnStatus, refundAmount);
+    }
 }

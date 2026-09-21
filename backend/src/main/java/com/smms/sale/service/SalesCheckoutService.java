@@ -3,6 +3,7 @@ package com.smms.sale.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.MaskUtils;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Promotion;
 import com.smms.goods.mapper.GoodsMapper;
@@ -177,8 +178,9 @@ public class SalesCheckoutService {
             boolean enabled = m.getStatus() != null && m.getStatus() == 1;
             BigDecimal rate = enabled && level != null && level.getStatus() != null && level.getStatus() == 1
                     ? level.getDiscountRate() : BigDecimal.ONE;
-            return new MemberSearchVO(m.getId(), m.getMemberNo(), m.getName(), m.getPhone(),
-                    level == null ? "普通会员" : level.getName(), rate, m.getPoints(), m.getStatus());
+            // 手机号脱敏（BR-MEM-08：收银台仅显示姓名与手机号后 4 位）
+            return new MemberSearchVO(m.getId(), m.getMemberNo(), m.getName(), MaskUtils.maskPhone(m.getPhone()),
+                    level == null ? "普通会员" : level.getName(), rate, m.getPoints(), m.getBalance(), m.getStatus());
         }).toList();
     }
 
