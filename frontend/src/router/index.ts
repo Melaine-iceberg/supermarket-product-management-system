@@ -153,6 +153,13 @@ const router = createRouter({
           component: () => import('@/views/sale/shift/index.vue'),
           meta: { perm: 'sys:shift:list', title: '交班管理' },
         },
+        // 会员管理（FR-MEM）
+        {
+          path: 'member/list',
+          name: 'member-list',
+          component: () => import('@/views/member/list/index.vue'),
+          meta: { perm: 'sys:mem:list', title: '会员档案' },
+        },
       ],
     },
     {
