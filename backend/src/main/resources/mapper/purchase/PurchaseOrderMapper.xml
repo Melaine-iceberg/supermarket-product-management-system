@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.purchase.mapper.PurchaseOrderMapper">
+
+    <!-- 当日最大采购单号（BR-PUR-01）：按前缀行锁串行化取号，uk_po_no 兜底防重 -->
+    <select id="selectLastOrderNoForUpdate" resultType="java.lang.String">
+        SELECT order_no
+        FROM purchase_order
+        WHERE order_no LIKE CONCAT(#{prefix}, '%')
+        ORDER BY order_no DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <!-- 采购单分页（FR-PUR-03）：多维筛选；已入库数量/订购数量来自明细聚合，
+         入库进度 = 已入库/订购（0 保护）；命中 idx_po_status / idx_po_supplier / idx_po_create_time -->
+    <select id="selectOrderPage" resultType="com.smms.purchase.dto.PurchaseOrderVO">
+        SELECT po.id                AS id,
+               po.order_no          AS orderNo,
+               po.supplier_id       AS supplierId,
+               s.name               AS supplierName,
+               po.status            AS status,
+               po.create_by         AS createBy,
+               po.create_time       AS createTime,
+               po.submit_time       AS submitTime,
+               po.audit_by          AS auditBy,
+               po.audit_time        AS auditTime,
+               po.expect_date       AS expectDate,
+               po.total_amount      AS totalAmount,
+               po.received_amount   AS receivedAmount,
+               po.return_amount     AS returnAmount,
+               COALESCE(stat.ordered_qty, 0)  AS orderedQty,
+               COALESCE(stat.received_qty, 0) AS receivedQty,
+               CASE WHEN COALESCE(stat.ordered_qty, 0) = 0 THEN 0
+                    ELSE CAST(ROUND(COALESCE(stat.received_qty, 0) / stat.ordered_qty * 100) AS SIGNED)
+               END                   AS receiveProgress,
+               po.settle_status     AS settleStatus,
+               po.settle_amount     AS settleAmount,
+               po.terminate_reason  AS terminateReason,
+               po.remark            AS remark
+        FROM purchase_order po
+        JOIN supplier s ON s.id = po.supplier_id
+        LEFT JOIN (SELECT order_id,
+                          SUM(quantity)     AS ordered_qty,
+                          SUM(received_qty) AS received_qty
+                     FROM purchase_order_item
+                    GROUP BY order_id) stat ON stat.order_id = po.id
+        <where>
+            <if test="q.orderNo != null and q.orderNo != ''">
+                AND po.order_no LIKE CONCAT('%', #{q.orderNo}, '%')
+            </if>
+            <if test="q.supplierId != null">
+                AND po.supplier_id = #{q.supplierId}
+            </if>
+            <if test="q.status != null and q.status != ''">
+                AND po.status = #{q.status}
+            </if>
+            <if test="q.createBy != null and q.createBy != ''">
+                AND po.create_by LIKE CONCAT('%', #{q.createBy}, '%')
+            </if>
+            <if test="beginTime != null">
+                AND po.create_time &gt;= #{beginTime}
+            </if>
+            <if test="endTime != null">
+                AND po.create_time &lt; #{endTime}
+            </if>
+            <if test="q.expectDateBegin != null">
+                AND po.expect_date &gt;= #{q.expectDateBegin}
+            </if>
+            <if test="q.expectDateEnd != null">
+                AND po.expect_date &lt;= #{q.expectDateEnd}
+            </if>
+            <if test="q.goodsKeyword != null and q.goodsKeyword != ''">
+                AND EXISTS (SELECT 1
+                              FROM purchase_order_item poi
+                              JOIN goods g ON g.id = poi.goods_id
+                             WHERE poi.order_id = po.id
+                               AND (g.name LIKE CONCAT('%', #{q.goodsKeyword}, '%')
+                                    OR g.goods_code LIKE CONCAT('%', #{q.goodsKeyword}, '%')))
+            </if>
+        </where>
+        ORDER BY po.id DESC
+    </select>
+
+    <!-- 明细已入库数量原子累加（FR-PUR-06） -->
+    <update id="addReceivedQty">
+        UPDATE purchase_order_item
+        SET received_qty = received_qty + #{qty}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 明细已退货数量原子累加（FR-PUR-08） -->
+    <update id="addReturnedQty">
+        UPDATE purchase_order_item
+        SET returned_qty = returned_qty + #{qty}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 条件累加已退货（原子防超退，BR-INV-03 同款判定+动作同语句模式）：
+         可退 = 已入库 − 已退，不满足返回 0 → 回滚 -->
+    <update id="addReturnedQtyIfEnough">
+        UPDATE purchase_order_item
+        SET returned_qty = returned_qty + #{qty}
+        WHERE id = #{id}
+          AND received_qty - returned_qty &gt;= #{qty}
+    </update>
+
+    <!-- 入库后更新实收金额与状态（BR-PUR-06 乐观锁：version 不匹配返回 0 → 冲突回滚） -->
+    <update id="updateReceiptState">
+        UPDATE purchase_order
+        SET received_amount = received_amount + #{amount},
+            status          = #{status},
+            version         = version + 1,
+            update_by       = #{updateBy}
+        WHERE id = #{id}
+          AND version = #{version}
+    </update>
+
+    <!-- 采购退货后冲减实收金额并更新状态（BR-PUR-06 乐观锁） -->
+    <update id="updateReturnState">
+        UPDATE purchase_order
+        SET return_amount = return_amount + #{amount},
+            status        = #{status},
+            version       = version + 1,
+            update_by     = #{updateBy}
+        WHERE id = #{id}
+          AND version = #{version}
+    </update>
+</mapper>

@@ -40,4 +40,11 @@
             #{id}
         </foreach>
     </select>
+
+    <!-- 累计采购额原子增减（FR-PUR-06/FR-PUR-08）：入库验收 +、采购退货冲减 − -->
+    <update id="addTotalPurchaseAmount">
+        UPDATE supplier
+        SET total_purchase_amount = total_purchase_amount + #{delta}
+        WHERE id = #{id}
+    </update>
 </mapper>

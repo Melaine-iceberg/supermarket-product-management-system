@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.purchase.mapper.PurchaseReturnOrderMapper">
+
+    <!-- 当日最大退货单号（BR-PUR-01）：PT+yyyyMMdd+4位流水，行锁取号 -->
+    <select id="selectLastOrderNoForUpdate" resultType="java.lang.String">
+        SELECT order_no
+        FROM purchase_return_order
+        WHERE order_no LIKE CONCAT(#{prefix}, '%')
+        ORDER BY order_no DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <!-- 退货单分页（FR-PUR-08）：退货单号/采购单号/供应商/状态/日期区间 -->
+    <select id="selectReturnPage" resultType="com.smms.purchase.dto.PurchaseReturnVO">
+        SELECT pr.id                 AS id,
+               pr.order_no           AS orderNo,
+               pr.purchase_order_id  AS purchaseOrderId,
+               po.order_no           AS purchaseOrderNo,
+               pr.supplier_id        AS supplierId,
+               s.name                AS supplierName,
+               pr.status             AS status,
+               pr.return_reason      AS returnReason,
+               pr.total_amount       AS totalAmount,
+               pr.create_by          AS createBy,
+               pr.create_time        AS createTime,
+               pr.audit_by           AS auditBy,
+               pr.audit_time         AS auditTime,
+               pr.audit_remark       AS auditRemark,
+               pr.remark             AS remark
+        FROM purchase_return_order pr
+        JOIN purchase_order po ON po.id = pr.purchase_order_id
+        JOIN supplier s ON s.id = pr.supplier_id
+        <where>
+            <if test="q.orderNo != null and q.orderNo != ''">
+                AND pr.order_no LIKE CONCAT('%', #{q.orderNo}, '%')
+            </if>
+            <if test="q.purchaseOrderNo != null and q.purchaseOrderNo != ''">
+                AND po.order_no LIKE CONCAT('%', #{q.purchaseOrderNo}, '%')
+            </if>
+            <if test="q.supplierId != null">
+                AND pr.supplier_id = #{q.supplierId}
+            </if>
+            <if test="q.status != null and q.status != ''">
+                AND pr.status = #{q.status}
+            </if>
+            <if test="beginTime != null">
+                AND pr.create_time &gt;= #{beginTime}
+            </if>
+            <if test="endTime != null">
+                AND pr.create_time &lt; #{endTime}
+            </if>
+        </where>
+        ORDER BY pr.id DESC
+    </select>
+</mapper>

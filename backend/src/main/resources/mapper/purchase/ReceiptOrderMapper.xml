@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.purchase.mapper.ReceiptOrderMapper">
+
+    <!-- 当日最大入库单号（BR-PUR-01）：RK+yyyyMMdd+4位流水，行锁取号 -->
+    <select id="selectLastOrderNoForUpdate" resultType="java.lang.String">
+        SELECT order_no
+        FROM receipt_order
+        WHERE order_no LIKE CONCAT(#{prefix}, '%')
+        ORDER BY order_no DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+</mapper>

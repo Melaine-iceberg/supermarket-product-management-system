@@ -117,7 +117,25 @@ public enum ErrorCode {
     SUPPLIER_CODE_EXCEED(1704, "供应商编码流水已用尽，请联系管理员处理"),
     SUPPLIER_CREDIT_DAYS_REQUIRED(1705, "结算方式为账期时必须填写账期天数"),
     SUPPLIER_GOODS_INVALID(1711, "供货商品不存在或已删除"),
-    SUPPLIER_GOODS_DUPLICATED(1712, "同一商品在供货清单中只能出现一次");
+    SUPPLIER_GOODS_DUPLICATED(1712, "同一商品在供货清单中只能出现一次"),
+
+    // ---------- PUR 采购模块（1800 ~ 1899，FR-PUR-01 ~ 09） ----------
+    PUR_ORDER_NOT_FOUND(1801, "采购单不存在"),
+    PUR_STATUS_INVALID(1802, "采购单当前状态不允许该操作（BR-PUR-02 状态机约束）"),
+    PUR_LINE_INVALID(1803, "采购明细不合法：数量须大于 0、单价须大于等于 0（BR-PUR-03）"),
+    PUR_LINE_DUPLICATED(1804, "同一商品在同一采购单内只能占一行"),
+    PUR_WITHDRAW_NOT_OWNER(1805, "仅创建人可撤回已提交的采购单（FR-PUR-04）"),
+    PUR_REASON_REQUIRED(1806, "作废/终止/关闭原因不能为空（FR-PUR-05）"),
+    PUR_SETTLE_INVALID(1807, "结算登记不合法：单据状态或结算参数有误"),
+    PUR_NO_EXCEED(1808, "当日采购单流水号已用尽，请明日再试或联系管理员"),
+    PUR_RECEIPT_LINE_INVALID(1811, "入库明细不合法：实收数量须大于 0 或超出待入库范围"),
+    PUR_RECEIPT_TOLERANCE_EXCEED(1812, "实收数量超出超收容差，须店长授权（BR-PUR-04）"),
+    PUR_RECEIPT_PRICE_AUTH(1813, "实收单价与采购单价偏离超容差，须店长授权（BR-PUR-05）"),
+    PUR_RECEIPT_DUTY_SEPARATION(1814, "入库验收人与采购单创建人须为不同用户（BR-SYS-01）"),
+    PUR_RETURN_LINE_INVALID(1821, "退货明细不合法：超出可退数量或不属于原采购单（FR-PUR-08）"),
+    PUR_RETURN_REASON_REQUIRED(1822, "退货原因不能为空（FR-PUR-08）"),
+    PUR_RETURN_STATUS_INVALID(1823, "采购退货单当前状态不允许该操作"),
+    PUR_SUGGEST_NO_SUPPLIER(1831, "所选商品缺少默认供应商，无法生成采购单（FR-PUR-02）");
 
     private final int code;
     private final String message;

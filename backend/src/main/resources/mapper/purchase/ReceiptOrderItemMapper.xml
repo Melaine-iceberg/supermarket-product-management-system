@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.purchase.mapper.ReceiptOrderItemMapper">
+
+    <!-- 最近 3 次采购平均价（BR-PUR-05）：按入库时间倒序取近 3 条实收单价求均值 -->
+    <select id="selectRecentAvgPrice" resultType="java.math.BigDecimal">
+        SELECT AVG(t.received_price)
+        FROM (SELECT roi.received_price
+                FROM receipt_order_item roi
+                JOIN receipt_order ro ON ro.id = roi.receipt_id
+               WHERE roi.goods_id = #{goodsId}
+               ORDER BY ro.receipt_time DESC, roi.id DESC
+               LIMIT 3) t
+    </select>
+
+    <!-- 采购明细入库时成本单价（FR-PUR-08）：按实收数量加权平均 -->
+    <select id="selectAvgReceiptPrice" resultType="java.math.BigDecimal">
+        SELECT CASE WHEN SUM(roi.received_qty) = 0 THEN NULL
+                    ELSE ROUND(SUM(roi.received_price * roi.received_qty) / SUM(roi.received_qty), 2)
+               END
+        FROM receipt_order_item roi
+        WHERE roi.purchase_item_id = #{purchaseItemId}
+    </select>
+
+    <!-- 入库单分页（FR-PUR-07）：入库单号/采购单号/供应商/日期区间/操作人；
+         命中 uk_ro_no / idx_ro_po / idx_ro_supplier / idx_ro_time -->
+    <select id="selectReceiptPage" resultType="com.smms.purchase.dto.ReceiptOrderVO">
+        SELECT ro.id                 AS id,
+               ro.order_no           AS orderNo,
+               ro.purchase_order_id  AS purchaseOrderId,
+               po.order_no           AS purchaseOrderNo,
+               ro.supplier_id        AS supplierId,
+               s.name                AS supplierName,
+               ro.receipt_time       AS receiptTime,
+               ro.operator_name      AS operatorName,
+               ro.authorizer_name    AS authorizerName,
+               ro.delivery_order_no  AS deliveryOrderNo,
+               ro.total_amount       AS totalAmount,
+               ro.remark             AS remark
+        FROM receipt_order ro
+        JOIN purchase_order po ON po.id = ro.purchase_order_id
+        JOIN supplier s ON s.id = ro.supplier_id
+        <where>
+            <if test="q.orderNo != null and q.orderNo != ''">
+                AND ro.order_no LIKE CONCAT('%', #{q.orderNo}, '%')
+            </if>
+            <if test="q.purchaseOrderNo != null and q.purchaseOrderNo != ''">
+                AND po.order_no LIKE CONCAT('%', #{q.purchaseOrderNo}, '%')
+            </if>
+            <if test="q.supplierId != null">
+                AND ro.supplier_id = #{q.supplierId}
+            </if>
+            <if test="beginTime != null">
+                AND ro.receipt_time &gt;= #{beginTime}
+            </if>
+            <if test="endTime != null">
+                AND ro.receipt_time &lt; #{endTime}
+            </if>
+            <if test="q.operatorName != null and q.operatorName != ''">
+                AND ro.operator_name LIKE CONCAT('%', #{q.operatorName}, '%')
+            </if>
+        </where>
+        ORDER BY ro.id DESC
+    </select>
+</mapper>

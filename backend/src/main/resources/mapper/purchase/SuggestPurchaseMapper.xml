@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.purchase.mapper.SuggestPurchaseMapper">
+
+    <!-- 建议采购清单（FR-PUR-02，BR-INV-07）：
+         触发范围 = 缺货（结存<=0）或预警（0<结存<=下限），口径与库存预警一致（FR-INV-05）；
+         近 N 日销量取 SALE_OUT 流水合计（在途量与日均在服务端参与公式计算）；
+         默认供应商：优先 is_default=1，其次最早维护的供货关系；
+         最近采购价：最近一次入库实收单价 -->
+    <sql id="suggestSelect">
+        SELECT
+            g.id                  AS goodsId,
+            g.goods_code          AS goodsCode,
+            g.name                AS goodsName,
+            g.spec                AS spec,
+            g.category_id         AS categoryId,
+            c.name                AS categoryName,
+            u.name                AS unitName,
+            g.is_weighed          AS isWeighed,
+            CASE WHEN COALESCE(inv.quantity, 0) &lt;= 0 THEN 'OUT' ELSE 'WARNING' END AS suggestType,
+            COALESCE(inv.quantity, 0)    AS quantity,
+            g.safety_stock_lower  AS safetyStockLower,
+            COALESCE((SELECT SUM(ir.change_qty)
+                        FROM inventory_record ir
+                       WHERE ir.goods_id = g.id
+                         AND ir.record_type = 'SALE_OUT'
+                         AND ir.operate_time &gt;= DATE_SUB(NOW(), INTERVAL #{days} DAY)), 0) AS soldQty,
+            COALESCE((SELECT SUM(poi.quantity - poi.received_qty)
+                        FROM purchase_order_item poi
+                        JOIN purchase_order po ON po.id = poi.order_id
+                       WHERE poi.goods_id = g.id
+                         AND po.status IN ('APPROVED', 'PARTIAL')), 0) AS onWayQty,
+            (SELECT sg.supplier_id
+               FROM supplier_goods sg
+              WHERE sg.goods_id = g.id
+              ORDER BY sg.is_default DESC, sg.id ASC
+              LIMIT 1)           AS supplierId,
+            (SELECT sg.supply_price
+               FROM supplier_goods sg
+              WHERE sg.goods_id = g.id
+              ORDER BY sg.is_default DESC, sg.id ASC
+              LIMIT 1)           AS supplyPrice,
+            (SELECT roi.received_price
+               FROM receipt_order_item roi
+               JOIN receipt_order ro ON ro.id = roi.receipt_id
+              WHERE roi.goods_id = g.id
+              ORDER BY ro.receipt_time DESC, roi.id DESC
+              LIMIT 1)           AS lastPurchasePrice
+        FROM goods g
+        JOIN category c ON c.id = g.category_id
+        JOIN unit u ON u.id = g.unit_id
+        LEFT JOIN inventory inv ON inv.goods_id = g.id
+    </sql>
+
+    <select id="selectSuggestPage" resultType="com.smms.purchase.dto.SuggestItemVO">
+        <include refid="suggestSelect"/>
+        <where>
+            g.status = 1
+            <if test="name != null and name != ''">
+                AND g.name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="goodsCode != null and goodsCode != ''">
+                AND g.goods_code LIKE CONCAT('%', #{goodsCode}, '%')
+            </if>
+            <if test="categoryIds != null and categoryIds.size() > 0">
+                AND g.category_id IN
+                <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+            </if>
+            <choose>
+                <when test="alertType == 'OUT'">
+                    AND COALESCE(inv.quantity, 0) &lt;= 0
+                </when>
+                <when test="alertType == 'WARNING'">
+                    AND COALESCE(inv.quantity, 0) &gt; 0
+                    AND COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower
+                </when>
+                <otherwise>
+                    AND (COALESCE(inv.quantity, 0) &lt;= 0
+                         OR (COALESCE(inv.quantity, 0) &gt; 0
+                             AND COALESCE(inv.quantity, 0) &lt;= g.safety_stock_lower))
+                </otherwise>
+            </choose>
+        </where>
+        ORDER BY COALESCE(inv.quantity, 0) ASC, g.id DESC
+    </select>
+
+    <select id="selectSuggestByGoodsIds" resultType="com.smms.purchase.dto.SuggestItemVO">
+        <include refid="suggestSelect"/>
+        WHERE g.status = 1
+          AND g.id IN
+        <foreach collection="goodsIds" item="gid" open="(" separator="," close=")">#{gid}</foreach>
+    </select>
+</mapper>

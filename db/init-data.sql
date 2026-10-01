@@ -95,6 +95,8 @@ INSERT INTO sys_permission (id, parent_id, name, perm_type, perm_code, route_pat
 (405, 40, '采购审核',     'B', 'sys:pur:audit',        NULL, NULL, NULL, 5, 1, 'system'),
 (406, 40, '终止/作废',    'B', 'sys:pur:terminate',    NULL, NULL, NULL, 6, 1, 'system'),
 (407, 40, '结算登记',     'B', 'sys:pur:settle',       NULL, NULL, NULL, 7, 1, 'system'),
+(408, 40, '采购退货',     'B', 'sys:pur:return',       NULL, NULL, NULL, 8, 1, 'system'),
+(409, 40, '退货审核',     'B', 'sys:pur:return-audit', NULL, NULL, NULL, 9, 1, 'system'),
 (41, 4, '入库单',   'M', 'sys:rcv:list',    '/purchase/receipt',  'purchase/receipt/index',  'Download', 2, 1, 'system'),
 (411, 41, '入库验收',     'B', 'sys:rcv:create',       NULL, NULL, NULL, 1, 1, 'system'),
 (412, 41, '打印入库单',   'B', 'sys:rcv:print',        NULL, NULL, NULL, 2, 1, 'system'),
@@ -166,11 +168,11 @@ WHERE NOT (
     OR p.parent_id IN (SELECT id FROM (SELECT id FROM sys_permission WHERE parent_id = 1) t)
 );
 
--- 采购员：供应商维护、采购单编制提交、建议采购、入库跟踪；商品与库存仅查看
+-- 采购员：供应商维护、采购单编制提交、采购退货、建议采购、入库跟踪；商品与库存仅查看
 INSERT INTO sys_role_permission (role_id, perm_id) VALUES
 (3, 2), (3, 21),
 (3, 3), (3, 30), (3, 31), (3, 32),
-(3, 4), (3, 40), (3, 401), (3, 402), (3, 403), (3, 404),
+(3, 4), (3, 40), (3, 401), (3, 402), (3, 403), (3, 404), (3, 408),
 (3, 41), (3, 42), (3, 421), (3, 422), (3, 424), (3, 43);
 
 -- 库管员：入库验收、盘点执行、报损报溢登记；商品与库存查看

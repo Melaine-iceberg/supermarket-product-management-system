@@ -386,6 +386,7 @@ CREATE TABLE IF NOT EXISTS purchase_order (
     return_amount   DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '退货总额',
     settle_status   VARCHAR(10)  NOT NULL DEFAULT 'UNSETTLED' COMMENT '结算状态：UNSETTLED未结算/PARTIAL部分结算/SETTLED已结算',
     settle_amount   DECIMAL(12,2) DEFAULT NULL COMMENT '已结算金额',
+    settle_method   VARCHAR(20)  DEFAULT NULL COMMENT '结算方式（字典 settle_type）：CASH现结/MONTHLY月结/CREDIT账期（FR-PUR-09）',
     settle_date     DATE         DEFAULT NULL COMMENT '结算日期',
     settle_by       VARCHAR(30)  DEFAULT NULL COMMENT '结算经办人',
     terminate_reason VARCHAR(200) DEFAULT NULL COMMENT '终止/作废原因',
@@ -449,7 +450,46 @@ CREATE TABLE IF NOT EXISTS receipt_order_item (
     PRIMARY KEY (id),
     KEY idx_roi_receipt (receipt_id),
     KEY idx_roi_goods (goods_id)
-) ENGINE = InnoDB COMMENT = '入库单明细';
+) ENGINE = InnoDB COMMENT = '采购入库单明细';
+
+-- 采购退货单（FR-PUR-08）：PT+yyyyMMdd+4位流水（BR-PUR-01）；店长审核通过后事务内执行退货
+CREATE TABLE IF NOT EXISTS purchase_return_order (
+    id                BIGINT UNSIGNED AUTO_INCREMENT COMMENT '退货单ID',
+    order_no          VARCHAR(20)  NOT NULL COMMENT '退货单号：PT+yyyyMMdd+4位流水（BR-PUR-01）',
+    store_id          BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '门店ID（预留）',
+    purchase_order_id BIGINT UNSIGNED NOT NULL COMMENT '原采购单ID',
+    supplier_id       BIGINT UNSIGNED NOT NULL COMMENT '供应商ID',
+    status            VARCHAR(20)  NOT NULL DEFAULT 'SUBMITTED' COMMENT '状态：SUBMITTED待审核/APPROVED已退货/REJECTED已驳回',
+    return_reason     VARCHAR(200) NOT NULL COMMENT '退货原因（质量问题等）',
+    total_amount      DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '退货总额 = Σ(退货数量×入库时成本单价)',
+    create_by         VARCHAR(30)  NOT NULL COMMENT '创建人（采购员）',
+    create_time       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    audit_by          VARCHAR(30)  DEFAULT NULL COMMENT '审核人（店长）',
+    audit_time        DATETIME     DEFAULT NULL COMMENT '审核时间',
+    audit_remark      VARCHAR(200) DEFAULT NULL COMMENT '审核意见',
+    remark            VARCHAR(500) DEFAULT NULL COMMENT '备注',
+    update_time       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_pr_no (order_no),
+    KEY idx_pr_po (purchase_order_id),
+    KEY idx_pr_supplier (supplier_id),
+    KEY idx_pr_status (status)
+) ENGINE = InnoDB COMMENT = '采购退货单';
+
+-- 采购退货单明细（FR-PUR-08）：退货数量 ≤ 已入库数量 − 已退数量
+CREATE TABLE IF NOT EXISTS purchase_return_item (
+    id                BIGINT UNSIGNED AUTO_INCREMENT COMMENT '明细ID',
+    return_id         BIGINT UNSIGNED NOT NULL COMMENT '退货单ID',
+    purchase_item_id  BIGINT UNSIGNED NOT NULL COMMENT '采购单明细ID',
+    goods_id          BIGINT UNSIGNED NOT NULL COMMENT '商品ID',
+    return_qty        DECIMAL(10,3) NOT NULL COMMENT '退货数量',
+    return_price      DECIMAL(12,2) NOT NULL COMMENT '退货单价（入库时成本单价，按入库记录加权）',
+    amount            DECIMAL(12,2) NOT NULL COMMENT '行金额 = 退货数量×退货单价',
+    remark            VARCHAR(200) DEFAULT NULL COMMENT '行备注',
+    PRIMARY KEY (id),
+    KEY idx_pri_return (return_id),
+    KEY idx_pri_goods (goods_id)
+) ENGINE = InnoDB COMMENT = '采购退货单明细';
 
 -- =====================================================================
 -- 四、库存（DR-11 ~ DR-15、DR-38）
