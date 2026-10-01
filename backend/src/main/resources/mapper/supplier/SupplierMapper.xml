@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.supplier.mapper.SupplierMapper">
+
+    <!-- 当前最大供应商编码（BR-SUP-03：S+5位流水）：降序取第一条并加行锁，
+         串行化取号；uk_supplier_code 兜底防重 -->
+    <select id="selectLastSupplierCodeForUpdate" resultType="java.lang.String">
+        SELECT supplier_code
+        FROM supplier
+        ORDER BY supplier_code DESC
+        LIMIT 1
+        FOR UPDATE
+    </select>
+
+    <!-- 供应商业务统计（FR-SUP-02）：在途采购单数（已提交/已审核未完成）、
+         未结算金额（已审核后状态且未结清：Σ实收−Σ退货−已结算）、
+         最近合作时间（最近一次入库）、供货商品数；
+         各子查询均命中 idx_po_supplier / idx_ro_supplier / uk_supplier_goods -->
+    <select id="selectStatsBySupplierIds" resultType="com.smms.supplier.dto.SupplierStatVO">
+        SELECT s.id AS supplierId,
+               (SELECT COUNT(*)
+                  FROM purchase_order po
+                 WHERE po.supplier_id = s.id
+                   AND po.status IN ('SUBMITTED', 'APPROVED', 'PARTIAL')) AS inTransitCount,
+               (SELECT COALESCE(SUM(po.received_amount - po.return_amount - COALESCE(po.settle_amount, 0)), 0)
+                  FROM purchase_order po
+                 WHERE po.supplier_id = s.id
+                   AND po.status IN ('APPROVED', 'PARTIAL', 'COMPLETED', 'PARTIAL_RETURNED', 'ALL_RETURNED')
+                   AND po.settle_status != 'SETTLED') AS unsettledAmount,
+               (SELECT MAX(ro.receipt_time)
+                  FROM receipt_order ro
+                 WHERE ro.supplier_id = s.id) AS lastCoopTime,
+               (SELECT COUNT(*)
+                  FROM supplier_goods sg
+                 WHERE sg.supplier_id = s.id) AS goodsCount
+        FROM supplier s
+        WHERE s.id IN
+        <foreach collection="supplierIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+</mapper>

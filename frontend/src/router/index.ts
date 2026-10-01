@@ -166,6 +166,13 @@ const router = createRouter({
           component: () => import('@/views/member/level/index.vue'),
           meta: { perm: 'sys:mem-level:list', title: '会员等级' },
         },
+        // 采购管理（FR-SUP）
+        {
+          path: 'purchase/supplier',
+          name: 'purchase-supplier',
+          component: () => import('@/views/purchase/supplier/index.vue'),
+          meta: { perm: 'sys:sup:list', title: '供应商' },
+        },
       ],
     },
     {

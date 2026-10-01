@@ -108,7 +108,16 @@ public enum ErrorCode {
     MEMBER_RECHARGE_AUTH_SELF(1606, "储值充值的授权人不得为发起人本人（FR-MEM-08）"),
     MEMBER_LEVEL_NOT_FOUND(1611, "会员等级不存在"),
     MEMBER_LEVEL_NAME_EXISTS(1612, "等级名称已存在"),
-    MEMBER_LEVEL_NO_ENABLED(1613, "没有启用中的会员等级，无法注册会员");
+    MEMBER_LEVEL_NO_ENABLED(1613, "没有启用中的会员等级，无法注册会员"),
+
+    // ---------- SUP 供应商模块（1700 ~ 1799，FR-SUP-01 ~ 05） ----------
+    SUPPLIER_NOT_FOUND(1701, "供应商不存在"),
+    SUPPLIER_NAME_EXISTS(1702, "供应商名称已存在（BR-SUP-01）"),
+    SUPPLIER_PHONE_INVALID(1703, "联系电话须为大陆手机号或固话格式（BR-SUP-01）"),
+    SUPPLIER_CODE_EXCEED(1704, "供应商编码流水已用尽，请联系管理员处理"),
+    SUPPLIER_CREDIT_DAYS_REQUIRED(1705, "结算方式为账期时必须填写账期天数"),
+    SUPPLIER_GOODS_INVALID(1711, "供货商品不存在或已删除"),
+    SUPPLIER_GOODS_DUPLICATED(1712, "同一商品在供货清单中只能出现一次");
 
     private final int code;
     private final String message;

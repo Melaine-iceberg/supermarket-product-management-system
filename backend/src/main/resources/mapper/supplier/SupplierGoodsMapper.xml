@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.supplier.mapper.SupplierGoodsMapper">
+
+    <!-- 供应商供货商品清单（FR-SUP-04）：默认供应商优先，再按商品名称 -->
+    <select id="selectGoodsBySupplier" resultType="com.smms.supplier.dto.SupplierGoodsVO">
+        SELECT sg.id,
+               sg.goods_id         AS goodsId,
+               g.goods_code        AS goodsCode,
+               g.name              AS goodsName,
+               g.spec,
+               c.name              AS categoryName,
+               u.name              AS unitName,
+               sg.supply_price     AS supplyPrice,
+               sg.is_default       AS isDefault,
+               sg.last_supply_time AS lastSupplyTime
+        FROM supplier_goods sg
+        JOIN goods g ON g.id = sg.goods_id
+        LEFT JOIN category c ON c.id = g.category_id
+        LEFT JOIN unit u ON u.id = g.unit_id
+        WHERE sg.supplier_id = #{supplierId}
+        ORDER BY sg.is_default DESC, g.name
+    </select>
+</mapper>
