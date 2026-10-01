@@ -173,6 +173,25 @@ const router = createRouter({
           component: () => import('@/views/purchase/supplier/index.vue'),
           meta: { perm: 'sys:sup:list', title: '供应商' },
         },
+        // 采购管理（FR-PUR）
+        {
+          path: 'purchase/order',
+          name: 'purchase-order',
+          component: () => import('@/views/purchase/order/index.vue'),
+          meta: { perm: 'sys:pur:list', title: '采购单' },
+        },
+        {
+          path: 'purchase/receipt',
+          name: 'purchase-receipt',
+          component: () => import('@/views/purchase/receipt/index.vue'),
+          meta: { perm: 'sys:rcv:list', title: '入库单' },
+        },
+        {
+          path: 'purchase/suggest',
+          name: 'purchase-suggest',
+          component: () => import('@/views/purchase/suggest/index.vue'),
+          meta: { perm: 'sys:suggest:list', title: '建议采购' },
+        },
       ],
     },
     {
