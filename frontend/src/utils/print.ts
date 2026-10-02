@@ -166,7 +166,8 @@ export function pTable(
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
 }
 
-function tableHtml<T>(columns: PrintColumn<T>[], rows: T[]): string {  const head = columns.map((c) => `<th class="${c.align === 'right' ? 'r' : c.align === 'center' ? 'c' : 'l'}">${esc(c.label)}</th>`)
+function tableHtml<T>(columns: PrintColumn<T>[], rows: T[]): string {
+  const head = columns.map((c) => `<th class="${c.align === 'right' ? 'r' : c.align === 'center' ? 'c' : 'l'}">${esc(c.label)}</th>`)
   const body = rows
     .map((row, i) => {
       const cells = columns
@@ -182,12 +183,33 @@ function tableHtml<T>(columns: PrintColumn<T>[], rows: T[]): string {  const hea
 }
 
 /**
- * 打开打印窗口并触发浏览器打印。
- * 页眉取系统参数中的超市名称/地址/电话；页脚固定输出生成时间（FR-RPT-09）。
+ * 打开打印窗口。必须在用户点击的同步调用栈内调用：一旦中间 await 了接口，
+ * window.open 就脱离用户手势，会被浏览器当作弹窗拦截。
+ * 需要先拉数据再打印的单据，先调本函数拿到窗口句柄，再传给 printSheet。
  */
-export async function printSheet<T>(sheet: PrintSheet<T>): Promise<void> {
+export function openPrintWindow(paper: Paper = 'A4'): Window | null {
+  const win = window.open('', '_blank', paper === 'receipt' ? 'width=420,height=640' : 'width=960,height=720')
+  if (!win) {
+    ElMessage.warning('浏览器拦截了打印窗口，请允许弹出窗口后重试')
+    return null
+  }
+  win.document.write(
+    '<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"></head>' +
+      '<body style="font:14px sans-serif;padding:24px;color:#666">正在生成打印视图…</body></html>',
+  )
+  return win
+}
+
+/**
+ * 输出打印视图并触发浏览器打印。
+ * 页眉取系统参数中的超市名称/地址/电话；页脚固定输出生成时间（FR-RPT-09）。
+ * win 为空时当场开窗，仅适用于调用方无需 await 即可给出数据的场景。
+ */
+export async function printSheet<T>(sheet: PrintSheet<T>, win?: Window | null): Promise<void> {
   const paper = sheet.paper ?? 'A4'
   const orientation = sheet.orientation ?? 'portrait'
+  const target = win ?? openPrintWindow(paper)
+  if (!target) return
 
   // 页眉参数读取失败不阻断打印：单据主体比店名更重要
   const info = await loadPrintInfo().catch(() => null)
@@ -218,13 +240,9 @@ export async function printSheet<T>(sheet: PrintSheet<T>): Promise<void> {
   <div class="foot">${esc(storeName)} · 生成时间 ${generatedAt}</div>
 </body></html>`
 
-  const win = window.open('', '_blank', paper === 'receipt' ? 'width=420,height=640' : 'width=960,height=720')
-  if (!win) {
-    ElMessage.warning('浏览器拦截了打印窗口，请允许弹出窗口后重试')
-    return
-  }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  win.print()
+  target.document.open()
+  target.document.write(html)
+  target.document.close()
+  target.focus()
+  target.print()
 }

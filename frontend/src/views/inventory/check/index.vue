@@ -20,6 +20,7 @@ import {
   type CheckOrderVO,
   type CheckStatus,
 } from '@/api/inventory'
+import { openPrintWindow, pMoney, pQty, pTime, printSheet } from '@/utils/print'
 
 const auth = useAuthStore()
 
@@ -249,6 +250,75 @@ async function loadDetail() {
 function searchItems() {
   itemsQuery.page = 1
   loadDetail()
+}
+
+/** 差异表须整单打印：后端明细单页上限 100 行，按页取全差异行 */
+async function fetchAllDiff(id: number): Promise<CheckItemVO[]> {
+  const all: CheckItemVO[] = []
+  for (let page = 1; ; page++) {
+    const { items } = await getStockCheckDetail(id, { page, size: 100, onlyDiff: true })
+    all.push(...items.list)
+    if (!items.list.length || all.length >= items.total) return all
+  }
+}
+
+const printing = ref(false)
+
+/** 打印盘点差异表（FR-RPT-09、§2.1.4）：A4 横向，只出差异行，附签署栏 */
+function printDiff() {
+  const o = order.value
+  if (!o) return
+  const win = openPrintWindow('A4')
+  if (!win) return
+  printing.value = true
+  fetchAllDiff(o.id)
+    .then((rows) =>
+      printSheet<CheckItemVO>(
+        {
+          title: '盘点差异表',
+          orientation: 'landscape',
+          meta: [
+            `盘点单号：${o.orderNo}`,
+            `盘点范围：${scopeTypeMap[o.scopeType] ?? o.scopeType}｜${o.scopeDesc}`,
+            `状态：${statusMap[o.status]?.label ?? o.status}`,
+            `账面基准时间：${pTime(o.baseTime)}｜开始盘点：${pTime(o.startTime)}`,
+            `盘点人：${o.checkerName}｜审核人：${o.auditorName ?? '—'}｜审核时间：${pTime(o.auditTime)}`,
+            o.duringChangeCount > 0
+              ? `注意：盘点期间发生 ${o.duringChangeCount} 笔出入库，差异按账面基准时刻快照计算（BR-INV-10）`
+              : null,
+            o.auditRemark ? `审核意见：${o.auditRemark}` : null,
+          ],
+          columns: [
+            { label: '序号', value: (_r, i) => i + 1, align: 'center' },
+            { label: '商品编码', value: (r) => r.goodsCode },
+            { label: '商品名称', value: (r) => r.name },
+            { label: '分类', value: (r) => r.categoryName },
+            { label: '规格', value: (r) => r.spec },
+            { label: '单位', value: (r) => r.unitName, align: 'center' },
+            { label: '账面数量', value: (r) => pQty(r.bookQty), align: 'right' },
+            { label: '实盘数量', value: (r) => pQty(r.actualQty), align: 'right' },
+            { label: '差异数量', value: (r) => pQty(r.diffQty), align: 'right' },
+            { label: '成本单价', value: (r) => pMoney(r.costPrice), align: 'right' },
+            { label: '差异金额', value: (r) => pMoney(r.diffAmount), align: 'right' },
+            { label: '差异原因', value: (r) => r.diffReason },
+            { label: '备注', value: (r) => r.remark },
+          ],
+          rows,
+          totals: [
+            `差异行数：${rows.length}`,
+            `盘盈金额：￥${pMoney(o.surplusAmount)}`,
+            `盘亏金额：￥${pMoney(o.shortageAmount)}`,
+            `差异净额：￥${pMoney(Number(o.surplusAmount) - Number(o.shortageAmount))}`,
+          ],
+          signs: ['盘点人：____________', '审核人：____________', '店长：____________'],
+        },
+        win,
+      ),
+    )
+    .catch(() => win.close())
+    .finally(() => {
+      printing.value = false
+    })
 }
 
 /** 关闭前提醒未保存录入 */
@@ -888,6 +958,7 @@ async function onImportFile(e: Event) {
             <template v-if="hasEdits">有 {{ Object.keys(edits).length }} 行未保存的录入</template>
           </div>
           <div>
+            <el-button :loading="printing" @click="printDiff">打印差异表</el-button>
             <el-button v-if="editable" :loading="saving" type="primary" @click="saveEntry">
               保存录入
             </el-button>

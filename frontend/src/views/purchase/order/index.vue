@@ -30,6 +30,7 @@ import {
 } from '@/api/purchase'
 import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
 import { pageGoods, type GoodsListVO } from '@/api/goods'
+import { pMoney, pQty, printSheet } from '@/utils/print'
 
 const auth = useAuthStore()
 
@@ -126,6 +127,37 @@ async function openDetail(row: PurchaseOrderVO) {
   } finally {
     detailDrawer.loading = false
   }
+}
+
+/** 采购单 A4 打印（FR-RPT-09、X-09）：线下发送供应商，只出订购口径，不含入库/退货进度等内部信息 */
+function printOrder() {
+  const d = detailDrawer.data
+  if (!d) return
+  printSheet<PurchaseOrderItemVO>({
+    title: '采购单',
+    meta: [
+      `单号：${d.orderNo}`,
+      `供应商：${d.supplierName}`,
+      `状态：${statusTag(d.status).label}`,
+      `预计到货：${d.expectDate ?? '—'}`,
+      `制单人：${d.createBy}｜制单时间：${fmtTime(d.createTime)}`,
+      d.remark ? `备注：${d.remark}` : null,
+    ],
+    columns: [
+      { label: '序号', value: (_r, i) => i + 1, align: 'center' },
+      { label: '商品编码', value: (r) => r.goodsCode },
+      { label: '商品名称', value: (r) => r.goodsName },
+      { label: '规格', value: (r) => r.spec },
+      { label: '单位', value: (r) => r.unitName, align: 'center' },
+      { label: '订购数量', value: (r) => pQty(r.quantity), align: 'right' },
+      { label: '采购单价', value: (r) => pMoney(r.price), align: 'right' },
+      { label: '金额', value: (r) => pMoney(r.amount), align: 'right' },
+      { label: '备注', value: (r) => r.remark },
+    ],
+    rows: d.items,
+    totals: [`合计金额：￥${pMoney(d.totalAmount)}`],
+    signs: ['制单人：____________', '审核人：____________', '供应商签章：____________'],
+  })
 }
 
 // ==================== 新建 / 编辑（FR-PUR-01） ====================
@@ -807,6 +839,9 @@ onMounted(() => {
           </el-table>
         </template>
       </div>
+      <template #footer>
+        <el-button v-if="detailDrawer.data" @click="printOrder">打印（A4）</el-button>
+      </template>
     </el-drawer>
 
     <!-- ==================== 新建 / 编辑采购单（FR-PUR-01） ==================== -->

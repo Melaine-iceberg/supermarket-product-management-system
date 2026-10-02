@@ -11,11 +11,13 @@ import {
   type PurchaseOrderDetailVO,
   type PurchaseOrderItemVO,
   type ReceiptItemCheckVO,
+  type ReceiptOrderItemVO,
   type ReceiptOrderVO,
   type ReceiptPreCheckVO,
 } from '@/api/purchase'
 import { pagePurchaseOrders, type PurchaseOrderVO } from '@/api/purchase'
 import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
+import { pMoney, pQty, printSheet } from '@/utils/print'
 
 const auth = useAuthStore()
 
@@ -96,56 +98,31 @@ async function openDetail(row: ReceiptOrderVO) {
 function printReceipt() {
   const d = detailDrawer.data
   if (!d) return
-  const rows = d.items
-    .map(
-      (i, idx) => `<tr>
-        <td>${idx + 1}</td><td>${i.goodsCode}</td><td>${i.goodsName}</td><td>${i.spec ?? ''}</td>
-        <td>${i.unitName ?? ''}</td><td class="r">${i.receivedQty}</td>
-        <td class="r">${money(i.receivedPrice)}</td><td class="r">${money(i.amount)}</td><td>${i.remark ?? ''}</td>
-      </tr>`,
-    )
-    .join('')
-  const html = `<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>入库单 ${d.orderNo}</title>
-  <style>
-    body { font-family: "SimSun","Songti SC",serif; padding: 32px; color: #000; }
-    h2 { text-align: center; margin: 0 0 4px; letter-spacing: 8px; }
-    .no { text-align: center; color: #333; margin-bottom: 16px; }
-    .meta { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { border: 1px solid #000; padding: 5px 8px; }
-    .r { text-align: right; }
-    .sign { margin-top: 24px; display: flex; justify-content: space-between; font-size: 14px; }
-    .total { margin-top: 10px; text-align: right; font-size: 14px; }
-    @page { size: A4; margin: 14mm; }
-  </style></head><body>
-    <h2>入库验收单</h2>
-    <div class="no">单号：${d.orderNo}</div>
-    <div class="meta">
-      <span>原采购单：${d.purchaseOrderNo}</span>
-      <span>供应商：${d.supplierName}</span>
-      <span>验收时间：${fmtTime(d.receiptTime)}</span>
-    </div>
-    <table>
-      <thead><tr><th>序号</th><th>编码</th><th>商品名称</th><th>规格</th><th>单位</th><th>实收数量</th><th>实收单价</th><th>金额</th><th>备注</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div class="total">合计金额：￥${money(d.totalAmount)}</div>
-    <div class="sign">
-      <span>验收人：${d.operatorName}</span>
-      <span>授权人：${d.authorizerName ?? '—'}</span>
-      <span>送货单号：${d.deliveryOrderNo ?? '—'}</span>
-      <span>打印时间：${new Date().toLocaleString('zh-CN')}</span>
-    </div>
-  </body></html>`
-  const w = window.open('', '_blank', 'width=900,height=700')
-  if (!w) {
-    ElMessage.warning('浏览器拦截了打印窗口，请允许弹出窗口后重试')
-    return
-  }
-  w.document.write(html)
-  w.document.close()
-  w.focus()
-  w.print()
+  printSheet<ReceiptOrderItemVO>({
+    title: '入库验收单',
+    meta: [
+      `入库单号：${d.orderNo}`,
+      `原采购单：${d.purchaseOrderNo}`,
+      `供应商：${d.supplierName}`,
+      `验收时间：${fmtTime(d.receiptTime)}`,
+      `送货单号：${d.deliveryOrderNo ?? '—'}`,
+      d.remark ? `备注：${d.remark}` : null,
+    ],
+    columns: [
+      { label: '序号', value: (_r, i) => i + 1, align: 'center' },
+      { label: '编码', value: (r) => r.goodsCode },
+      { label: '商品名称', value: (r) => r.goodsName },
+      { label: '规格', value: (r) => r.spec },
+      { label: '单位', value: (r) => r.unitName, align: 'center' },
+      { label: '实收数量', value: (r) => pQty(r.receivedQty), align: 'right' },
+      { label: '实收单价', value: (r) => pMoney(r.receivedPrice), align: 'right' },
+      { label: '金额', value: (r) => pMoney(r.amount), align: 'right' },
+      { label: '备注', value: (r) => r.remark },
+    ],
+    rows: d.items,
+    totals: [`合计金额：￥${pMoney(d.totalAmount)}`],
+    signs: [`验收人：${d.operatorName}`, `授权人：${d.authorizerName ?? '—'}`],
+  })
 }
 
 // ==================== 入库验收（FR-PUR-06） ====================

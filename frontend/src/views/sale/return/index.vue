@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   createReturn,
@@ -15,6 +15,7 @@ import {
   type ReturnOrderVO,
   type SalesOrderDetailVO,
 } from '@/api/sale'
+import { printReturnVoucher } from '@/utils/receipt'
 
 const auth = useAuthStore()
 
@@ -266,11 +267,23 @@ async function submitReturn() {
     createDialog.visible = false
     ElMessage.success(`退货完成：${result.orderNo}，退款 ￥${money(result.refundAmount)}`)
     load()
+    offerPrintVoucher(result)
   } catch {
     // 拦截器已提示（后端校验有效期/授权/数据范围等）
   } finally {
     createDialog.submitting = false
   }
+}
+
+/** 退货办完询问是否出凭证（FR-RPT-09）：确认按钮本身是用户手势，弹窗才不会被拦截 */
+function offerPrintVoucher(d: ReturnOrderDetailVO) {
+  ElMessageBox.confirm('退货已办理，是否打印退货凭证？', '打印凭证', {
+    confirmButtonText: '打印',
+    cancelButtonText: '暂不',
+    type: 'info',
+  })
+    .then(() => printReturnVoucher(d))
+    .catch(() => undefined)
 }
 </script>
 
@@ -587,6 +600,9 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
           </el-table>
         </template>
       </div>
+      <template #footer>
+        <el-button v-if="drawer.detail" @click="printReturnVoucher(drawer.detail)">打印退货凭证</el-button>
+      </template>
     </el-drawer>
   </div>
 </template>

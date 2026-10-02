@@ -9,6 +9,7 @@ import {
   type SalesOrderDetailVO,
   type SalesOrderVO,
 } from '@/api/sale'
+import { printSalesReceipt } from '@/utils/receipt'
 
 function fmtTime(v: string | null | undefined) {
   return v ? v.replace('T', ' ').slice(0, 19) : '—'
@@ -361,6 +362,9 @@ async function openDetail(row: SalesOrderVO) {
           </template>
         </template>
       </div>
+      <template #footer>
+        <el-button v-if="drawer.detail" @click="printSalesReceipt(drawer.detail)">打印小票</el-button>
+      </template>
     </el-drawer>
   </div>
 </template>

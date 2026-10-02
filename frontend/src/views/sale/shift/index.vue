@@ -13,6 +13,7 @@ import {
   type ShiftDetailVO,
   type ShiftVO,
 } from '@/api/sale'
+import { pMoney, pTable, pTime, printSheet } from '@/utils/print'
 
 const auth = useAuthStore()
 
@@ -139,91 +140,50 @@ async function openDetail(row: ShiftVO) {
   }
 }
 
-/** 打印交班单（FR-RPT-09）：弹出打印视图 */
+/** 打印交班单（FR-RPT-09、FR-SALE-12）：A4 纵向，含班次汇总与本班次销售单清单 */
 function printShift(detail: ShiftDetailVO) {
   const s = detail.shift
-  const rows = detail.orders
-    .map(
-      (o) => `<tr>
-        <td>${o.orderNo}</td>
-        <td class="r">${o.itemCount}</td>
-        <td class="r">${money(o.payableAmount)}</td>
-        <td class="r">${money(o.paidAmount)}</td>
-        <td class="r">${money(o.changeAmount)}</td>
-        <td class="r">${Number(o.refundAmount) > 0 ? money(o.refundAmount) : '—'}</td>
-      </tr>`,
-    )
-    .join('')
-  const html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<title>交班单 ${s.id}</title>
-<style>
-  body { font-family: "Microsoft YaHei", sans-serif; padding: 24px; color: #303133; }
-  h2 { text-align: center; margin-bottom: 4px; }
-  .meta { text-align: center; color: #909399; font-size: 12px; margin-bottom: 16px; }
-  .info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 20px; font-size: 13px; margin-bottom: 14px; }
-  .stats { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-  .stats td { border: 1px solid #dcdfe6; padding: 6px 12px; font-size: 13px; }
-  .stats .num { text-align: right; font-variant-numeric: tabular-nums; }
-  table.list { width: 100%; border-collapse: collapse; }
-  table.list th, table.list td { border: 1px solid #dcdfe6; padding: 5px 10px; font-size: 12px; }
-  table.list th { background: #f5f7fa; }
-  .r { text-align: right; font-variant-numeric: tabular-nums; }
-  .footer { margin-top: 18px; display: flex; justify-content: space-between; font-size: 13px; }
-</style>
-</head>
-<body>
-  <h2>交班单</h2>
-  <div class="meta">单据编号：SHIFT-${String(s.id).padStart(6, '0')} ｜ 打印时间：${new Date().toLocaleString('zh-CN', { hour12: false })}</div>
-  <div class="info">
-    <span>收银员：${s.cashierName}</span>
-    <span>收银台：${String(s.counterNo).padStart(2, '0')} 号</span>
-    <span>状态：${s.status === 'CLOSED' ? '已交班' : '在班'}</span>
-    <span>开班时间：${fmtTime(s.startTime)}</span>
-    <span>交班时间：${fmtTime(s.endTime)}</span>
-    <span>销售单数：${s.orderCount}</span>
-  </div>
-  <table class="stats">
-    <tr>
-      <td>现金收款</td><td class="num">￥${money(s.cashAmount)}</td>
-      <td>银行卡收款</td><td class="num">￥${money(s.bankAmount)}</td>
-    </tr>
-    <tr>
-      <td>移动支付收款</td><td class="num">￥${money(s.mobileAmount)}</td>
-      <td>储值收款</td><td class="num">￥${money(s.balanceAmount)}</td>
-    </tr>
-    <tr>
-      <td>退货额</td><td class="num">￥${money(s.returnAmount)}</td>
-      <td>净销售额（Σ应收−退货）</td><td class="num">￥${money(s.salesAmount)}</td>
-    </tr>
-    <tr>
-      <td colspan="3"><b>应收现金（现金收款 − 现金退款）</b></td>
-      <td class="num"><b>￥${money(s.expectedCash)}</b></td>
-    </tr>
-  </table>
-  <table class="list">
-    <thead>
-      <tr><th>销售单号</th><th>件数</th><th>应收</th><th>实收</th><th>找零</th><th>退款</th></tr>
-    </thead>
-    <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#909399">本班次无销售单</td></tr>'}</tbody>
-  </table>
-  <div class="footer">
-    <span>收银员签字：________________</span>
-    <span>店长签字：________________</span>
-  </div>
-</body>
-</html>`
-  const win = window.open('', '_blank', 'width=820,height=700')
-  if (!win) {
-    ElMessage.warning('浏览器拦截了打印窗口，请允许弹出窗口')
-    return
-  }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  win.print()
+  const summary = pTable(
+    ['项目', '数值'],
+    [
+      ['销售单数', s.orderCount],
+      ['现金收款', `￥${pMoney(s.cashAmount)}`],
+      ['银行卡收款', `￥${pMoney(s.bankAmount)}`],
+      ['移动支付收款', `￥${pMoney(s.mobileAmount)}`],
+      ['储值收款', `￥${pMoney(s.balanceAmount)}`],
+      ['退货额', `￥${pMoney(s.returnAmount)}`],
+      ['净销售额（Σ应收 − 退货）', `￥${pMoney(s.salesAmount)}`],
+      ['应收现金（现金收款 − 现金退款）', `￥${pMoney(s.expectedCash)}`],
+    ],
+    ['left', 'right'],
+  )
+  const orders = detail.orders.length
+    ? pTable(
+        ['销售单号', '销售时间', '件数', '应收', '实收', '找零', '退款'],
+        detail.orders.map((o) => [
+          o.orderNo,
+          pTime(o.saleTime),
+          o.itemCount,
+          pMoney(o.payableAmount),
+          pMoney(o.paidAmount),
+          pMoney(o.changeAmount),
+          Number(o.refundAmount) > 0 ? pMoney(o.refundAmount) : '—',
+        ]),
+        ['left', 'left', 'right', 'right', 'right', 'right', 'right'],
+      )
+    : '<div class="c">本班次无销售单</div>'
+
+  printSheet({
+    title: '交班单',
+    meta: [
+      `单据编号：SHIFT-${String(s.id).padStart(6, '0')}`,
+      `收银员：${s.cashierName}｜收银台：${String(s.counterNo).padStart(2, '0')} 号`,
+      `状态：${SHIFT_STATUS_MAP[s.status]?.label ?? s.status}`,
+      `开班时间：${pTime(s.startTime)}｜交班时间：${pTime(s.endTime)}`,
+    ],
+    bodyHtml: `<div class="sec">一、班次汇总</div>${summary}<div class="sec">二、本班次销售单</div>${orders}`,
+    signs: ['收银员签字：____________', '店长签字：____________'],
+  })
 }
 </script>
 

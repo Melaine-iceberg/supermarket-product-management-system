@@ -5,12 +5,15 @@ import { useAuthStore } from '@/stores/auth'
 import { pageGoods, type GoodsListVO } from '@/api/goods'
 import {
   checkout,
+  getSalesOrderDetail,
   searchMembers,
   PAY_TYPE_MAP,
   type CheckoutVO,
   type MemberSearchVO,
   type PayType,
 } from '@/api/sale'
+import { printSalesReceipt } from '@/utils/receipt'
+import { openPrintWindow } from '@/utils/print'
 
 const auth = useAuthStore()
 
@@ -447,6 +450,15 @@ function closeDone() {
   doneDialog.visible = false
   resetOrder()
   focusInput()
+}
+
+/** 打印小票（FR-RPT-09）：明细取后端成交快照，不用购物车数据（BR-SALE-04） */
+function printDoneReceipt() {
+  const orderId = doneDialog.result?.orderId
+  if (!orderId) return
+  const win = openPrintWindow('receipt')
+  if (!win) return
+  getSalesOrderDetail(orderId).then((d) => printSalesReceipt(d, win))
 }
 
 // ---------- 挂单与取单（FR-SALE-08，会话级） ----------
@@ -1002,6 +1014,7 @@ onUnmounted(() => {
         </div>
       </div>
       <template #footer>
+        <el-button @click="printDoneReceipt">打印小票</el-button>
         <el-button type="primary" @click="closeDone">完成</el-button>
       </template>
     </el-dialog>
