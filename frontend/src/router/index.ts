@@ -192,6 +192,49 @@ const router = createRouter({
           component: () => import('@/views/purchase/suggest/index.vue'),
           meta: { perm: 'sys:suggest:list', title: '建议采购' },
         },
+        // 统计报表（FR-RPT）
+        {
+          path: 'report/dashboard',
+          name: 'report-dashboard',
+          component: () => import('@/views/report/dashboard/index.vue'),
+          meta: { perm: 'sys:rpt:dashboard', title: '经营看板' },
+        },
+        {
+          path: 'report/sales',
+          name: 'report-sales',
+          component: () => import('@/views/report/sales/index.vue'),
+          meta: { perm: 'sys:rpt:sales', title: '销售报表' },
+        },
+        {
+          path: 'report/goods',
+          name: 'report-goods',
+          component: () => import('@/views/report/goods/index.vue'),
+          meta: { perm: 'sys:rpt:goods', title: '商品分析' },
+        },
+        {
+          path: 'report/inventory',
+          name: 'report-inventory',
+          component: () => import('@/views/report/inventory/index.vue'),
+          meta: { perm: 'sys:rpt:inventory', title: '库存报表' },
+        },
+        {
+          path: 'report/profit',
+          name: 'report-profit',
+          component: () => import('@/views/report/profit/index.vue'),
+          meta: { perm: 'sys:rpt:profit', title: '毛利分析' },
+        },
+        {
+          path: 'report/purchase',
+          name: 'report-purchase',
+          component: () => import('@/views/report/purchase/index.vue'),
+          meta: { perm: 'sys:rpt:purchase', title: '采购报表' },
+        },
+        {
+          path: 'report/member',
+          name: 'report-member',
+          component: () => import('@/views/report/member/index.vue'),
+          meta: { perm: 'sys:rpt:member', title: '会员报表' },
+        },
       ],
     },
     {

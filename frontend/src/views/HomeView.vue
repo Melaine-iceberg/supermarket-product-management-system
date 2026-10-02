@@ -69,7 +69,7 @@ const quickLinks = computed(() => {
           <template #header>系统说明</template>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="系统名称">超市商品管理系统（SMMS）</el-descriptions-item>
-            <el-descriptions-item label="版本">v0.1.0 · 步骤2：系统管理模块</el-descriptions-item>
+            <el-descriptions-item label="版本">v0.1.0 · 全模块交付（系统 / 商品 / 库存 / 采购 / 销售 / 会员 / 报表）</el-descriptions-item>
             <el-descriptions-item label="技术栈">Vue 3 + Element Plus / Spring Boot 4 + MyBatis-Plus</el-descriptions-item>
             <el-descriptions-item label="接口规范">RESTful /api/v1 · JWT Bearer 认证</el-descriptions-item>
           </el-descriptions>
@@ -78,7 +78,7 @@ const quickLinks = computed(() => {
             type="info"
             :closable="false"
             show-icon
-            title="后续模块（商品 / 库存 / 采购 / 销售 / 会员 / 报表）将在后续步骤陆续交付"
+            title="单据打印（FR-RPT-09）与自定义报表（FR-RPT-10）尚未交付，其余需求已全部上线"
           />
         </el-card>
       </el-col>
