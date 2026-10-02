@@ -121,6 +121,19 @@ export function updateConfig(key: string, configValue: string, remark?: string) 
   return http.put<void>(`/configs/${key}`, { configValue, remark })
 }
 
+/** 打印页眉参数（IR-UI-08）：任意已登录用户可读，收银员无 sys:config:list 也能打印小票 */
+export interface PrintInfoVO {
+  storeName: string
+  storeAddress: string
+  storePhone: string
+  /** 小票纸宽，仅 58 / 80 */
+  receiptPaperWidth: 58 | 80
+}
+
+export function getPrintInfo() {
+  return http.get<PrintInfoVO>('/configs/print-info')
+}
+
 // ---------- 数据字典（FR-SYS-07） ----------
 export interface DictVO {
   id: number

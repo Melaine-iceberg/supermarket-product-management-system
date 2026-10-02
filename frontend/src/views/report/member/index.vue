@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
+import { useAuthStore } from '@/stores/auth'
+import { pMoney, pPercent, printSheet, pTime, type PrintColumn } from '@/utils/print'
 import {
   exportMemberReport,
   fetchBirthdayMembers,
@@ -29,6 +31,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
 
 const loading = ref(false)
 const exporting = ref(false)
+const auth = useAuthStore()
 const view = ref<ViewKey>('growth')
 const initRange = thisMonthRange()
 const range = reactive<ReportRange>({ ...initRange })
@@ -196,6 +199,103 @@ async function handleExport() {
   }
 }
 
+// ---------- 打印视图（FR-RPT-09）：列与后端 Excel 导出口径一致 ----------
+/** 手机号已由服务端按角色脱敏（BR-MEM-08），打印件同样只出脱敏值 */
+const CONSUME_COLUMNS: PrintColumn<MemberRptRow>[] = [
+  { label: '会员编号', value: (r) => r.memberNo },
+  { label: '姓名', value: (r) => r.name },
+  { label: '手机号', value: (r) => r.phone },
+  { label: '等级', value: (r) => r.levelName },
+  { label: '积分', value: (r) => r.points, align: 'right' },
+  { label: '累计消费', value: (r) => pMoney(r.totalConsume), align: 'right' },
+  { label: '消费次数', value: (r) => r.consumeTimes, align: 'right' },
+  { label: '最近消费时间', value: (r) => pTime(r.lastConsumeTime) },
+]
+
+async function handlePrint() {
+  syncRange()
+  const title = `会员报表 · ${VIEW_LABELS[view.value]}`
+  const ranged = view.value === 'growth' || view.value === 'contribution'
+  const meta = [
+    ranged ? `统计区间：${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}` : null,
+    `操作员：${auth.user?.realName ?? '—'}`,
+  ]
+  if (view.value === 'growth') {
+    await printSheet({
+      title,
+      meta,
+      columns: [
+        { label: '日期', value: (r) => r.bizDate },
+        { label: '当日新增', value: (r) => r.newCount, align: 'right' },
+        { label: '累计会员数', value: (r) => r.cumulativeCount, align: 'right' },
+      ],
+      rows: growthRows.value,
+    })
+  } else if (view.value === 'consumption-ranking') {
+    await printSheet({
+      title,
+      meta: [...meta, `TOP ${topN.value}`],
+      columns: CONSUME_COLUMNS,
+      rows: rankingRows.value,
+    })
+  } else if (view.value === 'level-distribution') {
+    await printSheet({
+      title,
+      meta,
+      columns: [
+        { label: '等级', value: (r) => r.levelName },
+        { label: '会员数', value: (r) => r.memberCount, align: 'right' },
+      ],
+      rows: levelRows.value,
+    })
+  } else if (view.value === 'contribution') {
+    const c = contribution.value
+    const kv = c
+      ? [
+          { label: '会员销售额（净）', value: `￥${pMoney(c.memberNetAmount)}` },
+          { label: '总销售额（净）', value: `￥${pMoney(c.totalNetAmount)}` },
+          { label: '会员单数', value: String(c.memberOrderCount) },
+          { label: '总单数', value: String(c.totalOrderCount) },
+          { label: '会员贡献占比', value: pPercent(c.shareRate) },
+        ]
+      : []
+    await printSheet({
+      title,
+      meta,
+      columns: [
+        { label: '指标', value: (r) => r.label },
+        { label: '数值', value: (r) => r.value, align: 'right' },
+      ],
+      rows: kv,
+    })
+  } else if (view.value === 'sleeping') {
+    await printSheet({
+      title,
+      meta: [...meta, `沉睡判定：${sleepingDays.value} 天未消费`, `第 ${page.value} 页 / 共 ${sleepingTotal.value} 条`],
+      columns: [
+        ...CONSUME_COLUMNS.filter((c) => c.label !== '积分'),
+        { label: '注册时间', value: (r) => pTime(r.registerTime) },
+        { label: '沉睡天数', value: (r) => r.sleepingDays, align: 'right' },
+      ],
+      rows: sleepingRows.value,
+      orientation: 'landscape',
+    })
+  } else {
+    await printSheet({
+      title,
+      meta: [...meta, birthdayScope.value === 'week' ? '范围：未来 7 天' : '范围：当月'],
+      columns: [
+        { label: '会员编号', value: (r) => r.memberNo },
+        { label: '姓名', value: (r) => r.name },
+        { label: '手机号', value: (r) => r.phone },
+        { label: '等级', value: (r) => r.levelName },
+        { label: '生日', value: (r) => (r.birthday ? r.birthday.slice(0, 10) : '—') },
+      ],
+      rows: birthdayRows.value,
+    })
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -236,6 +336,7 @@ onMounted(load)
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
           <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button @click="handlePrint">打印</el-button>
         </el-form-item>
       </el-form>
       <div v-if="view === 'growth' || view === 'contribution'" class="presets">

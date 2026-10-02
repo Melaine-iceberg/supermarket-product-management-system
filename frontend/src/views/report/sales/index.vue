@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { dropEmptyColumns, pMoney, pPercent, printSheet, type PrintColumn } from '@/utils/print'
 import {
   exportSalesReport,
   fetchSalesByCashier,
@@ -32,6 +34,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
 
 const loading = ref(false)
 const exporting = ref(false)
+const auth = useAuthStore()
 const view = ref<ViewKey>('daily')
 const monthly = ref(false)
 const initRange = todayRange()
@@ -115,6 +118,61 @@ async function handleExport() {
   }
 }
 
+// ---------- 打印视图（FR-RPT-09，A4 横向：14 列指标过宽） ----------
+const PRINT_FIRST_LABEL: Record<ViewKey, string> = {
+  daily: '日期',
+  'pay-method': '收款方式',
+  hour: '时段',
+  cashier: '收银员',
+  counter: '收银台',
+  'member-ratio': '单据类型',
+}
+
+const PRINT_COLUMNS: PrintColumn<SalesReportRow>[] = [
+  { label: '单数', value: (r) => r.orderCount, align: 'right' },
+  { label: '件数', value: (r) => r.itemCount, align: 'right' },
+  { label: '销售额', value: (r) => pMoney(r.salesAmount), align: 'right' },
+  { label: '优惠额', value: (r) => pMoney(r.discountAmount), align: 'right' },
+  { label: '净销售额', value: (r) => pMoney(r.netSalesAmount), align: 'right' },
+  { label: '退货额', value: (r) => pMoney(r.refundAmount), align: 'right' },
+  { label: '退货单数', value: (r) => r.returnCount, align: 'right' },
+  { label: '净销售', value: (r) => pMoney(r.netAmount), align: 'right' },
+  { label: '销售成本', value: (r) => pMoney(r.costAmount), align: 'right' },
+  { label: '毛利额', value: (r) => pMoney(r.profitAmount), align: 'right' },
+  { label: '毛利率', value: (r) => pPercent(r.profitRate), align: 'right' },
+  { label: '客单价', value: (r) => pMoney(r.avgOrderAmount), align: 'right' },
+  { label: '占比', value: (r) => pPercent(r.shareRate), align: 'right' },
+]
+
+async function handlePrint() {
+  syncRange()
+  const monthlyLabel = monthly.value && view.value === 'daily' ? '（月报）' : ''
+  const first: PrintColumn<SalesReportRow> = {
+    label: view.value === 'daily' && monthly.value ? '月份' : PRINT_FIRST_LABEL[view.value],
+    value: (r) => r.groupKey,
+  }
+  const t = total.value
+  await printSheet({
+    title: `销售报表 · ${VIEW_LABELS[view.value]}${monthlyLabel}`,
+    meta: [
+      `统计区间：${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}`,
+      `操作员：${auth.user?.realName ?? '—'}`,
+    ],
+    columns: dropEmptyColumns([first, ...PRINT_COLUMNS], rows.value),
+    rows: rows.value,
+    totals: t
+      ? [
+          `合计单数：${t.orderCount}`,
+          `销售额：￥${pMoney(t.salesAmount)}`,
+          `净销售：￥${pMoney(t.netAmount)}`,
+          `毛利额：￥${pMoney(t.profitAmount)}`,
+          `毛利率：${pPercent(t.profitRate)}`,
+        ]
+      : [],
+    orientation: 'landscape',
+  })
+}
+
 onMounted(load)
 </script>
 
@@ -146,6 +204,7 @@ onMounted(load)
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
           <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button @click="handlePrint">打印</el-button>
         </el-form-item>
       </el-form>
       <div class="presets">

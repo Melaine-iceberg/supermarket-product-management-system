@@ -2,6 +2,8 @@
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
+import { useAuthStore } from '@/stores/auth'
+import { dropEmptyColumns, pMoney, pPercent, pQty, printSheet, type PrintColumn } from '@/utils/print'
 import {
   exportGoodsReport,
   fetchBrandSales,
@@ -28,6 +30,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
 
 const loading = ref(false)
 const exporting = ref(false)
+const auth = useAuthStore()
 const view = ref<ViewKey>('ranking')
 const initRange = thisMonthRange()
 const range = reactive<ReportRange>({ ...initRange })
@@ -150,6 +153,54 @@ async function handleExport() {
   }
 }
 
+// ---------- 打印视图（FR-RPT-09，A4 横向） ----------
+async function handlePrint() {
+  syncRange()
+  const columns: PrintColumn<GoodsRankRow>[] = []
+  if (view.value === 'category-structure') {
+    columns.push({ label: '分类', value: (r) => r.categoryName })
+  } else if (view.value === 'brand-sales') {
+    columns.push({ label: '品牌', value: (r) => r.brandName })
+  } else {
+    columns.push(
+      { label: '商品编码', value: (r) => r.goodsCode },
+      { label: '商品名称', value: (r) => r.goodsName },
+      { label: '分类', value: (r) => r.categoryName },
+    )
+    if (view.value === 'ranking') {
+      columns.push({ label: '品牌', value: (r) => r.brandName })
+    }
+  }
+  columns.push(
+    { label: '单数', value: (r) => r.orderCount, align: 'right' },
+    { label: '销量', value: (r) => pQty(r.qty), align: 'right' },
+    { label: '销售额', value: (r) => pMoney(r.salesAmount), align: 'right' },
+    { label: '净销售额', value: (r) => pMoney(r.netSalesAmount), align: 'right' },
+    { label: '毛利额', value: (r) => pMoney(r.profitAmount), align: 'right' },
+    { label: '毛利率', value: (r) => pPercent(r.profitRate), align: 'right' },
+    { label: '占比', value: (r) => pPercent(r.shareRate), align: 'right' },
+  )
+  if (view.value === 'slow-moving') {
+    columns.push(
+      { label: '当前库存', value: (r) => pQty(r.stockQty), align: 'right' },
+      { label: '占用资金', value: (r) => pMoney(r.occupiedAmount), align: 'right' },
+    )
+  }
+  const paged = view.value === 'ranking' || view.value === 'slow-moving'
+  await printSheet({
+    title: `商品销售分析 · ${VIEW_LABELS[view.value]}`,
+    meta: [
+      `统计区间：${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}`,
+      view.value === 'slow-moving' ? `滞销阈值：区间销量低于 ${threshold.value}` : null,
+      paged ? `第 ${page.value} 页 / 共 ${total.value} 条` : `共 ${rows.value.length} 条`,
+      `操作员：${auth.user?.realName ?? '—'}`,
+    ],
+    columns: dropEmptyColumns(columns, rows.value),
+    rows: rows.value,
+    orientation: 'landscape',
+  })
+}
+
 // ---------- 下钻（BR-RPT-06） ----------
 const drillVisible = ref(false)
 const drillLoading = ref(false)
@@ -248,6 +299,7 @@ onMounted(async () => {
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
           <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button @click="handlePrint">打印</el-button>
         </el-form-item>
       </el-form>
       <div class="presets">

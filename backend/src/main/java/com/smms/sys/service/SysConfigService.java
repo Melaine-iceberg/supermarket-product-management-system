@@ -3,6 +3,7 @@ package com.smms.sys.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.exception.BusinessException;
+import com.smms.sys.dto.PrintInfoVO;
 import com.smms.sys.entity.SysConfig;
 import com.smms.sys.mapper.SysConfigMapper;
 import lombok.RequiredArgsConstructor;
@@ -109,5 +110,15 @@ public class SysConfigService {
 
     public String getStoreName() {
         return getStr("store_name", "超市");
+    }
+
+    /** 打印页眉参数（IR-UI-08）：纸宽仅支持 58/80 mm，其余取值归一到 58 */
+    public PrintInfoVO printInfo() {
+        int width = getInt("receipt_paper_width", 58) == 80 ? 80 : 58;
+        return new PrintInfoVO(
+                getStoreName(),
+                getStr("store_address", ""),
+                getStr("store_phone", ""),
+                width);
     }
 }

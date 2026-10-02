@@ -5,6 +5,7 @@ import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
 import com.smms.security.SecurityUtils;
 import com.smms.sys.dto.ConfigUpdateRequest;
+import com.smms.sys.dto.PrintInfoVO;
 import com.smms.sys.entity.SysConfig;
 import com.smms.sys.service.SysConfigService;
 import jakarta.validation.Valid;
@@ -32,6 +33,12 @@ public class SysConfigController {
     @RequirePerm("sys:config:list")
     public ApiResponse<List<SysConfig>> list() {
         return ApiResponse.ok(configService.listAll());
+    }
+
+    /** 打印页眉参数（IR-UI-08）：仅暴露店名/地址/电话/纸宽，任意已登录用户可读 */
+    @GetMapping("/print-info")
+    public ApiResponse<PrintInfoVO> printInfo() {
+        return ApiResponse.ok(configService.printInfo());
     }
 
     @PutMapping("/{key}")

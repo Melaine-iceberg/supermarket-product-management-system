@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
+import { useAuthStore } from '@/stores/auth'
+import {
+  dropEmptyColumns,
+  pMoney,
+  pPercent,
+  pQty,
+  printSheet,
+  type PrintColumn,
+} from '@/utils/print'
 import {
   exportProfitReport,
   fetchNegativeProfit,
@@ -12,6 +21,7 @@ import {
   type GoodsRankRow,
   type NegativeProfitRow,
   type ReportRange,
+  type SalesReportRow,
   type SalesReportVO,
 } from '@/api/report'
 
@@ -26,6 +36,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
 
 const loading = ref(false)
 const exporting = ref(false)
+const auth = useAuthStore()
 const view = ref<ViewKey>('by-goods')
 const initRange = thisMonthRange()
 const range = reactive<ReportRange>({ ...initRange })
@@ -109,6 +120,97 @@ async function handleExport() {
   }
 }
 
+// ---------- 打印视图（FR-RPT-09）：列与后端 Excel 导出口径一致 ----------
+const PROFIT_GOODS_COLUMNS: PrintColumn<GoodsRankRow>[] = [
+  { label: '商品编码', value: (r) => r.goodsCode },
+  { label: '商品名称', value: (r) => r.goodsName },
+  { label: '分类', value: (r) => r.categoryName },
+  { label: '品牌', value: (r) => r.brandName },
+  { label: '单数', value: (r) => r.orderCount, align: 'right' },
+  { label: '销量', value: (r) => pQty(r.qty), align: 'right' },
+  { label: '销售额', value: (r) => pMoney(r.salesAmount), align: 'right' },
+  { label: '优惠额', value: (r) => pMoney(r.discountAmount), align: 'right' },
+  { label: '净销售额', value: (r) => pMoney(r.netSalesAmount), align: 'right' },
+  { label: '退货额', value: (r) => pMoney(r.refundAmount), align: 'right' },
+  { label: '销售成本', value: (r) => pMoney(r.costAmount), align: 'right' },
+  { label: '毛利额', value: (r) => pMoney(r.profitAmount), align: 'right' },
+  { label: '毛利率', value: (r) => pPercent(r.profitRate), align: 'right' },
+  { label: '占比', value: (r) => pPercent(r.shareRate), align: 'right' },
+]
+
+const PROFIT_DAY_COLUMNS: PrintColumn<SalesReportRow>[] = [
+  { label: '日期', value: (r) => r.groupKey },
+  { label: '单数', value: (r) => r.orderCount, align: 'right' },
+  { label: '件数', value: (r) => r.itemCount, align: 'right' },
+  { label: '销售额', value: (r) => pMoney(r.salesAmount), align: 'right' },
+  { label: '优惠额', value: (r) => pMoney(r.discountAmount), align: 'right' },
+  { label: '净销售额', value: (r) => pMoney(r.netSalesAmount), align: 'right' },
+  { label: '退货额', value: (r) => pMoney(r.refundAmount), align: 'right' },
+  { label: '净销售', value: (r) => pMoney(r.netAmount), align: 'right' },
+  { label: '销售成本', value: (r) => pMoney(r.costAmount), align: 'right' },
+  { label: '毛利额', value: (r) => pMoney(r.profitAmount), align: 'right' },
+  { label: '毛利率', value: (r) => pPercent(r.profitRate), align: 'right' },
+  { label: '客单价', value: (r) => pMoney(r.avgOrderAmount), align: 'right' },
+]
+
+const NEGATIVE_COLUMNS: PrintColumn<NegativeProfitRow>[] = [
+  { label: '商品编码', value: (r) => r.goodsCode },
+  { label: '商品名称', value: (r) => r.goodsName },
+  { label: '分类', value: (r) => r.categoryName },
+  { label: '成交单价', value: (r) => pMoney(r.unitPrice), align: 'right' },
+  { label: '成本单价', value: (r) => pMoney(r.costPrice), align: 'right' },
+  { label: '单位毛利', value: (r) => pMoney(r.unitProfit), align: 'right' },
+  { label: '销量', value: (r) => pQty(r.qty), align: 'right' },
+  { label: '单数', value: (r) => r.orderCount, align: 'right' },
+  { label: '实付金额', value: (r) => pMoney(r.paidAmount), align: 'right' },
+  { label: '销售成本', value: (r) => pMoney(r.costAmount), align: 'right' },
+  { label: '毛利额', value: (r) => pMoney(r.profitAmount), align: 'right' },
+]
+
+async function handlePrint() {
+  syncRange()
+  const title = `毛利分析 · ${VIEW_LABELS[view.value]}`
+  const meta = [
+    `统计区间：${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}`,
+    `操作员：${auth.user?.realName ?? '—'}`,
+  ]
+  if (view.value === 'by-goods') {
+    await printSheet({
+      title,
+      meta: [...meta, `第 ${page.value} 页 / 共 ${goodsTotal.value} 条`],
+      columns: dropEmptyColumns(PROFIT_GOODS_COLUMNS, goodsRows.value),
+      rows: goodsRows.value,
+      orientation: 'landscape',
+    })
+  } else if (view.value === 'by-category') {
+    await printSheet({
+      title,
+      meta,
+      columns: dropEmptyColumns(PROFIT_GOODS_COLUMNS, categoryRows.value),
+      rows: categoryRows.value,
+      orientation: 'landscape',
+    })
+  } else if (view.value === 'by-day') {
+    const t = dayData.value?.total
+    await printSheet({
+      title,
+      meta,
+      columns: PROFIT_DAY_COLUMNS,
+      rows: dayData.value?.rows ?? [],
+      totals: t ? [`合计毛利额：￥${pMoney(t.profitAmount)}`, `综合毛利率：${pPercent(t.profitRate)}`] : [],
+      orientation: 'landscape',
+    })
+  } else {
+    await printSheet({
+      title: `${title}（成交价低于成本价）`,
+      meta,
+      columns: NEGATIVE_COLUMNS,
+      rows: negativeRows.value,
+      orientation: 'landscape',
+    })
+  }
+}
+
 onMounted(async () => {
   categoryTree.value = await getCategoryTree()
   load()
@@ -152,6 +254,7 @@ onMounted(async () => {
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
           <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button @click="handlePrint">打印</el-button>
         </el-form-item>
       </el-form>
       <div class="presets">

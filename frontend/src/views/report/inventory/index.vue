@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
+import { useAuthStore } from '@/stores/auth'
+import {
+  dropEmptyColumns,
+  pMoney,
+  pPercent,
+  pQty,
+  printSheet,
+  pTime,
+  type PrintColumn,
+} from '@/utils/print'
 import {
   CHANGE_TYPE_MAP,
   exportInventoryReport,
@@ -36,6 +46,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
 
 const loading = ref(false)
 const exporting = ref(false)
+const auth = useAuthStore()
 const view = ref<ViewKey>('summary-goods')
 const initRange = thisMonthRange()
 const range = reactive<ReportRange>({ ...initRange })
@@ -142,6 +153,125 @@ async function handleExport() {
   }
 }
 
+// ---------- 打印视图（FR-RPT-09）：列与后端 Excel 导出口径一致 ----------
+const ALERT_LABEL: Record<WarningRptRow['alertType'], string> = {
+  OUT: '缺货',
+  WARNING: '预警',
+  OVERSTOCK: '积压',
+}
+
+const SUMMARY_COLUMNS: PrintColumn<InvSummaryRow>[] = [
+  { label: '分类', value: (r) => r.categoryName },
+  { label: '商品编码', value: (r) => r.goodsCode },
+  { label: '商品名称', value: (r) => r.goodsName },
+  { label: '商品数', value: (r) => r.goodsCount, align: 'right' },
+  { label: '结存数量', value: (r) => pQty(r.stockQty), align: 'right' },
+  { label: '成本单价', value: (r) => pMoney(r.costPrice), align: 'right' },
+  { label: '库存成本金额', value: (r) => pMoney(r.costAmount), align: 'right' },
+  { label: '零售价值', value: (r) => pMoney(r.retailValue), align: 'right' },
+  { label: '库存状态', value: (r) => STOCK_STATUS_MAP[r.stockStatus ?? '']?.label ?? r.stockStatus, align: 'center' },
+]
+
+const WARNING_COLUMNS: PrintColumn<WarningRptRow>[] = [
+  { label: '商品编码', value: (r) => r.goodsCode },
+  { label: '商品名称', value: (r) => r.goodsName },
+  { label: '分类', value: (r) => r.categoryName },
+  { label: '预警类型', value: (r) => ALERT_LABEL[r.alertType], align: 'center' },
+  { label: '结存数量', value: (r) => pQty(r.stockQty), align: 'right' },
+  { label: '安全库存下限', value: (r) => pQty(r.safetyStockLower), align: 'right' },
+  { label: '库存上限', value: (r) => pQty(r.safetyStockUpper), align: 'right' },
+  { label: '缺口量', value: (r) => pQty(r.gapQty), align: 'right' },
+  { label: '建议采购量', value: (r) => pQty(r.suggestQty), align: 'right' },
+  { label: '最近变动时间', value: (r) => pTime(r.lastChangeTime) },
+]
+
+const TURNOVER_COLUMNS: PrintColumn<TurnoverRow>[] = [
+  { label: '商品编码', value: (r) => r.goodsCode },
+  { label: '商品名称', value: (r) => r.goodsName },
+  { label: '分类', value: (r) => r.categoryName },
+  { label: '结存数量', value: (r) => pQty(r.stockQty), align: 'right' },
+  { label: '期末库存金额', value: (r) => pMoney(r.costAmount), align: 'right' },
+  { label: '期初库存金额', value: (r) => pMoney(r.beginAmount), align: 'right' },
+  { label: '平均库存金额', value: (r) => pMoney(r.avgAmount), align: 'right' },
+  { label: '销售成本', value: (r) => pMoney(r.saleCostAmount), align: 'right' },
+  { label: '退货成本回冲', value: (r) => pMoney(r.returnCostAmount), align: 'right' },
+  { label: '周转率', value: (r) => pQty(r.turnoverRate), align: 'right' },
+  { label: '周转天数', value: (r) => pQty(r.turnoverDays), align: 'right' },
+]
+
+async function handlePrint() {
+  syncRange()
+  const title = `库存报表 · ${VIEW_LABELS[view.value]}`
+  // 汇总与预警是时点快照，只有变动/周转/损耗按区间统计
+  const ranged = view.value === 'changes' || view.value.startsWith('turnover') || view.value === 'loss'
+  const meta = [
+    ranged ? `统计区间：${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}` : null,
+    `操作员：${auth.user?.realName ?? '—'}`,
+  ]
+  if (view.value === 'summary-goods' || view.value === 'summary-category') {
+    await printSheet({
+      title,
+      meta: [...meta, `第 ${page.value} 页 / 共 ${summaryTotal.value} 条`],
+      columns: dropEmptyColumns(SUMMARY_COLUMNS, summaryRows.value),
+      rows: summaryRows.value,
+      orientation: 'landscape',
+    })
+  } else if (view.value === 'warnings') {
+    await printSheet({
+      title,
+      meta: [...meta, `第 ${page.value} 页 / 共 ${warningTotal.value} 条`],
+      columns: WARNING_COLUMNS,
+      rows: warningRows.value,
+      orientation: 'landscape',
+    })
+  } else if (view.value === 'changes') {
+    await printSheet({
+      title,
+      meta,
+      columns: [
+        { label: '变动类型', value: (r) => CHANGE_TYPE_MAP[r.recordType] ?? r.recordType },
+        { label: '单据数', value: (r) => r.recordCount, align: 'right' },
+        { label: '变动数量', value: (r) => pQty(r.changeQty), align: 'right' },
+        { label: '金额', value: (r) => pMoney(r.amount), align: 'right' },
+      ],
+      rows: changeRows.value,
+    })
+  } else if (view.value === 'turnover-goods' || view.value === 'turnover-category') {
+    await printSheet({
+      title,
+      meta,
+      columns: dropEmptyColumns(TURNOVER_COLUMNS, turnoverRows.value),
+      rows: turnoverRows.value,
+      orientation: 'landscape',
+    })
+  } else {
+    const vo = lossData.value
+    await printSheet({
+      title,
+      meta,
+      columns: [
+        { label: '商品名称', value: (r) => r.goodsName },
+        { label: '分类', value: (r) => r.categoryName },
+        { label: '报损数量', value: (r) => pQty(r.lossQty), align: 'right' },
+        { label: '报损金额', value: (r) => pMoney(r.lossAmount), align: 'right' },
+        { label: '盘亏数量', value: (r) => pQty(r.checkQty), align: 'right' },
+        { label: '盘亏金额', value: (r) => pMoney(r.checkAmount), align: 'right' },
+        { label: '损耗金额', value: (r) => pMoney(r.totalAmount), align: 'right' },
+      ],
+      rows: vo?.rows ?? [],
+      totals: vo
+        ? [
+            `损耗金额合计：￥${pMoney(vo.totalLossAmount)}`,
+            `报溢金额合计：￥${pMoney(vo.totalOverflowAmount)}`,
+            `期初库存金额：￥${pMoney(vo.beginInventoryAmount)}`,
+            `损耗率：${pPercent(vo.lossRate)}`,
+          ]
+        : [],
+      orientation: 'landscape',
+    })
+  }
+}
+
 onMounted(async () => {
   categoryTree.value = await getCategoryTree()
   load()
@@ -192,6 +322,7 @@ onMounted(async () => {
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
           <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button @click="handlePrint">打印</el-button>
         </el-form-item>
       </el-form>
       <div v-if="view === 'changes' || view.includes('turnover') || view === 'loss'" class="presets">

@@ -2,6 +2,16 @@
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { pageGoods, type GoodsListVO } from '@/api/goods'
+import { useAuthStore } from '@/stores/auth'
+import {
+  dropEmptyColumns,
+  pMoney,
+  pPercent,
+  printSheet,
+  pQty,
+  pTime,
+  type PrintColumn,
+} from '@/utils/print'
 import {
   exportPurchaseReport,
   fetchArrival,
@@ -28,6 +38,7 @@ const VIEW_LABELS: Record<ViewKey, string> = {
 
 const loading = ref(false)
 const exporting = ref(false)
+const auth = useAuthStore()
 const view = ref<ViewKey>('summary-supplier')
 const initRange = thisMonthRange()
 const range = reactive<ReportRange>({ ...initRange })
@@ -155,6 +166,96 @@ function handleGoodsChange() {
   }
 }
 
+// ---------- 打印视图（FR-RPT-09）：列与后端 Excel 导出口径一致 ----------
+const SUPPLIER_COLUMNS: PrintColumn<PurchSummaryRow>[] = [
+  { label: '供应商', value: (r) => r.supplierName },
+  { label: '单数', value: (r) => r.orderCount, align: 'right' },
+  { label: '采购数量', value: (r) => pQty(r.purchaseQty), align: 'right' },
+  { label: '采购金额', value: (r) => pMoney(r.purchaseAmount), align: 'right' },
+  { label: '已入库数量', value: (r) => pQty(r.receivedQty), align: 'right' },
+  { label: '在途数量', value: (r) => pQty(r.inTransitQty), align: 'right' },
+  { label: '退货数量', value: (r) => pQty(r.returnQty), align: 'right' },
+  { label: '退货金额', value: (r) => pMoney(r.returnAmount), align: 'right' },
+  { label: '已结算金额', value: (r) => pMoney(r.settledAmount), align: 'right' },
+  { label: '部分结算金额', value: (r) => pMoney(r.partialSettledAmount), align: 'right' },
+  { label: '占比', value: (r) => pPercent(r.shareRate), align: 'right' },
+]
+
+const PURCH_GOODS_COLUMNS: PrintColumn<PurchSummaryRow>[] = [
+  { label: '商品编码', value: (r) => r.goodsCode },
+  { label: '商品名称', value: (r) => r.goodsName },
+  { label: '分类', value: (r) => r.categoryName },
+  { label: '单数', value: (r) => r.orderCount, align: 'right' },
+  { label: '采购数量', value: (r) => pQty(r.purchaseQty), align: 'right' },
+  { label: '采购金额', value: (r) => pMoney(r.purchaseAmount), align: 'right' },
+  { label: '已入库数量', value: (r) => pQty(r.receivedQty), align: 'right' },
+  { label: '在途数量', value: (r) => pQty(r.inTransitQty), align: 'right' },
+  { label: '退货数量', value: (r) => pQty(r.returnQty), align: 'right' },
+  { label: '退货金额', value: (r) => pMoney(r.returnAmount), align: 'right' },
+  { label: '已结算金额', value: (r) => pMoney(r.settledAmount), align: 'right' },
+  { label: '部分结算金额', value: (r) => pMoney(r.partialSettledAmount), align: 'right' },
+]
+
+async function handlePrint() {
+  syncRange()
+  const title = `采购报表 · ${VIEW_LABELS[view.value]}`
+  const meta = [
+    `统计区间：${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}`,
+    `操作员：${auth.user?.realName ?? '—'}`,
+  ]
+  if (view.value === 'summary-supplier') {
+    await printSheet({
+      title,
+      meta,
+      columns: dropEmptyColumns(SUPPLIER_COLUMNS, summaryRows.value),
+      rows: summaryRows.value,
+      orientation: 'landscape',
+    })
+  } else if (view.value === 'summary-goods') {
+    await printSheet({
+      title,
+      meta,
+      columns: dropEmptyColumns(PURCH_GOODS_COLUMNS, summaryRows.value),
+      rows: summaryRows.value,
+      orientation: 'landscape',
+    })
+  } else if (view.value === 'supplier-ranking') {
+    await printSheet({
+      title,
+      meta,
+      columns: dropEmptyColumns(SUPPLIER_COLUMNS, rankingRows.value),
+      rows: rankingRows.value,
+      orientation: 'landscape',
+    })
+  } else if (view.value === 'price-trend') {
+    const goodsName = goodsOptions.value.find((g) => g.id === selectedGoodsId.value)?.name
+    await printSheet({
+      title,
+      meta: [...meta, `商品：${goodsName ?? '未选择'}`],
+      columns: [
+        { label: '采购单号', value: (r) => r.orderNo },
+        { label: '供应商', value: (r) => r.supplierName },
+        { label: '采购时间', value: (r) => pTime(r.orderTime) },
+        { label: '数量', value: (r) => pQty(r.quantity), align: 'right' },
+        { label: '单价', value: (r) => pMoney(r.price), align: 'right' },
+      ],
+      rows: priceRows.value,
+    })
+  } else {
+    await printSheet({
+      title,
+      meta,
+      columns: [
+        { label: '供应商', value: (r) => r.supplierName },
+        { label: '到货次数', value: (r) => r.receiptCount, align: 'right' },
+        { label: '按期次数', value: (r) => r.onTimeCount, align: 'right' },
+        { label: '到货及时率', value: (r) => pPercent(r.onTimeRate), align: 'right' },
+      ],
+      rows: arrivalRows.value,
+    })
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -203,6 +304,7 @@ onMounted(load)
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
           <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          <el-button @click="handlePrint">打印</el-button>
         </el-form-item>
       </el-form>
       <div class="presets">

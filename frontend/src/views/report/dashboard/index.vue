@@ -2,9 +2,12 @@
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { fetchDashboard, type DashboardVO } from '@/api/report'
+import { fetchDashboard, todayRange, type DashboardVO } from '@/api/report'
+import { useAuthStore } from '@/stores/auth'
+import { pQty, printSheet, pTable } from '@/utils/print'
 
 const router = useRouter()
+const auth = useAuthStore()
 const loading = ref(false)
 const data = ref<DashboardVO | null>(null)
 const trendDays = ref<7 | 30>(7)
@@ -78,6 +81,53 @@ function goTodo(route: string) {
   router.push(route)
 }
 
+/** 看板打印（FR-RPT-09，A4 纵向）：KPI + 待办 + 趋势 + TOP10 分段落纸，图表以数据表代替 */
+async function handlePrint() {
+  const d = data.value
+  if (!d) return
+  const kpi = pTable(
+    ['指标', '数值'],
+    [
+      ['今日销售额', `￥${money(d.kpi.salesAmount)}`],
+      ['今日订单数', d.kpi.orderCount],
+      ['今日毛利额', d.kpi.profitAmount == null ? '—' : `￥${money(d.kpi.profitAmount)}`],
+      ['今日毛利率', percent(d.kpi.profitRate)],
+      ['今日新增会员', d.kpi.newMemberCount],
+      ['库存预警商品数', d.kpi.warningCount],
+    ],
+    ['left', 'right'],
+  )
+  const todos = pTable(
+    ['待办事项', '数量'],
+    d.todos.map((t) => [t.title, t.count]),
+    ['left', 'right'],
+  )
+  const trend = pTable(
+    ['营业日', '订单数', '净销售额'],
+    d.trend.map((p) => [p.bizDate, p.orderCount, `￥${money(p.netSalesAmount)}`]),
+    ['left', 'right', 'right'],
+  )
+  const top = pTable(
+    ['排名', '商品名称', '销量', '销售额'],
+    d.topGoods.map((g, i) => [i + 1, g.goodsName, pQty(g.qty), `￥${money(g.salesAmount)}`]),
+    ['center', 'left', 'right', 'right'],
+  )
+  await printSheet({
+    title: '经营概览看板',
+    meta: [`统计日期：${todayRange().beginDate}`, `趋势区间：近 ${trendDays.value} 日`, `操作员：${auth.user?.realName ?? '—'}`],
+    bodyHtml: [
+      '<div class="sec">一、今日关键指标</div>',
+      kpi,
+      '<div class="sec">二、待办事项</div>',
+      d.todos.length ? todos : '<div>无待办</div>',
+      `<div class="sec">三、近 ${trendDays.value} 日销售趋势</div>`,
+      trend,
+      '<div class="sec">四、TOP10 热销商品</div>',
+      top,
+    ].join(''),
+  })
+}
+
 onMounted(() => {
   load()
   window.addEventListener('resize', handleResize)
@@ -93,6 +143,10 @@ watch(trendDays, load)
 
 <template>
   <div v-loading="loading" class="dashboard">
+    <div class="toolbar">
+      <el-button size="small" @click="handlePrint">打印看板</el-button>
+    </div>
+
     <!-- KPI 卡片（FR-RPT-01） -->
     <el-row :gutter="16" class="kpi-row">
       <el-col :xs="12" :sm="8" :md="4">
@@ -195,6 +249,12 @@ watch(trendDays, load)
 
 <style scoped lang="scss">
 .dashboard {
+  .toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+  }
+
   .kpi-row {
     margin-bottom: 16px;
   }
