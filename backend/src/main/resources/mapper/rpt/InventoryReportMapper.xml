@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.rpt.mapper.InventoryReportMapper">
+
+    <!-- ==================== 库存汇总（FR-RPT-04①） ==================== -->
+
+    <select id="countGoodsSummary" resultType="long">
+        SELECT COUNT(*)
+        FROM goods g
+        JOIN inventory i ON i.goods_id = g.id
+        WHERE g.status = 1
+        <if test="categoryId != null">
+            AND g.category_id = #{categoryId}
+        </if>
+    </select>
+
+    <!-- 库存汇总表（商品维度）：结存/成本单价/库存成本金额/零售价值/库存状态（FR-INV-05 状态口径） -->
+    <select id="selectGoodsSummary" resultType="com.smms.rpt.dto.InvSummaryRow">
+        SELECT g.id                            AS goodsId,
+               g.goods_code                    AS goodsCode,
+               g.name                          AS goodsName,
+               c.name                          AS categoryName,
+               0                               AS goodsCount,
+               i.quantity                      AS stockQty,
+               i.cost_price                    AS costPrice,
+               i.cost_amount                   AS costAmount,
+               (i.quantity * g.retail_price)   AS retailValue,
+               CASE
+                   WHEN i.quantity &lt;= 0 THEN 'OUT'
+                   WHEN i.quantity &lt;= g.safety_stock_lower THEN 'WARNING'
+                   WHEN g.safety_stock_upper IS NOT NULL AND i.quantity &gt;= g.safety_stock_upper THEN 'OVERSTOCK'
+                   ELSE 'NORMAL'
+               END                             AS stockStatus
+        FROM goods g
+        JOIN inventory i ON i.goods_id = g.id
+        LEFT JOIN category c ON c.id = g.category_id
+        WHERE g.status = 1
+        <if test="categoryId != null">
+            AND g.category_id = #{categoryId}
+        </if>
+        ORDER BY i.cost_amount DESC, g.id
+    </select>
+
+    <!-- 库存汇总（分类维度） -->
+    <select id="selectCategorySummary" resultType="com.smms.rpt.dto.InvSummaryRow">
+        SELECT c.id                            AS categoryId,
+               c.name                          AS categoryName,
+               COUNT(i.goods_id)               AS goodsCount,
+               COALESCE(SUM(i.quantity), 0)    AS stockQty,
+               NULL                            AS costPrice,
+               COALESCE(SUM(i.cost_amount), 0) AS costAmount,
+               COALESCE(SUM(i.quantity * g.retail_price), 0) AS retailValue,
+               NULL                            AS stockStatus
+        FROM goods g
+        JOIN inventory i ON i.goods_id = g.id
+        JOIN category c ON c.id = g.category_id
+        WHERE g.status = 1
+        GROUP BY c.id, c.name
+        ORDER BY costAmount DESC
+    </select>
+
+    <!-- ==================== 库存预警报表（FR-RPT-04②） ==================== -->
+
+    <select id="countWarnings" resultType="long">
+        SELECT COUNT(*)
+        FROM goods g
+        LEFT JOIN inventory i ON i.goods_id = g.id
+        WHERE g.status = 1
+        <choose>
+            <when test="alertType == 'OUT'">
+                AND COALESCE(i.quantity, 0) &lt;= 0
+            </when>
+            <when test="alertType == 'WARNING'">
+                AND COALESCE(i.quantity, 0) &gt; 0 AND COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower
+            </when>
+            <when test="alertType == 'OVERSTOCK'">
+                AND g.safety_stock_upper IS NOT NULL AND COALESCE(i.quantity, 0) &gt;= g.safety_stock_upper
+            </when>
+            <otherwise>
+                AND (COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower
+                     OR (g.safety_stock_upper IS NOT NULL AND COALESCE(i.quantity, 0) &gt;= g.safety_stock_upper))
+            </otherwise>
+        </choose>
+    </select>
+
+    <!-- 预警报表：缺货/低库存/积压清单，含建议采购量（BR-INV-07：
+         建议量 = ceil(安全库存下限×K + 日均销量×提前期 − 结存 − 在途)，积压为空） -->
+    <select id="selectWarnings" resultType="com.smms.rpt.dto.WarningRptRow">
+        SELECT g.id                            AS goodsId,
+               g.goods_code                    AS goodsCode,
+               g.name                          AS goodsName,
+               c.name                          AS categoryName,
+               CASE
+                   WHEN COALESCE(i.quantity, 0) &lt;= 0 THEN 'OUT'
+                   WHEN COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower THEN 'WARNING'
+                   ELSE 'OVERSTOCK'
+               END                             AS alertType,
+               COALESCE(i.quantity, 0)         AS stockQty,
+               g.safety_stock_lower            AS safetyStockLower,
+               g.safety_stock_upper            AS safetyStockUpper,
+               CASE
+                   WHEN COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower
+                        THEN g.safety_stock_lower - COALESCE(i.quantity, 0)
+                   WHEN g.safety_stock_upper IS NOT NULL
+                        THEN COALESCE(i.quantity, 0) - g.safety_stock_upper
+                   ELSE 0
+               END                             AS gapQty,
+               CASE
+                   WHEN COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower THEN
+                       CEIL(g.safety_stock_lower * #{suggestK}
+                            + COALESCE((SELECT SUM(ir.change_qty) / #{avgDays}
+                                          FROM inventory_record ir
+                                         WHERE ir.goods_id = g.id
+                                           AND ir.record_type = 'SALE_OUT'
+                                           AND ir.operate_time &gt;= DATE_SUB(NOW(), INTERVAL #{avgDays} DAY)), 0) * #{leadDays}
+                            - COALESCE(i.quantity, 0)
+                            - COALESCE((SELECT SUM(poi.quantity - poi.received_qty)
+                                          FROM purchase_order_item poi
+                                          JOIN purchase_order po ON po.id = poi.order_id
+                                         WHERE poi.goods_id = g.id
+                                           AND po.status IN ('APPROVED', 'PARTIAL')), 0))
+                   ELSE NULL
+               END                             AS suggestQty,
+               i.last_change_time             AS lastChangeTime
+        FROM goods g
+        LEFT JOIN inventory i ON i.goods_id = g.id
+        LEFT JOIN category c ON c.id = g.category_id
+        WHERE g.status = 1
+        <choose>
+            <when test="alertType == 'OUT'">
+                AND COALESCE(i.quantity, 0) &lt;= 0
+            </when>
+            <when test="alertType == 'WARNING'">
+                AND COALESCE(i.quantity, 0) &gt; 0 AND COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower
+            </when>
+            <when test="alertType == 'OVERSTOCK'">
+                AND g.safety_stock_upper IS NOT NULL AND COALESCE(i.quantity, 0) &gt;= g.safety_stock_upper
+            </when>
+            <otherwise>
+                AND (COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower
+                     OR (g.safety_stock_upper IS NOT NULL AND COALESCE(i.quantity, 0) &gt;= g.safety_stock_upper))
+            </otherwise>
+        </choose>
+        ORDER BY gapQty DESC, g.id
+    </select>
+
+    <!-- ==================== 库存变动汇总（FR-RPT-04③） ==================== -->
+
+    <!-- 按变动类型汇总数量与金额（金额 = Σ|变动数量|×单位成本） -->
+    <select id="selectChangeSummary" resultType="com.smms.rpt.dto.InvChangeRow">
+        SELECT ir.record_type AS recordType,
+               COUNT(*)       AS recordCount,
+               COALESCE(SUM(ir.change_qty), 0) AS changeQty,
+               COALESCE(SUM(ABS(ir.change_qty) * ir.unit_cost), 0) AS amount
+        FROM inventory_record ir
+        WHERE ir.operate_time &gt;= #{beginTime} AND ir.operate_time &lt; #{endTime}
+        GROUP BY ir.record_type
+        ORDER BY ir.record_type
+    </select>
+
+    <!-- 区间流水金额（期初 = 期末成本 − Σ(变动数量×单位成本)） -->
+    <select id="selectFlowAmountByGoods" resultType="com.smms.rpt.dto.TurnoverRow">
+        SELECT ir.goods_id AS goodsId,
+               COALESCE(SUM(ir.change_qty * ir.unit_cost), 0) AS flowAmount
+        FROM inventory_record ir
+        WHERE ir.operate_time &gt;= #{beginTime} AND ir.operate_time &lt; #{endTime}
+        GROUP BY ir.goods_id
+    </select>
+
+    <!-- 区间销售成本（按商品） -->
+    <select id="selectSaleCostByGoods" resultType="com.smms.rpt.dto.TurnoverRow">
+        SELECT soi.goods_id AS goodsId,
+               COALESCE(SUM(soi.cost_amount), 0) AS saleCostAmount
+        FROM sales_order_item soi
+        JOIN sales_order so ON so.id = soi.order_id
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+          AND soi.goods_id IS NOT NULL
+        GROUP BY soi.goods_id
+    </select>
+
+    <!-- 区间退货成本回冲（按商品） -->
+    <select id="selectReturnCostByGoods" resultType="com.smms.rpt.dto.TurnoverRow">
+        SELECT roi.goods_id AS goodsId,
+               COALESCE(SUM(roi.cost_amount), 0) AS returnCostAmount
+        FROM return_order_item roi
+        JOIN return_order ro ON ro.id = roi.return_id
+        WHERE ro.business_date BETWEEN #{begin} AND #{end}
+          AND roi.goods_id IS NOT NULL
+        GROUP BY roi.goods_id
+    </select>
+
+    <!-- 周转率商品维度分页：当前结存成本（期初/期末由此推算） -->
+    <select id="selectTurnoverPage" resultType="com.smms.rpt.dto.TurnoverRow">
+        SELECT g.id         AS goodsId,
+               g.goods_code AS goodsCode,
+               g.name       AS goodsName,
+               g.category_id AS categoryId,
+               c.name       AS categoryName,
+               COALESCE(i.quantity, 0)      AS stockQty,
+               COALESCE(i.cost_amount, 0)   AS costAmount
+        FROM goods g
+        JOIN inventory i ON i.goods_id = g.id
+        LEFT JOIN category c ON c.id = g.category_id
+        WHERE g.status = 1
+        <if test="categoryId != null">
+            AND g.category_id = #{categoryId}
+        </if>
+        ORDER BY i.cost_amount DESC, g.id
+    </select>
+
+    <!-- ==================== 损耗报表（FR-RPT-04⑤） ==================== -->
+
+    <!-- 报损/报溢按商品汇总（店长已审核；与销售退货分开统计） -->
+    <select id="selectLossByGoods" resultType="com.smms.rpt.dto.LossRow">
+        SELECT l.goods_id   AS goodsId,
+               g.name       AS goodsName,
+               c.name       AS categoryName,
+               l.biz_type   AS bizType,
+               COALESCE(SUM(l.quantity), 0) AS lossQty,
+               COALESCE(SUM(l.amount), 0)    AS lossAmount
+        FROM loss_order l
+        JOIN goods g ON g.id = l.goods_id
+        LEFT JOIN category c ON c.id = g.category_id
+        WHERE l.status = 'AUDITED'
+          AND l.audit_time &gt;= #{beginTime} AND l.audit_time &lt; #{endTime}
+        GROUP BY l.goods_id, g.name, c.name, l.biz_type
+    </select>
+
+    <!-- 盘亏按商品汇总（已审核盘点单的差异行） -->
+    <select id="selectShortageByGoods" resultType="com.smms.rpt.dto.LossRow">
+        SELECT sci.goods_id AS goodsId,
+               g.name       AS goodsName,
+               c.name       AS categoryName,
+               'CHECK'      AS bizType,
+               COALESCE(SUM(ABS(sci.diff_qty)), 0)    AS lossQty,
+               COALESCE(SUM(ABS(sci.diff_amount)), 0) AS lossAmount
+        FROM stock_check_item sci
+        JOIN stock_check_order sco ON sco.id = sci.order_id
+        JOIN goods g ON g.id = sci.goods_id
+        LEFT JOIN category c ON c.id = g.category_id
+        WHERE sco.status = 'AUDITED'
+          AND sci.diff_qty &lt; 0
+          AND sco.audit_time &gt;= #{beginTime} AND sco.audit_time &lt; #{endTime}
+        GROUP BY sci.goods_id, g.name, c.name
+    </select>
+
+    <!-- 期初库存金额 = Σ当前库存成本 − Σ(区间流水变动金额)（损耗率分母） -->
+    <select id="selectBeginInventoryAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE((SELECT SUM(i.cost_amount) FROM inventory i), 0)
+             - COALESCE((SELECT SUM(ir.change_qty * ir.unit_cost)
+                          FROM inventory_record ir
+                         WHERE ir.operate_time &gt;= #{beginTime}
+                           AND ir.operate_time &lt; #{endTime}), 0)
+    </select>
+</mapper>

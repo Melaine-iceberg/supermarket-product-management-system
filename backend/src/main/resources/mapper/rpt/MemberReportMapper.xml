@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.rpt.mapper.MemberReportMapper">
+
+    <!-- 通用会员行：手机号在服务层按角色脱敏（BR-MEM-08） -->
+    <sql id="memberSelect">
+        SELECT m.id             AS id,
+               m.member_no     AS memberNo,
+               m.name          AS name,
+               m.phone         AS phone,
+               ml.name         AS levelName,
+               m.points       AS points,
+               m.total_consume AS totalConsume,
+               m.consume_times AS consumeTimes,
+               m.last_consume_time AS lastConsumeTime,
+               m.register_time AS registerTime,
+               m.birthday      AS birthday,
+               NULL            AS bizDate,
+               NULL            AS newCount,
+               NULL            AS cumulativeCount,
+               NULL            AS memberCount
+        FROM member m
+        JOIN member_level ml ON ml.id = m.level_id
+    </sql>
+
+    <!-- 每日新增会员（增长趋势，FR-RPT-07①） -->
+    <select id="selectDailyNewMembers" resultType="com.smms.rpt.dto.MemberRptRow">
+        SELECT DATE(m.register_time)          AS bizDate,
+               COUNT(*)                       AS newCount
+        FROM member m
+        WHERE m.register_time &gt;= #{beginTime} AND m.register_time &lt; #{endTime}
+        GROUP BY DATE(m.register_time)
+        ORDER BY bizDate
+    </select>
+
+    <select id="countMembersBefore" resultType="long">
+        SELECT COUNT(*) FROM member WHERE register_time &lt; #{before}
+    </select>
+
+    <!-- 会员消费排行 TOP N（FR-RPT-07②） -->
+    <select id="selectConsumptionRanking" resultType="com.smms.rpt.dto.MemberRptRow">
+        <include refid="memberSelect"/>
+        WHERE m.status = 1
+        ORDER BY m.total_consume DESC, m.id
+        LIMIT #{topN}
+    </select>
+
+    <!-- 会员等级分布（FR-RPT-07③） -->
+    <select id="selectLevelDistribution" resultType="com.smms.rpt.dto.MemberRptRow">
+        SELECT ml.id   AS id,
+               ml.name AS levelName,
+               COUNT(m.id) AS memberCount
+        FROM member_level ml
+        LEFT JOIN member m ON m.level_id = ml.id AND m.status = 1
+        WHERE ml.status = 1
+        GROUP BY ml.id, ml.name
+        ORDER BY ml.sort_no
+    </select>
+
+    <!-- 沉睡会员清单（FR-RPT-07⑤）：N 天未消费（从未消费的按注册时间起算） -->
+    <select id="countSleeping" resultType="long">
+        SELECT COUNT(*)
+        FROM member m
+        WHERE m.status = 1
+          AND COALESCE(m.last_consume_time, m.register_time) &lt; #{deadline}
+    </select>
+
+    <select id="selectSleeping" resultType="com.smms.rpt.dto.MemberRptRow">
+        <include refid="memberSelect"/>
+        WHERE m.status = 1
+          AND COALESCE(m.last_consume_time, m.register_time) &lt; #{deadline}
+        ORDER BY COALESCE(m.last_consume_time, m.register_time), m.id
+    </select>
+
+    <!-- 生日提醒清单（FR-RPT-07⑥）：当月生日 / 未来 7 天（含今日）生日 -->
+    <select id="selectBirthday" resultType="com.smms.rpt.dto.MemberRptRow">
+        <include refid="memberSelect"/>
+        WHERE m.status = 1 AND m.birthday IS NOT NULL
+        <choose>
+            <when test="scope == 'week'">
+                AND (DAYOFYEAR(m.birthday) - DAYOFYEAR(CURDATE()) + 365) % 365 &lt;= 7
+                ORDER BY (DAYOFYEAR(m.birthday) - DAYOFYEAR(CURDATE()) + 365) % 365, m.id
+            </when>
+            <otherwise>
+                AND MONTH(m.birthday) = MONTH(CURDATE())
+                ORDER BY DAY(m.birthday), m.id
+            </otherwise>
+        </choose>
+    </select>
+</mapper>

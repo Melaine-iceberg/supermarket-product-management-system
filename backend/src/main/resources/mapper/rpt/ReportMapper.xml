@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.rpt.mapper.ReportMapper">
+
+    <!-- ==================== 看板（FR-RPT-01） ==================== -->
+
+    <!-- 区间销售汇总原始值（BR-RPT-01 口径，派生指标由 SalesMetrics 统一计算） -->
+    <select id="selectSalesAgg" resultType="com.smms.rpt.dto.PeriodAggRow">
+        SELECT COUNT(*)              AS orderCount,
+               COALESCE(SUM(item_count), 0)     AS itemCount,
+               COALESCE(SUM(goods_amount), 0)   AS salesAmount,
+               COALESCE(SUM(discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(payable_amount), 0)  AS netSalesAmount,
+               COALESCE(SUM(cost_amount), 0)     AS costAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount
+        FROM sales_order
+        WHERE business_date BETWEEN #{begin} AND #{end}
+    </select>
+
+    <!-- 区间退货汇总：退款额 + 退货成本回冲（销售成本 = Σ明细成本 − Σ退货成本） -->
+    <select id="selectReturnAgg" resultType="com.smms.rpt.dto.PeriodAggRow">
+        SELECT 0    AS orderCount,
+               NULL AS itemCount,
+               NULL AS salesAmount,
+               NULL AS discountAmount,
+               NULL AS netSalesAmount,
+               NULL AS costAmount,
+               COALESCE(r.refundAmount, 0)     AS refundAmount,
+               COALESCE(c.returnCostAmount, 0)  AS returnCostAmount
+        FROM (SELECT 1) x
+        LEFT JOIN (SELECT SUM(refund_amount) AS refundAmount
+                   FROM return_order
+                   WHERE business_date BETWEEN #{begin} AND #{end}) r ON 1 = 1
+        LEFT JOIN (SELECT SUM(roi.cost_amount) AS returnCostAmount
+                   FROM return_order_item roi
+                   JOIN return_order ro ON ro.id = roi.return_id
+                   WHERE ro.business_date BETWEEN #{begin} AND #{end}) c ON 1 = 1
+    </select>
+
+    <!-- 按营业日/月聚合销售（趋势折线 / 销售日报 / 月报共用，BR-RPT-02 营业日） -->
+    <select id="selectDailySales" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT
+        <choose>
+            <when test="monthly">DATE_FORMAT(business_date, '%Y-%m')</when>
+            <otherwise>DATE_FORMAT(business_date, '%Y-%m-%d')</otherwise>
+        </choose> AS groupKey,
+        <if test="!monthly">business_date AS bizDate,</if>
+        <if test="monthly">NULL AS bizDate,</if>
+               COUNT(*)                       AS orderCount,
+               COALESCE(SUM(item_count), 0)   AS itemCount,
+               COALESCE(SUM(goods_amount), 0) AS salesAmount,
+               COALESCE(SUM(discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(payable_amount), 0) AS netSalesAmount,
+               COALESCE(SUM(cost_amount), 0)   AS costAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS returnCount
+        FROM sales_order
+        WHERE business_date BETWEEN #{begin} AND #{end}
+        GROUP BY business_date
+        ORDER BY business_date
+    </select>
+
+    <!-- 按营业日/月聚合退货（与 selectDailySales 按 groupKey 合并成完整日报） -->
+    <select id="selectDailyReturns" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT
+        <choose>
+            <when test="monthly">DATE_FORMAT(ro.business_date, '%Y-%m')</when>
+            <otherwise>DATE_FORMAT(ro.business_date, '%Y-%m-%d')</otherwise>
+        </choose> AS groupKey,
+        <if test="!monthly">ro.business_date AS bizDate,</if>
+        <if test="monthly">NULL AS bizDate,</if>
+               0 AS orderCount,
+               NULL AS itemCount,
+               NULL AS salesAmount,
+               NULL AS discountAmount,
+               NULL AS netSalesAmount,
+               NULL AS costAmount,
+               COALESCE(SUM(ro.refund_amount), 0)  AS refundAmount,
+               COALESCE(SUM(roi.cost_amount), 0)  AS returnCostAmount,
+               COUNT(*)                            AS returnCount
+        FROM return_order ro
+        LEFT JOIN return_order_item roi ON roi.return_id = ro.id
+        WHERE ro.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY ro.business_date
+        ORDER BY ro.business_date
+    </select>
+
+    <!-- TOP N 热销商品（按销售额，FR-RPT-01） -->
+    <select id="selectTopGoods" resultType="com.smms.rpt.dto.DashboardVO$TopGoodsVO">
+        SELECT soi.goods_id    AS goodsId,
+               soi.goods_name  AS goodsName,
+               COALESCE(SUM(soi.quantity), 0) AS qty,
+               COALESCE(SUM(soi.amount), 0)   AS salesAmount
+        FROM sales_order_item soi
+        JOIN sales_order so ON so.id = soi.order_id
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+          AND soi.goods_id IS NOT NULL
+        GROUP BY soi.goods_id, soi.goods_name
+        ORDER BY salesAmount DESC, qty DESC
+        LIMIT #{topN}
+    </select>
+
+    <select id="countPendingPurchase" resultType="long">
+        SELECT COUNT(*) FROM purchase_order WHERE status = 'SUBMITTED'
+    </select>
+
+    <select id="countPendingCheck" resultType="long">
+        SELECT COUNT(*) FROM stock_check_order WHERE status = 'PENDING_AUDIT'
+    </select>
+
+    <!-- 缺货商品：结存 ≤ 0 且商品启用（FR-INV-05） -->
+    <select id="countStockoutGoods" resultType="long">
+        SELECT COUNT(*)
+        FROM inventory i
+        JOIN goods g ON g.id = i.goods_id
+        WHERE g.status = 1 AND i.quantity &lt;= 0
+    </select>
+
+    <!-- 超期未到货：已审核/部分入库且预计到货日早于今日 -->
+    <select id="countOverduePurchase" resultType="long">
+        SELECT COUNT(*)
+        FROM purchase_order
+        WHERE status IN ('APPROVED', 'PARTIAL') AND expect_date &lt; CURDATE()
+    </select>
+
+    <!-- 库存预警数：结存 ≤ 安全库存下限（含缺货，FR-INV-05 角标） -->
+    <select id="countWarningGoods" resultType="long">
+        SELECT COUNT(*)
+        FROM inventory i
+        JOIN goods g ON g.id = i.goods_id
+        WHERE g.status = 1 AND i.quantity &lt;= g.safety_stock_lower
+    </select>
+
+    <select id="countNewMembers" resultType="long">
+        SELECT COUNT(*)
+        FROM member
+        WHERE register_time &gt;= #{beginTime} AND register_time &lt; #{endTime}
+    </select>
+
+    <!-- ==================== 销售报表（FR-RPT-02） ==================== -->
+
+    <!-- 按收款方式汇总（netSalesAmount 承载收款金额） -->
+    <select id="selectByPayMethod" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT pr.pay_type AS groupKey,
+               NULL AS bizDate,
+               COUNT(DISTINCT pr.order_id) AS orderCount,
+               NULL AS itemCount,
+               NULL AS salesAmount,
+               NULL AS discountAmount,
+               COALESCE(SUM(pr.amount), 0) AS netSalesAmount,
+               NULL AS costAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS returnCount
+        FROM payment_record pr
+        JOIN sales_order so ON so.id = pr.order_id
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY pr.pay_type
+        ORDER BY netSalesAmount DESC
+    </select>
+
+    <!-- 按时段（小时）分布：排班分析用，按结算时间取小时 -->
+    <select id="selectByHour" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT CAST(HOUR(so.sale_time) AS CHAR) AS groupKey,
+               NULL AS bizDate,
+               COUNT(*)                        AS orderCount,
+               COALESCE(SUM(so.item_count), 0) AS itemCount,
+               COALESCE(SUM(so.goods_amount), 0)   AS salesAmount,
+               COALESCE(SUM(so.discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(so.payable_amount), 0)  AS netSalesAmount,
+               COALESCE(SUM(so.cost_amount), 0)     AS costAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS returnCount
+        FROM sales_order so
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY HOUR(so.sale_time)
+        ORDER BY HOUR(so.sale_time)
+    </select>
+
+    <!-- 按收银员业绩汇总（销售侧） -->
+    <select id="selectByCashier" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT so.cashier_name                AS groupKey,
+               NULL AS bizDate,
+               COUNT(*)                        AS orderCount,
+               COALESCE(SUM(so.item_count), 0) AS itemCount,
+               COALESCE(SUM(so.goods_amount), 0)   AS salesAmount,
+               COALESCE(SUM(so.discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(so.payable_amount), 0)  AS netSalesAmount,
+               COALESCE(SUM(so.cost_amount), 0)     AS costAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS returnCount
+        FROM sales_order so
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY so.cashier_name
+        ORDER BY netSalesAmount DESC
+    </select>
+
+    <!-- 按收银台业绩汇总 -->
+    <select id="selectByCounter" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT CAST(so.counter_no AS CHAR)     AS groupKey,
+               NULL AS bizDate,
+               COUNT(*)                        AS orderCount,
+               COALESCE(SUM(so.item_count), 0) AS itemCount,
+               COALESCE(SUM(so.goods_amount), 0)   AS salesAmount,
+               COALESCE(SUM(so.discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(so.payable_amount), 0)  AS netSalesAmount,
+               NULL AS costAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS returnCount
+        FROM sales_order so
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY so.counter_no
+        ORDER BY so.counter_no
+    </select>
+
+    <!-- 按收银员汇总退货（业绩冲减） -->
+    <select id="selectReturnsByCashier" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT ro.cashier_name                 AS groupKey,
+               NULL AS bizDate,
+               0 AS orderCount,
+               NULL AS itemCount,
+               NULL AS salesAmount,
+               NULL AS discountAmount,
+               NULL AS netSalesAmount,
+               NULL AS costAmount,
+               COALESCE(SUM(ro.refund_amount), 0) AS refundAmount,
+               NULL AS returnCostAmount,
+               COUNT(*)                          AS returnCount
+        FROM return_order ro
+        WHERE ro.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY ro.cashier_name
+    </select>
+
+    <!-- 会员单与散客单占比 -->
+    <select id="selectMemberRatio" resultType="com.smms.rpt.dto.SalesGroupRow">
+        SELECT CASE WHEN so.member_id IS NULL THEN 'WALKIN' ELSE 'MEMBER' END AS groupKey,
+               NULL AS bizDate,
+               COUNT(*)                            AS orderCount,
+               COALESCE(SUM(so.item_count), 0)     AS itemCount,
+               COALESCE(SUM(so.goods_amount), 0)   AS salesAmount,
+               COALESCE(SUM(so.discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(so.payable_amount), 0)  AS netSalesAmount,
+               NULL AS costAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS returnCount
+        FROM sales_order so
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY CASE WHEN so.member_id IS NULL THEN 'WALKIN' ELSE 'MEMBER' END
+    </select>
+
+    <!-- ==================== 商品销售分析（FR-RPT-03） ==================== -->
+
+    <!-- 商品销售排行（按销量/销售额/毛利额；毛利额为快照口径 AC-17：Σ(实付−成本快照×数量)） -->
+    <select id="selectGoodsRanking" resultType="com.smms.rpt.dto.GoodsRankRow">
+        SELECT soi.goods_id                    AS goodsId,
+               g.goods_code                    AS goodsCode,
+               soi.goods_name                  AS goodsName,
+               g.category_id                   AS categoryId,
+               c.name                          AS categoryName,
+               g.brand_id                      AS brandId,
+               b.name                          AS brandName,
+               COUNT(DISTINCT soi.order_id)     AS orderCount,
+               COALESCE(SUM(soi.quantity), 0)  AS qty,
+               COALESCE(SUM(soi.amount), 0)     AS salesAmount,
+               COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
+               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
+               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS shareRate,
+               NULL AS stockQty,
+               NULL AS costPrice,
+               NULL AS occupiedAmount,
+               NULL AS retailPrice
+        FROM sales_order_item soi
+        JOIN sales_order so ON so.id = soi.order_id
+        LEFT JOIN goods g ON g.id = soi.goods_id
+        LEFT JOIN category c ON c.id = g.category_id
+        LEFT JOIN brand b ON b.id = g.brand_id
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+          AND soi.goods_id IS NOT NULL
+        <if test="categoryId != null">
+            AND g.category_id = #{categoryId}
+        </if>
+        GROUP BY soi.goods_id, g.goods_code, soi.goods_name, g.category_id, c.name, g.brand_id, b.name
+        ORDER BY ${orderBy} DESC, soi.goods_id
+    </select>
+
+    <!-- 品类销售结构（各分类销售额与占比，饼图/矩形树图；毛利分析分类维度复用） -->
+    <select id="selectCategoryStructure" resultType="com.smms.rpt.dto.GoodsRankRow">
+        SELECT c.id                            AS categoryId,
+               c.name                          AS categoryName,
+               NULL AS goodsId,
+               NULL AS goodsCode,
+               NULL AS goodsName,
+               NULL AS brandId,
+               NULL AS brandName,
+               COUNT(DISTINCT soi.order_id)     AS orderCount,
+               COALESCE(SUM(soi.quantity), 0)  AS qty,
+               COALESCE(SUM(soi.amount), 0)     AS salesAmount,
+               COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
+               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
+               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS shareRate,
+               NULL AS stockQty,
+               NULL AS costPrice,
+               NULL AS occupiedAmount,
+               NULL AS retailPrice
+        FROM sales_order_item soi
+        JOIN sales_order so ON so.id = soi.order_id
+        JOIN goods g ON g.id = soi.goods_id
+        JOIN category c ON c.id = g.category_id
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY c.id, c.name
+        ORDER BY salesAmount DESC
+    </select>
+
+    <!-- 品牌销售分析 -->
+    <select id="selectBrandSales" resultType="com.smms.rpt.dto.GoodsRankRow">
+        SELECT b.id                            AS brandId,
+               b.name                          AS brandName,
+               NULL AS goodsId,
+               NULL AS goodsCode,
+               NULL AS goodsName,
+               NULL AS categoryId,
+               NULL AS categoryName,
+               COUNT(DISTINCT soi.order_id)     AS orderCount,
+               COALESCE(SUM(soi.quantity), 0)  AS qty,
+               COALESCE(SUM(soi.amount), 0)     AS salesAmount,
+               COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
+               COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
+               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
+               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS shareRate,
+               NULL AS stockQty,
+               NULL AS costPrice,
+               NULL AS occupiedAmount,
+               NULL AS retailPrice
+        FROM sales_order_item soi
+        JOIN sales_order so ON so.id = soi.order_id
+        JOIN goods g ON g.id = soi.goods_id
+        JOIN brand b ON b.id = g.brand_id
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+        GROUP BY b.id, b.name
+        ORDER BY salesAmount DESC
+    </select>
+
+    <!-- 滞销商品总数（指定区间销量低于阈值，含当前库存） -->
+    <select id="countSlowMoving" resultType="long">
+        SELECT COUNT(*)
+        FROM goods g
+        JOIN inventory i ON i.goods_id = g.id
+        LEFT JOIN (SELECT soi.goods_id, SUM(soi.quantity) AS qty
+                   FROM sales_order_item soi
+                   JOIN sales_order so ON so.id = soi.order_id
+                   WHERE so.business_date BETWEEN #{begin} AND #{end}
+                   GROUP BY soi.goods_id) s ON s.goods_id = g.id
+        WHERE g.status = 1
+          AND COALESCE(s.qty, 0) &lt; #{threshold}
+        <if test="categoryId != null">
+            AND g.category_id = #{categoryId}
+        </if>
+    </select>
+
+    <!-- 滞销商品清单（销量低于阈值，含当前库存量与占用资金，FR-RPT-03③） -->
+    <select id="selectSlowMoving" resultType="com.smms.rpt.dto.GoodsRankRow">
+        SELECT g.id                            AS goodsId,
+               g.goods_code                    AS goodsCode,
+               g.name                          AS goodsName,
+               g.category_id                   AS categoryId,
+               c.name                          AS categoryName,
+               NULL AS brandId,
+               NULL AS brandName,
+               0 AS orderCount,
+               COALESCE(s.qty, 0)              AS qty,
+               NULL AS salesAmount,
+               NULL AS discountAmount,
+               NULL AS netSalesAmount,
+               NULL AS costAmount,
+               NULL AS profitAmount,
+               NULL AS refundAmount,
+               NULL AS returnCostAmount,
+               NULL AS shareRate,
+               i.quantity                      AS stockQty,
+               i.cost_price                    AS costPrice,
+               (i.quantity * i.cost_price)    AS occupiedAmount,
+               g.retail_price                  AS retailPrice
+        FROM goods g
+        JOIN inventory i ON i.goods_id = g.id
+        LEFT JOIN category c ON c.id = g.category_id
+        LEFT JOIN (SELECT soi.goods_id, SUM(soi.quantity) AS qty
+                   FROM sales_order_item soi
+                   JOIN sales_order so ON so.id = soi.order_id
+                   WHERE so.business_date BETWEEN #{begin} AND #{end}
+                   GROUP BY soi.goods_id) s ON s.goods_id = g.id
+        WHERE g.status = 1
+          AND COALESCE(s.qty, 0) &lt; #{threshold}
+        <if test="categoryId != null">
+            AND g.category_id = #{categoryId}
+        </if>
+        ORDER BY occupiedAmount DESC, g.id
+    </select>
+
+    <!-- ==================== 毛利分析（FR-RPT-05） ==================== -->
+
+    <!-- 负毛利清单：成交价低于成本价（定价错误与异常改价线索） -->
+    <select id="selectNegativeProfit" resultType="com.smms.rpt.dto.NegativeProfitRow">
+        SELECT soi.goods_id                    AS goodsId,
+               g.goods_code                    AS goodsCode,
+               soi.goods_name                  AS goodsName,
+               c.name                          AS categoryName,
+               soi.unit_price                  AS unitPrice,
+               soi.cost_price                  AS costPrice,
+               (soi.unit_price - soi.cost_price) AS unitProfit,
+               COALESCE(SUM(soi.quantity), 0)  AS qty,
+               COUNT(DISTINCT soi.order_id)    AS orderCount,
+               COALESCE(SUM(soi.paid_amount), 0) AS paidAmount,
+               COALESCE(SUM(soi.cost_amount), 0)  AS costAmount,
+               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount
+        FROM sales_order_item soi
+        JOIN sales_order so ON so.id = soi.order_id
+        LEFT JOIN goods g ON g.id = soi.goods_id
+        LEFT JOIN category c ON c.id = g.category_id
+        WHERE so.business_date BETWEEN #{begin} AND #{end}
+          AND soi.unit_price &lt; soi.cost_price
+        GROUP BY soi.goods_id, g.goods_code, soi.goods_name, c.name, soi.unit_price, soi.cost_price
+        ORDER BY profitAmount ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- ==================== 下钻明细（BR-RPT-06） ==================== -->
+
+    <select id="countDrillOrders" resultType="long">
+        SELECT COUNT(*)
+        FROM sales_order so
+        WHERE so.business_date &gt;= #{q.beginDate} AND so.business_date &lt;= #{q.endDate}
+        <if test="q.goodsId != null">
+            AND EXISTS (SELECT 1 FROM sales_order_item soi
+                        WHERE soi.order_id = so.id AND soi.goods_id = #{q.goodsId})
+        </if>
+        <if test="q.cashierName != null and q.cashierName != ''">
+            AND so.cashier_name LIKE CONCAT('%', #{q.cashierName}, '%')
+        </if>
+        <if test="q.counterNo != null">
+            AND so.counter_no = #{q.counterNo}
+        </if>
+        <if test="q.memberOnly != null and q.memberOnly">
+            AND so.member_id IS NOT NULL
+        </if>
+        <if test="q.memberOnly != null and !q.memberOnly">
+            AND so.member_id IS NULL
+        </if>
+    </select>
+
+    <!-- 汇总数字下钻：构成它的销售单列表（点击可再打开单据详情） -->
+    <select id="selectDrillOrders" resultType="com.smms.rpt.dto.DrillOrderRow">
+        SELECT so.id                          AS id,
+               so.order_no                    AS orderNo,
+               so.cashier_name                AS cashierName,
+               so.counter_no                  AS counterNo,
+               m.name                         AS memberName,
+               so.sale_time                   AS saleTime,
+               so.business_date               AS businessDate,
+               so.item_count                  AS itemCount,
+               so.goods_amount                AS goodsAmount,
+               so.discount_amount            AS discountAmount,
+               so.payable_amount              AS payableAmount,
+               so.paid_amount                 AS paidAmount,
+               so.cost_amount                 AS costAmount,
+               so.profit_amount               AS profitAmount,
+               so.return_status               AS returnStatus
+        FROM sales_order so
+        LEFT JOIN member m ON m.id = so.member_id
+        WHERE so.business_date &gt;= #{q.beginDate} AND so.business_date &lt;= #{q.endDate}
+        <if test="q.goodsId != null">
+            AND EXISTS (SELECT 1 FROM sales_order_item soi
+                        WHERE soi.order_id = so.id AND soi.goods_id = #{q.goodsId})
+        </if>
+        <if test="q.cashierName != null and q.cashierName != ''">
+            AND so.cashier_name LIKE CONCAT('%', #{q.cashierName}, '%')
+        </if>
+        <if test="q.counterNo != null">
+            AND so.counter_no = #{q.counterNo}
+        </if>
+        <if test="q.memberOnly != null and q.memberOnly">
+            AND so.member_id IS NOT NULL
+        </if>
+        <if test="q.memberOnly != null and !q.memberOnly">
+            AND so.member_id IS NULL
+        </if>
+        ORDER BY so.sale_time DESC, so.id DESC
+    </select>
+</mapper>

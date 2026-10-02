@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.rpt.mapper.PurchaseReportMapper">
+
+    <!-- 采购汇总（供应商维度，FR-RPT-06①②）：
+         仅统计正式单据（排除草稿/作废/终止，BR-RPT-03）；
+         在途 = 订购 − 已入库；退货按已审核采购退货单汇总 -->
+    <select id="selectSupplierSummary" resultType="com.smms.rpt.dto.PurchSummaryRow">
+        SELECT po.supplier_id                  AS supplierId,
+               s.name                          AS supplierName,
+               NULL                            AS goodsId,
+               NULL                            AS goodsCode,
+               NULL                            AS goodsName,
+               NULL                            AS categoryName,
+               COUNT(DISTINCT po.id)           AS orderCount,
+               COALESCE(SUM(poi.quantity), 0)      AS purchaseQty,
+               COALESCE(SUM(poi.amount), 0)        AS purchaseAmount,
+               COALESCE(SUM(poi.received_qty), 0)  AS receivedQty,
+               (COALESCE(SUM(poi.quantity), 0) - COALESCE(SUM(poi.received_qty), 0)) AS inTransitQty,
+               COALESCE(MAX(r.returnQty), 0)       AS returnQty,
+               COALESCE(MAX(r.returnAmount), 0)    AS returnAmount,
+               COALESCE(SUM(CASE WHEN po.settle_status = 'SETTLED' THEN poi.amount ELSE 0 END), 0) AS settledAmount,
+               COALESCE(SUM(CASE WHEN po.settle_status = 'PARTIAL' THEN poi.amount ELSE 0 END), 0) AS partialSettledAmount
+        FROM purchase_order po
+        JOIN supplier s ON s.id = po.supplier_id
+        JOIN purchase_order_item poi ON poi.order_id = po.id
+        LEFT JOIN (SELECT pt.supplier_id AS sid, SUM(pri.return_qty) AS returnQty, SUM(pri.amount) AS returnAmount
+                   FROM purchase_return_order pt
+                   JOIN purchase_return_item pri ON pri.return_id = pt.id
+                   WHERE pt.status = 'APPROVED'
+                     AND pt.create_time &gt;= #{beginTime} AND pt.create_time &lt; #{endTime}
+                   GROUP BY pt.supplier_id) r ON r.sid = po.supplier_id
+        WHERE po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
+          AND po.create_time &gt;= #{beginTime} AND po.create_time &lt; #{endTime}
+        GROUP BY po.supplier_id, s.name, r.returnQty, r.returnAmount
+        ORDER BY purchaseAmount DESC
+    </select>
+
+    <!-- 采购汇总（商品维度） -->
+    <select id="selectGoodsSummary" resultType="com.smms.rpt.dto.PurchSummaryRow">
+        SELECT NULL                            AS supplierId,
+               NULL                            AS supplierName,
+               poi.goods_id                    AS goodsId,
+               g.goods_code                    AS goodsCode,
+               g.name                          AS goodsName,
+               c.name                          AS categoryName,
+               COUNT(DISTINCT po.id)           AS orderCount,
+               COALESCE(SUM(poi.quantity), 0)      AS purchaseQty,
+               COALESCE(SUM(poi.amount), 0)        AS purchaseAmount,
+               COALESCE(SUM(poi.received_qty), 0)  AS receivedQty,
+               (COALESCE(SUM(poi.quantity), 0) - COALESCE(SUM(poi.received_qty), 0)) AS inTransitQty,
+               COALESCE(MAX(r.returnQty), 0)       AS returnQty,
+               COALESCE(MAX(r.returnAmount), 0)    AS returnAmount,
+               COALESCE(SUM(CASE WHEN po.settle_status = 'SETTLED' THEN poi.amount ELSE 0 END), 0) AS settledAmount,
+               COALESCE(SUM(CASE WHEN po.settle_status = 'PARTIAL' THEN poi.amount ELSE 0 END), 0) AS partialSettledAmount
+        FROM purchase_order po
+        JOIN purchase_order_item poi ON poi.order_id = po.id
+        JOIN goods g ON g.id = poi.goods_id
+        LEFT JOIN category c ON c.id = g.category_id
+        LEFT JOIN (SELECT pri.goods_id AS gid, SUM(pri.return_qty) AS returnQty, SUM(pri.amount) AS returnAmount
+                   FROM purchase_return_order pt
+                   JOIN purchase_return_item pri ON pri.return_id = pt.id
+                   WHERE pt.status = 'APPROVED'
+                     AND pt.create_time &gt;= #{beginTime} AND pt.create_time &lt; #{endTime}
+                   GROUP BY pri.goods_id) r ON r.gid = poi.goods_id
+        WHERE po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
+          AND po.create_time &gt;= #{beginTime} AND po.create_time &lt; #{endTime}
+        GROUP BY poi.goods_id, g.goods_code, g.name, c.name, r.returnQty, r.returnAmount
+        ORDER BY purchaseAmount DESC
+    </select>
+
+    <!-- 采购价格波动（FR-RPT-06③）：同商品多次采购单价趋势 -->
+    <select id="selectPriceTrend" resultType="com.smms.rpt.dto.PriceTrendRow">
+        SELECT po.id          AS orderId,
+               po.order_no    AS orderNo,
+               po.supplier_id AS supplierId,
+               s.name         AS supplierName,
+               po.create_time AS orderTime,
+               poi.quantity   AS quantity,
+               poi.price      AS price
+        FROM purchase_order_item poi
+        JOIN purchase_order po ON po.id = poi.order_id
+        JOIN supplier s ON s.id = po.supplier_id
+        WHERE poi.goods_id = #{goodsId}
+          AND po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
+        <if test="beginTime != null">
+            AND po.create_time &gt;= #{beginTime}
+        </if>
+        <if test="endTime != null">
+            AND po.create_time &lt; #{endTime}
+        </if>
+        ORDER BY po.create_time, po.id
+    </select>
+
+    <!-- 到货及时率（FR-RPT-06④）：按期 = 实收日期 ≤ 预计到货日期 -->
+    <select id="selectArrival" resultType="com.smms.rpt.dto.ArrivalRow">
+        SELECT po.supplier_id AS supplierId,
+               s.name         AS supplierName,
+               COUNT(*)       AS receiptCount,
+               COALESCE(SUM(CASE WHEN DATE(ro.receipt_time) &lt;= po.expect_date THEN 1 ELSE 0 END), 0) AS onTimeCount
+        FROM receipt_order ro
+        JOIN purchase_order po ON po.id = ro.purchase_order_id
+        JOIN supplier s ON s.id = po.supplier_id
+        WHERE po.expect_date IS NOT NULL
+          AND ro.receipt_time &gt;= #{beginTime} AND ro.receipt_time &lt; #{endTime}
+        GROUP BY po.supplier_id, s.name
+        ORDER BY receiptCount DESC
+    </select>
+</mapper>
