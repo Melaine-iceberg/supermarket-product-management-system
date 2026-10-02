@@ -13,10 +13,10 @@ import java.util.List;
 public final class SecurityUtils {
 
     /** 完整会员手机号可见角色（BR-MEM-08：店长及以上） */
-    private static final List<String> FULL_PHONE_ROLES = List.of("ADMIN", "MANAGER");
+    private static final List<String> FULL_PHONE_ROLES = List.of("SUPER_ADMIN", "MANAGER");
 
     /** 供应商敏感字段可见角色（BR-SUP-01：银行账号与纳税人识别号，店长及以上） */
-    private static final List<String> SUPPLIER_SENSITIVE_ROLES = List.of("ADMIN", "MANAGER");
+    private static final List<String> SUPPLIER_SENSITIVE_ROLES = List.of("SUPER_ADMIN", "MANAGER");
 
     private SecurityUtils() {
     }
