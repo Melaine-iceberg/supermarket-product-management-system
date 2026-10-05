@@ -155,21 +155,25 @@ public class InventoryReportService {
         for (LossRow l : losses) {
             LossGoodsRow r = merged.computeIfAbsent(l.goodsId(),
                     k -> new LossGoodsRow(k, l.goodsName(), l.categoryName(),
-                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
             if ("OVERFLOW".equals(l.bizType())) {
                 continue;
             }
+            BigDecimal lossQty = r.lossQty().add(l.lossQty());
+            BigDecimal lossAmount = r.lossAmount().add(l.lossAmount());
             merged.put(l.goodsId(), new LossGoodsRow(r.goodsId(), r.goodsName(), r.categoryName(),
-                    r.lossQty().add(l.lossQty()), r.lossAmount().add(l.lossAmount()),
-                    r.checkQty(), r.checkAmount()));
+                    lossQty, lossAmount, r.checkQty(), r.checkAmount(),
+                    lossAmount.add(r.checkAmount())));
         }
         for (LossRow s : shortages) {
             LossGoodsRow r = merged.computeIfAbsent(s.goodsId(),
                     k -> new LossGoodsRow(k, s.goodsName(), s.categoryName(),
-                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+                            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+            BigDecimal checkQty = r.checkQty().add(s.lossQty());
+            BigDecimal checkAmount = r.checkAmount().add(s.lossAmount());
             merged.put(s.goodsId(), new LossGoodsRow(r.goodsId(), r.goodsName(), r.categoryName(),
-                    r.lossQty(), r.lossAmount(),
-                    r.checkQty().add(s.lossQty()), r.checkAmount().add(s.lossAmount())));
+                    r.lossQty(), r.lossAmount(), checkQty, checkAmount,
+                    r.lossAmount().add(checkAmount)));
         }
         List<LossGoodsRow> rows = new ArrayList<>(merged.values());
         rows.sort((a, b) -> b.totalAmount().compareTo(a.totalAmount()));
@@ -274,7 +278,7 @@ public class InventoryReportService {
         }
     }
 
-    /** 损耗商品行：报损与盘亏分开列示，合计为损耗金额 */
+    /** 损耗商品行：报损与盘亏分开列示，合计为损耗金额（合计作为分量随 JSON 输出，供列表/打印使用） */
     public record LossGoodsRow(
             Long goodsId,
             String goodsName,
@@ -282,12 +286,8 @@ public class InventoryReportService {
             BigDecimal lossQty,
             BigDecimal lossAmount,
             BigDecimal checkQty,
-            BigDecimal checkAmount) {
-
-        public BigDecimal totalAmount() {
-            return (lossAmount == null ? BigDecimal.ZERO : lossAmount)
-                    .add(checkAmount == null ? BigDecimal.ZERO : checkAmount);
-        }
+            BigDecimal checkAmount,
+            BigDecimal totalAmount) {
     }
 
     /** 损耗报表结果（FR-RPT-04⑤） */

@@ -128,6 +128,12 @@ const router = createRouter({
           component: () => import('@/views/inventory/check/index.vue'),
           meta: { perm: 'sys:check:list', title: '盘点管理' },
         },
+        {
+          path: 'inventory/loss',
+          name: 'inventory-loss',
+          component: () => import('@/views/inventory/loss/index.vue'),
+          meta: { perm: 'sys:loss:list', title: '报损报溢' },
+        },
         // 销售管理（FR-SALE）
         {
           path: 'sale/cashier',

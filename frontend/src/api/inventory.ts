@@ -151,6 +151,85 @@ export function importCheckActual(id: number, file: File) {
   )
 }
 
+// ---------- 报损/报溢登记（FR-INV-10） ----------
+
+/** 报损报溢类型：LOSS报损出库 / OVERFLOW报溢入库 */
+export type LossBizType = 'LOSS' | 'OVERFLOW'
+
+/** 单据状态：PENDING待审核 → AUDITED已审核 / REJECTED已驳回 */
+export type LossStatus = 'PENDING' | 'AUDITED' | 'REJECTED'
+
+/** 报损/报溢单（单商品）：reason 存字典代码，reasonLabel 为展示名（FR-SYS-07） */
+export interface LossOrderVO {
+  id: number
+  orderNo: string
+  bizType: LossBizType
+  goodsId: number
+  goodsCode: string
+  barcode: string | null
+  goodsName: string
+  categoryName: string
+  unitName: string
+  spec: string | null
+  isWeighed: number
+  quantity: number
+  /** 报损=登记时成本快照（审核时按实际结转定稿）；报溢=录入单价 */
+  costPrice: number
+  amount: number
+  reason: string
+  reasonLabel: string
+  applyName: string
+  status: LossStatus
+  auditorName: string | null
+  auditTime: string | null
+  auditRemark: string | null
+  remark: string | null
+  createTime: string
+}
+
+/** 报损/报溢登记请求（FR-INV-10）：报溢须录入成本单价，报损由服务端按当前成本快照 */
+export interface LossOrderCreatePayload {
+  bizType: LossBizType
+  goodsId: number
+  quantity: number
+  costPrice?: number
+  reason: string
+  remark?: string
+}
+
+/** 报损/报溢单列表查询条件（FR-INV-10） */
+export interface LossOrderQuery {
+  orderNo?: string
+  bizType?: string
+  status?: string
+  goodsKeyword?: string
+  applyName?: string
+  beginDate?: string
+  endDate?: string
+  page: number
+  size: number
+}
+
+/** 报损/报溢单分页（FR-INV-10） */
+export function pageLossOrders(params: LossOrderQuery) {
+  return http.get<PageResult<LossOrderVO>>('/loss-orders', params)
+}
+
+/** 登记报损/报溢单（FR-INV-10）：登记后进入待审核 */
+export function createLossOrder(data: LossOrderCreatePayload) {
+  return http.post<LossOrderVO>('/loss-orders', data)
+}
+
+/** 单据详情（FR-INV-10） */
+export function getLossOrder(id: number) {
+  return http.get<LossOrderVO>(`/loss-orders/${id}`)
+}
+
+/** 店长审核（FR-INV-10）：approved=true 通过（生成 LOSS_OUT/OVERFLOW_IN 流水），false 驳回（意见必填） */
+export function auditLossOrder(id: number, approved: boolean, remark?: string) {
+  return http.post<LossOrderVO>(`/loss-orders/${id}/audit`, { approved, remark })
+}
+
 // ---------- 实时库存查询（FR-INV-01，只读：结存为派生数据 BR-INV-11） ----------
 
 /** 库存状态：NORMAL正常 / WARNING预警 / OUT缺货 / OVERSTOCK积压（FR-INV-05 口径） */

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.smms.inv.mapper.LossOrderMapper">
+
+    <!-- ==================== 报损/报溢单（DR-15，FR-INV-10） ==================== -->
+
+    <!-- 原因存字典代码，展示名关联 loss_reason 字典项（FR-SYS-07：历史数据停用后仍可显示名称） -->
+    <sql id="lossColumns">
+        l.id            AS id,
+        l.order_no      AS orderNo,
+        l.biz_type      AS bizType,
+        l.goods_id      AS goodsId,
+        g.goods_code    AS goodsCode,
+        g.barcode       AS barcode,
+        g.name          AS goodsName,
+        c.name          AS categoryName,
+        u.name          AS unitName,
+        g.spec          AS spec,
+        g.is_weighed    AS isWeighed,
+        l.quantity      AS quantity,
+        l.cost_price    AS costPrice,
+        l.amount        AS amount,
+        l.reason        AS reason,
+        di.label        AS reasonLabel,
+        l.apply_name    AS applyName,
+        l.status        AS status,
+        l.auditor_name  AS auditorName,
+        l.audit_time    AS auditTime,
+        l.audit_remark  AS auditRemark,
+        l.remark        AS remark,
+        l.create_time   AS createTime
+    </sql>
+
+    <sql id="lossFrom">
+        FROM loss_order l
+        JOIN goods g ON g.id = l.goods_id
+        LEFT JOIN category c ON c.id = g.category_id
+        LEFT JOIN unit u ON u.id = g.unit_id
+        LEFT JOIN sys_dict d ON d.dict_type = 'loss_reason'
+        LEFT JOIN sys_dict_item di ON di.dict_id = d.id AND di.value = l.reason
+    </sql>
+
+    <!-- 报损/报溢单分页：申请时间倒序；商品关键字按编码/条码/名称模糊（扫码或输入均可） -->
+    <select id="selectLossPage" resultType="com.smms.inv.dto.LossOrderVO">
+        SELECT <include refid="lossColumns"/>
+        <include refid="lossFrom"/>
+        <where>
+            <if test="q.orderNo != null and q.orderNo != ''">
+                AND l.order_no LIKE CONCAT('%', #{q.orderNo}, '%')
+            </if>
+            <if test="q.bizType != null and q.bizType != ''">
+                AND l.biz_type = #{q.bizType}
+            </if>
+            <if test="q.status != null and q.status != ''">
+                AND l.status = #{q.status}
+            </if>
+            <if test="q.goodsKeyword != null and q.goodsKeyword != ''">
+                AND (g.goods_code LIKE CONCAT('%', #{q.goodsKeyword}, '%')
+                     OR g.barcode LIKE CONCAT('%', #{q.goodsKeyword}, '%')
+                     OR g.name LIKE CONCAT('%', #{q.goodsKeyword}, '%'))
+            </if>
+            <if test="q.applyName != null and q.applyName != ''">
+                AND l.apply_name LIKE CONCAT('%', #{q.applyName}, '%')
+            </if>
+            <if test="beginTime != null">
+                AND l.create_time &gt;= #{beginTime}
+            </if>
+            <if test="endTime != null">
+                AND l.create_time &lt; #{endTime}
+            </if>
+        </where>
+        ORDER BY l.create_time DESC, l.id DESC
+    </select>
+
+    <select id="selectLossDetail" resultType="com.smms.inv.dto.LossOrderVO">
+        SELECT <include refid="lossColumns"/>
+        <include refid="lossFrom"/>
+        WHERE l.id = #{id}
+    </select>
+</mapper>

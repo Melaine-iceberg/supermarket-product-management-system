@@ -41,6 +41,19 @@ public class SysDictService {
                 .toList();
     }
 
+    /**
+     * 业务表单选项（FR-SYS-07/NFR-EXT-01）：仅返回启用中的字典项（停用项不可被新单据选择），
+     * 按排序号升序；供报损原因等业务下拉使用，任意已登录用户可读。
+     */
+    public List<DictVO.ItemVO> enabledItems(String dictType) {
+        SysDict dict = requireDict(dictType);
+        return itemMapper.selectList(Wrappers.<SysDictItem>lambdaQuery()
+                        .eq(SysDictItem::getDictId, dict.getId())
+                        .eq(SysDictItem::getStatus, 1)
+                        .orderByAsc(SysDictItem::getSortNo))
+                .stream().map(this::toItemVO).toList();
+    }
+
     /** 新增字典项：同一字典下 value 唯一 */
     public void addItem(String dictType, DictItemSaveRequest req, String operator) {
         SysDict dict = requireDict(dictType);

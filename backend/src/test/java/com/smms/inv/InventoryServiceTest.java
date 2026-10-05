@@ -108,14 +108,15 @@ class InventoryServiceTest {
     // ---------- 出库（BR-INV-02/03/05/06） ----------
 
     @Test
-    @DisplayName("出库：库存充足时原子扣减并写流水，成本按当前成本快照")
+    @DisplayName("出库：库存充足时原子扣减并写流水，成本按当前成本快照，并返回结转成本供报损定稿")
     void stockOut_success() {
         when(configService.getBool(KEY_ALLOW_NEGATIVE, false)).thenReturn(false);
         when(inventoryMapper.decreaseStock(eq(GOODS_ID), eq(1L), eq(new BigDecimal("2")), eq(false))).thenReturn(1);
         when(inventoryMapper.selectById(GOODS_ID)).thenReturn(row("3", "2.5"));
 
-        service.stockOut(out("SALE_OUT", "2"));
+        BigDecimal bookedCost = service.stockOut(out("SALE_OUT", "2"));
 
+        assertThat(bookedCost).isEqualByComparingTo("2.5");
         InventoryRecord r = capturedRecord();
         assertThat(r.getRecordType()).isEqualTo("SALE_OUT");
         assertThat(r.getChangeQty()).isEqualByComparingTo("-2");
@@ -226,6 +227,26 @@ class InventoryServiceTest {
         assertThat(r.getBeforeQty()).isEqualByComparingTo("5");
         assertThat(r.getAfterQty()).isEqualByComparingTo("7");
         assertThat(r.getUnitCost()).isEqualByComparingTo("2");
+    }
+
+    @Test
+    @DisplayName("报溢入库（§8.2）：按当前成本单价入账且不重算均价，传入单价被忽略")
+    void stockIn_overflow_currentCost_noRecalc() {
+        when(inventoryMapper.increaseStock(eq(GOODS_ID), eq(1L), eq(new BigDecimal("5")))).thenReturn(1);
+        when(inventoryMapper.selectById(GOODS_ID)).thenReturn(row("15", "2.5"));
+
+        // 单据侧录入单价 9，仅用于单据展示；库存流水按当前成本 2.5 入账
+        service.stockIn(new StockChange(GOODS_ID, "OVERFLOW_IN", new BigDecimal("5"),
+                new BigDecimal("9"), "BY", "BY202610050001", "manager01", null));
+
+        verify(inventoryMapper, never()).selectByGoodsIdForUpdate(anyLong(), anyLong());
+        verify(inventoryMapper, never()).updateQuantityAndCost(anyLong(), anyLong(), any(), any(), any());
+        InventoryRecord r = capturedRecord();
+        assertThat(r.getRecordType()).isEqualTo("OVERFLOW_IN");
+        assertThat(r.getBeforeQty()).isEqualByComparingTo("10");
+        assertThat(r.getAfterQty()).isEqualByComparingTo("15");
+        assertThat(r.getUnitCost()).isEqualByComparingTo("2.5");
+        assertThat(r.getBizNo()).isEqualTo("BY202610050001");
     }
 
     // ---------- 参数校验 ----------

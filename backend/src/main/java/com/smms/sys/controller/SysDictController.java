@@ -35,6 +35,12 @@ public class SysDictController {
         return ApiResponse.ok(dictService.list());
     }
 
+    /** 业务表单选项（FR-SYS-07）：启用中的字典项，报损原因等业务下拉使用（库管员等无字典维护权限） */
+    @GetMapping("/{dictType}/items")
+    public ApiResponse<List<DictVO.ItemVO>> enabledItems(@PathVariable String dictType) {
+        return ApiResponse.ok(dictService.enabledItems(dictType));
+    }
+
     @PostMapping("/{dictType}/items")
     @RequirePerm("sys:dict:update")
     @OpLog(module = "系统管理", action = "新增字典项", target = "#dictType + '/' + #req.value")

@@ -68,6 +68,8 @@ public enum ErrorCode {
     CHECK_STATUS_INVALID(1413, "盘点单当前状态不允许该操作"),
     CHECK_AUDIT_SELF(1414, "审核人与盘点人必须为不同用户（BR-SYS-01）"),
     CHECK_REASON_REQUIRED(1415, "差异原因或驳回意见不能为空"),
+    LOSS_STATUS_INVALID(1421, "报损报溢单当前状态不允许该操作"),
+    LOSS_REASON_INVALID(1422, "报损报溢原因不合法或已被停用（数据字典 loss_reason）"),
 
     // ---------- SALE 销售模块（1500 ~ 1599，FR-SALE-01 ~ 13） ----------
     SALE_GOODS_INVALID(1501, "商品不存在或已停用，不可销售"),

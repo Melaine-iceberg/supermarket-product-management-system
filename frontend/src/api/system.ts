@@ -154,6 +154,11 @@ export function listDicts() {
   return http.get<DictVO[]>('/dicts')
 }
 
+/** 启用中的字典项（任意已登录用户）：业务表单选项，停用项不可被新单据选择（FR-SYS-07） */
+export function getDictItems(dictType: string) {
+  return http.get<DictVO['items']>(`/dicts/${dictType}/items`)
+}
+
 export function addDictItem(
   dictType: string,
   data: { label: string; value: string; sortNo: number; status: number; remark?: string },
