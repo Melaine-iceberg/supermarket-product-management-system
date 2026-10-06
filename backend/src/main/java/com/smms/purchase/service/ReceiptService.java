@@ -29,6 +29,7 @@ import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.entity.OperationLog;
 import com.smms.sys.service.OperationLogService;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -85,6 +86,7 @@ public class ReceiptService {
     private final InventoryService inventoryService;
     private final SysConfigService configService;
     private final OperationLogService operationLogService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     // ==================== 入库预检（BR-PUR-04/05） ====================
 
@@ -174,25 +176,34 @@ public class ReceiptService {
                     request.getRemark()));
         }
 
-        // 容差与价差授权校验（BR-PUR-04/05）：超出须店长授权
+        // 容差与价差授权校验（BR-PUR-04/05）：超出须店长账号+密码现场授权
         BigDecimal tolerance = toleranceRate();
         BigDecimal priceTolerance = priceDiffRate();
-        boolean hasAuthorizer = !isBlank(req.getAuthorizerName());
+        String authorizerName = null;
         for (Line line : lines) {
             BigDecimal pending = line.item().getQuantity().subtract(line.item().getReceivedQty());
             BigDecimal toleranceMax = pending.multiply(
                     BigDecimal.ONE.add(tolerance.divide(HUNDRED, 4, RoundingMode.HALF_UP)));
-            if (line.qty().compareTo(toleranceMax) > 0 && !hasAuthorizer) {
-                throw new BusinessException(ErrorCode.PUR_RECEIPT_TOLERANCE_EXCEED,
-                        "商品实收 " + line.qty().stripTrailingZeros().toPlainString()
-                                + " 超出待入库 " + pending.stripTrailingZeros().toPlainString()
-                                + " ×(1+" + tolerance.stripTrailingZeros().toPlainString() + "%)，须店长授权");
+            boolean overTolerance = line.qty().compareTo(toleranceMax) > 0;
+            boolean priceAuthNeeded = needPriceAuth(line.price(), line.item().getPrice(), priceTolerance);
+            if (!overTolerance && !priceAuthNeeded) {
+                continue;
             }
-            if (needPriceAuth(line.price(), line.item().getPrice(), priceTolerance) && !hasAuthorizer) {
-                throw new BusinessException(ErrorCode.PUR_RECEIPT_PRICE_AUTH,
-                        "实收单价 " + line.price() + " 与采购单价 " + line.item().getPrice()
-                                + " 偏离超过 ±" + priceTolerance.stripTrailingZeros().toPlainString()
-                                + "%，须店长授权");
+            if (authorizerName == null) {
+                if (isBlank(req.getAuthorizerUsername())) {
+                    if (overTolerance) {
+                        throw new BusinessException(ErrorCode.PUR_RECEIPT_TOLERANCE_EXCEED,
+                                "商品实收 " + line.qty().stripTrailingZeros().toPlainString()
+                                        + " 超出待入库 " + pending.stripTrailingZeros().toPlainString()
+                                        + " ×(1+" + tolerance.stripTrailingZeros().toPlainString() + "%)，须店长授权");
+                    }
+                    throw new BusinessException(ErrorCode.PUR_RECEIPT_PRICE_AUTH,
+                            "实收单价 " + line.price() + " 与采购单价 " + line.item().getPrice()
+                                    + " 偏离超过 ±" + priceTolerance.stripTrailingZeros().toPlainString()
+                                    + "%，须店长授权");
+                }
+                authorizerName = sensitiveAuthService.authorize(req.getAuthorizerUsername(),
+                        req.getAuthorizerPassword()).realName();
             }
         }
 
@@ -200,7 +211,7 @@ public class ReceiptService {
         checkDutySeparation(order, operator);
 
         // 1. 入库单落库（RK 单号，BR-PUR-01）
-        ReceiptOrder receipt = insertWithOrderNo(req, order, operator, lines);
+        ReceiptOrder receipt = insertWithOrderNo(req, order, operator, lines, authorizerName);
 
         // 2. 明细落库 + 采购明细已入库数量回写
         for (Line line : lines) {
@@ -380,7 +391,7 @@ public class ReceiptService {
 
     /** RK 单号生成（BR-PUR-01）：RK+yyyyMMdd+4位流水，行锁取号 + 唯一键兜底重试 */
     private ReceiptOrder insertWithOrderNo(ReceiptCreateRequest req, PurchaseOrder order,
-                                           LoginUser operator, List<Line> lines) {
+                                           LoginUser operator, List<Line> lines, String authorizerName) {
         BigDecimal total = lines.stream().map(Line::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
         ReceiptOrder receipt = new ReceiptOrder();
@@ -389,7 +400,7 @@ public class ReceiptService {
         receipt.setSupplierId(order.getSupplierId());
         receipt.setReceiptTime(LocalDateTime.now());
         receipt.setOperatorName(operator.realName());
-        receipt.setAuthorizerName(isBlank(req.getAuthorizerName()) ? null : req.getAuthorizerName());
+        receipt.setAuthorizerName(authorizerName);
         receipt.setDeliveryOrderNo(req.getDeliveryOrderNo());
         receipt.setTotalAmount(total);
         receipt.setRemark(req.getRemark());

@@ -230,7 +230,8 @@ function resetOrder() {
   cart.value = []
   member.value = null
   orderRateInput.value = null
-  orderRateDialog.authorizer = ''
+  orderRateDialog.authorizerUsername = ''
+  orderRateDialog.authorizerPassword = ''
   remark.value = ''
 }
 
@@ -278,13 +279,14 @@ const orderRateInput = ref<number | null>(null)
 const orderRateDialog = reactive({
   visible: false,
   rate: null as number | null,
-  authorizer: '',
+  authorizerUsername: '',
+  authorizerPassword: '',
   saving: false,
 })
 
 function openOrderRateDialog() {
   orderRateDialog.rate = orderRateInput.value
-  orderRateDialog.authorizer = ''
+  orderRateDialog.authorizerPassword = ''
   orderRateDialog.visible = true
 }
 
@@ -294,9 +296,19 @@ function confirmOrderRate() {
     ElMessage.warning('整单折扣率须在 0.7~1 之间（BR-SALE-10）')
     return
   }
-  if (rate < 1 && !orderRateDialog.authorizer.trim()) {
-    ElMessage.warning('整单折扣须店长授权，请填写授权人姓名（FR-SALE-07）')
-    return
+  if (rate < 1) {
+    if (!orderRateDialog.authorizerUsername.trim()) {
+      ElMessage.warning('整单折扣须店长授权，请填写授权店长账号（FR-SALE-07）')
+      return
+    }
+    if (orderRateDialog.authorizerUsername.trim() === auth.user?.username) {
+      ElMessage.warning('整单折扣授权人不得为当前收银员本人（FR-SALE-07）')
+      return
+    }
+    if (!orderRateDialog.authorizerPassword) {
+      ElMessage.warning('请填写授权店长密码以完成授权（FR-SALE-07）')
+      return
+    }
   }
   orderRateInput.value = rate
   orderRateDialog.visible = false
@@ -306,8 +318,13 @@ function clearOrderRate() {
   orderRateInput.value = null
 }
 
-const orderAuthorizer = computed(() =>
-  orderRateInput.value != null && orderRateInput.value < 1 ? orderRateDialog.authorizer.trim() : undefined,
+const orderAuthUsername = computed(() =>
+  orderRateInput.value != null && orderRateInput.value < 1
+    ? orderRateDialog.authorizerUsername.trim()
+    : undefined,
+)
+const orderAuthPassword = computed(() =>
+  orderRateInput.value != null && orderRateInput.value < 1 ? orderRateDialog.authorizerPassword : undefined,
 )
 const orderRate = computed(() =>
   orderRateInput.value != null && orderRateInput.value < 1 ? orderRateInput.value : undefined,
@@ -411,11 +428,19 @@ async function submitCheckout() {
   }
   payDialog.submitting = true
   try {
+    // 整单折扣已配置但授权密码缺失（如取单后未重新录入），退回折扣对话框补充授权
+    if (orderRate.value != null && !orderAuthPassword.value) {
+      orderRateDialog.rate = orderRateInput.value
+      orderRateDialog.visible = true
+      ElMessage.warning('整单折扣需重新填写授权密码（FR-SALE-07）')
+      return
+    }
     const result = await checkout({
       counterNo: counterNo.value,
       memberId: member.value?.id,
       orderDiscountRate: orderRate.value,
-      authorizerName: orderAuthorizer.value,
+      authorizerUsername: orderAuthUsername.value,
+      authorizerPassword: orderAuthPassword.value,
       remark: remark.value || undefined,
       items: cart.value.map((l) =>
         l.lineType === 'TEMP'
@@ -472,7 +497,7 @@ interface HoldOrder {
   itemCount: number
   amount: number
   orderRate: number | null
-  authorizer: string
+  authorizerUsername: string
   remark: string
 }
 
@@ -517,7 +542,7 @@ function holdOrder() {
     itemCount: itemCount.value,
     amount: estGoodsAmount.value,
     orderRate: orderRateInput.value,
-    authorizer: orderRateDialog.authorizer,
+    authorizerUsername: orderRateDialog.authorizerUsername,
     remark: remark.value,
   })
   saveHolds(holds)
@@ -557,7 +582,9 @@ function resumeHold(hold: HoldOrder) {
     })
   }
   orderRateInput.value = hold.orderRate
-  orderRateDialog.authorizer = hold.authorizer
+  // 挂单不落密码（安全），取单后结算时须重新录入授权密码
+  orderRateDialog.authorizerUsername = hold.authorizerUsername ?? ''
+  orderRateDialog.authorizerPassword = ''
   remark.value = hold.remark
   removeHold(hold)
   holdDialog.visible = false
@@ -917,8 +944,17 @@ onUnmounted(() => {
           />
           <div class="form-tip">范围 0.7~1（BR-SALE-10），1 为不打折</div>
         </el-form-item>
-        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="授权人">
-          <el-input v-model="orderRateDialog.authorizer" placeholder="店长姓名（须 ≠ 当前收银员）" />
+        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="授权账号">
+          <el-input v-model="orderRateDialog.authorizerUsername" placeholder="店长登录账号（≠ 当前收银员）" />
+        </el-form-item>
+        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="授权密码" required>
+          <el-input
+            v-model="orderRateDialog.authorizerPassword"
+            type="password"
+            show-password
+            maxlength="50"
+            placeholder="店长账号密码（身份校验，FR-SALE-07）"
+          />
         </el-form-item>
       </el-form>
       <template #footer>

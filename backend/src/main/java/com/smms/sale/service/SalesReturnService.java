@@ -30,6 +30,7 @@ import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.common.util.MaskUtils;
 import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -83,6 +84,7 @@ public class SalesReturnService {
     private final InventoryService inventoryService;
     private final SysConfigService configService;
     private final MemberBusinessService memberBusinessService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     // ==================== 办理退货（FR-SALE-10） ====================
 
@@ -137,29 +139,32 @@ public class SalesReturnService {
         BigDecimal totalRefund = lines.stream().map(CalculatedReturn::refundAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 5. 授权校验（FR-SALE-11）：超阈值或误操作须店长授权，授权人 ≠ 发起人
+        // 5. 授权校验（FR-SALE-11）：超阈值或误操作须店长账号+密码授权，授权人 ≠ 发起人；
+        //    超期特批（BR-SALE-05）：经办店长本人即授权人，或由其他店长账号授权
         BigDecimal authThreshold = new BigDecimal(
                 configService.getStr(CONFIG_RETURN_AUTH_AMOUNT, "200"));
         boolean needAuth = totalRefund.compareTo(authThreshold) > 0
                 || "MISTAKE".equals(req.returnReason());
-        String authorizer = req.authorizerName();
-        if (expired && (authorizer == null || authorizer.isBlank())) {
-            authorizer = operator.realName(); // 超期店长特批：经办店长即授权人
-        }
+        String authUsername = req.authorizerUsername();
+        boolean hasAuthInput = authUsername != null && !authUsername.isBlank();
+        String authorizer = null;
         if (needAuth) {
-            if (authorizer == null || authorizer.isBlank()) {
+            if (!hasAuthInput) {
                 throw new BusinessException(ErrorCode.SALE_RETURN_AUTH_REQUIRED,
-                        "退款金额 " + totalRefund + " 元超过阈值 " + authThreshold.stripTrailingZeros().toPlainString()
-                                + " 元，须店长授权");
+                        "MISTAKE".equals(req.returnReason())
+                                ? "误操作退货须店长账号授权（FR-SALE-11）"
+                                : "退款金额 " + totalRefund + " 元超过阈值 "
+                                        + authThreshold.stripTrailingZeros().toPlainString() + " 元，须店长账号授权");
             }
-            if (authorizer.equals(operator.realName())) {
-                throw new BusinessException(ErrorCode.SALE_RETURN_AUTH_SELF);
-            }
+            authorizer = verifyAuthorizer(authUsername, req.authorizerPassword(), operator, true);
+        } else if (expired) {
+            authorizer = hasAuthInput
+                    ? verifyAuthorizer(authUsername, req.authorizerPassword(), operator, false)
+                    : operator.realName(); // 超期店长特批：经办店长即授权人
         }
 
         // 6. 退货单落库（XT 单号，BR-SALE-02；uk_rt_no 唯一键兜底并发冲突）
-        ReturnOrder returnOrder = insertReturnOrder(req, order, operator, now,
-                totalRefund, (needAuth || expired) ? authorizer : null);
+        ReturnOrder returnOrder = insertReturnOrder(req, order, operator, now, totalRefund, authorizer);
 
         // 7. 明细落库 + 原单已退数量回写
         for (CalculatedReturn line : lines) {
@@ -319,6 +324,18 @@ public class SalesReturnService {
             lines.add(new CalculatedReturn(item, qty, refund, refundPrice, costAmount, request.remark()));
         }
         return lines;
+    }
+
+    /**
+     * 授权人身份核验（FR-SALE-11）：店长账号+密码校验通过后返回授权人姓名；
+     * rejectSelf=true 时授权人不得为退货发起人本人。
+     */
+    private String verifyAuthorizer(String username, String password, LoginUser operator, boolean rejectSelf) {
+        SensitiveAuthService.Authorizer authorizer = sensitiveAuthService.authorize(username, password);
+        if (rejectSelf && authorizer.userId().equals(operator.userId())) {
+            throw new BusinessException(ErrorCode.SALE_RETURN_AUTH_SELF);
+        }
+        return authorizer.realName();
     }
 
     /** XT 单号生成（BR-SALE-02）：XT+yyyyMMdd+收银台2位+4位当日流水（独立于 XS 流水） */

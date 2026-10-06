@@ -132,7 +132,8 @@ const createDialog = reactive({
   refundType: 'CASH',
   returnReason: '',
   reasonRemark: '',
-  authorizer: '',
+  authorizerUsername: '',
+  authorizerPassword: '',
 })
 
 const canCreate = computed(() => auth.hasPerm('sys:ret:create'))
@@ -147,7 +148,8 @@ function openCreateDialog() {
     refundType: 'CASH',
     returnReason: '',
     reasonRemark: '',
-    authorizer: '',
+    authorizerUsername: '',
+    authorizerPassword: '',
   })
 }
 
@@ -237,27 +239,38 @@ async function submitReturn() {
     return
   }
   if (needAuth.value) {
-    if (!createDialog.authorizer.trim()) {
+    if (!createDialog.authorizerUsername.trim()) {
       ElMessage.warning(
         createDialog.returnReason === 'MISTAKE'
-          ? '误操作退货须店长授权（FR-SALE-11），请填写授权人姓名'
-          : `退款金额超过 ${AUTH_THRESHOLD} 元须店长授权（FR-SALE-11），请填写授权人姓名`,
+          ? '误操作退货须店长授权（FR-SALE-11），请输入店长账号'
+          : `退款金额超过 ${AUTH_THRESHOLD} 元须店长授权（FR-SALE-11），请输入店长账号`,
       )
       return
     }
-    if (createDialog.authorizer.trim() === auth.user?.realName) {
+    if (!createDialog.authorizerPassword) {
+      ElMessage.warning('请输入授权密码（店长账号密码，FR-SALE-11）')
+      return
+    }
+    if (createDialog.authorizerUsername.trim() === auth.user?.username) {
       ElMessage.warning('授权人不得为退货发起人本人（FR-SALE-11）')
       return
     }
   }
+  if (!needAuth.value && expired.value && createDialog.authorizerUsername.trim()
+      && !createDialog.authorizerPassword) {
+    ElMessage.warning('请输入授权密码（店长账号密码）')
+    return
+  }
   createDialog.submitting = true
   try {
+    const hasAuthorizer = needAuth.value || (expired.value && !!createDialog.authorizerUsername.trim())
     const result = await createReturn({
       salesOrderId: createDialog.order!.id,
       refundType: createDialog.refundType as 'CASH' | 'BANK' | 'MOBILE' | 'BALANCE',
       returnReason: createDialog.returnReason as 'QUALITY' | 'WRONG_ITEM' | 'MISTAKE' | 'OTHER',
       reasonRemark: createDialog.reasonRemark.trim() || undefined,
-      authorizerName: needAuth.value || expired.value ? createDialog.authorizer.trim() : undefined,
+      authorizerUsername: hasAuthorizer ? createDialog.authorizerUsername.trim() : undefined,
+      authorizerPassword: hasAuthorizer ? createDialog.authorizerPassword : undefined,
       items: selected.map((l) => ({
         salesItemId: l.salesItemId,
         returnQty: l.returnQty!,
@@ -265,6 +278,7 @@ async function submitReturn() {
       })),
     })
     createDialog.visible = false
+    createDialog.authorizerPassword = ''
     ElMessage.success(`退货完成：${result.orderNo}，退款 ￥${money(result.refundAmount)}`)
     load()
     offerPrintVoucher(result)
@@ -512,11 +526,21 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
                 <el-option v-for="(label, k) in RETURN_REASON_MAP" :key="k" :label="label" :value="k" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="needAuth || expired" label="授权人" required>
+            <el-form-item v-if="needAuth || expired" label="授权账号" :required="needAuth">
               <el-input
-                v-model="createDialog.authorizer"
-                :placeholder="`店长姓名（≠ 发起人 ${auth.user?.realName ?? ''}）`"
-                style="width: 200px"
+                v-model="createDialog.authorizerUsername"
+                placeholder="店长登录账号"
+                style="width: 150px"
+              />
+            </el-form-item>
+            <el-form-item v-if="needAuth || expired" label="授权密码" :required="needAuth">
+              <el-input
+                v-model="createDialog.authorizerPassword"
+                type="password"
+                show-password
+                maxlength="50"
+                placeholder="店长账号密码"
+                style="width: 150px"
               />
             </el-form-item>
             <el-form-item label="原因说明">
@@ -524,7 +548,7 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
             </el-form-item>
           </el-form>
           <div v-if="needAuth" class="auth-tip">
-            退款超 {{ AUTH_THRESHOLD }} 元或原因为"误操作"须店长授权且授权人 ≠ 发起人（FR-SALE-11）
+            退款超 {{ AUTH_THRESHOLD }} 元或原因为"误操作"须店长输入账号密码现场授权，且授权人 ≠ 发起人（FR-SALE-11）
           </div>
         </div>
       </template>

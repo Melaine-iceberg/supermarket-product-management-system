@@ -34,8 +34,11 @@ public record CheckoutCommand(
         @DecimalMax(value = "1", message = "整单折扣率不合法")
         BigDecimal orderDiscountRate,
 
-        /** 店长授权人姓名（整单折扣时必填，FR-SALE-07） */
-        String authorizerName,
+        /** 店长授权账号（整单折扣时必填，FR-SALE-07：店长现场输入账号密码授权） */
+        String authorizerUsername,
+
+        /** 店长授权密码（与授权账号一并校验） */
+        String authorizerPassword,
 
         /** 备注 */
         String remark,

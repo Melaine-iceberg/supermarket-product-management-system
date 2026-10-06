@@ -40,7 +40,7 @@ public class OperationLogAspect {
 
     /** 参数摘要中的敏感字段脱敏（BR-SYS-09/NFR-SEC-07：日志不记录明文密码） */
     private static final Pattern SENSITIVE =
-            Pattern.compile("(\"(?:password|oldPassword|newPassword|pwd|token)\"\\s*:\\s*)\"[^\"]*\"",
+            Pattern.compile("(\"(?:password|oldPassword|newPassword|authorizerPassword|pwd|token)\"\\s*:\\s*)\"[^\"]*\"",
                     Pattern.CASE_INSENSITIVE);
 
     private static final SpelExpressionParser SPEL_PARSER = new SpelExpressionParser();

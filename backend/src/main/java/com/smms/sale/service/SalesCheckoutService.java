@@ -29,6 +29,7 @@ import com.smms.sale.mapper.PaymentRecordMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -82,6 +83,7 @@ public class SalesCheckoutService {
     private final InventoryService inventoryService;
     private final SysConfigService configService;
     private final MemberBusinessService memberBusinessService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     // ==================== 结算（FR-SALE-06） ====================
 
@@ -99,8 +101,9 @@ public class SalesCheckoutService {
         // 3. 会员识别与等级折扣（FR-SALE-05；散客不享受会员价与折扣）
         MemberContext member = resolveMember(cmd.memberId());
 
-        // 4. 整单折扣授权校验（FR-SALE-07）
+        // 4. 整单折扣授权校验（FR-SALE-07）：打过折须店长账号+密码现场授权
         BigDecimal orderRate = resolveOrderRate(cmd);
+        String authorizerName = resolveOrderAuthorizer(cmd, cashier, orderRate);
 
         // 5. 逐行取价与金额计算（BR-GOODS-04 取价 → BR-SALE-03 分摊，尾差入最后一行）
         BigDecimal memberRate = member.discountRate();
@@ -117,7 +120,7 @@ public class SalesCheckoutService {
         BigDecimal change = paid.subtract(lines.payable());
 
         // 7. 单号生成（BR-SALE-02）+ 销售单落库（uk_so_no 唯一键兜底并发冲突）
-        SalesOrder order = insertOrder(cmd, cashier, now, lines, paid, change);
+        SalesOrder order = insertOrder(cmd, cashier, now, lines, paid, change, authorizerName);
 
         // 8. 明细落库（快照，BR-SALE-04）
         for (SalesOrderItem item : buildItems(order.getId(), lines)) {
@@ -284,10 +287,26 @@ public class SalesCheckoutService {
                     "整单折扣率不得低于 " + min.stripTrailingZeros().toPlainString());
         }
         if (rate.compareTo(BigDecimal.ONE) < 0
-                && (cmd.authorizerName() == null || cmd.authorizerName().isBlank())) {
+                && (cmd.authorizerUsername() == null || cmd.authorizerUsername().isBlank())) {
             throw new BusinessException(ErrorCode.SALE_DISCOUNT_AUTH_REQUIRED);
         }
         return rate;
+    }
+
+    /**
+     * 整单折扣授权身份核验（FR-SALE-07）：店长现场输入账号+密码授权，
+     * 授权人须为店长及以上账号且不得为当前收银员；未打折则不记录授权人。
+     */
+    private String resolveOrderAuthorizer(CheckoutCommand cmd, LoginUser cashier, BigDecimal orderRate) {
+        if (orderRate.compareTo(BigDecimal.ONE) >= 0) {
+            return null;
+        }
+        SensitiveAuthService.Authorizer authorizer = sensitiveAuthService.authorize(
+                cmd.authorizerUsername(), cmd.authorizerPassword());
+        if (authorizer.userId().equals(cashier.userId())) {
+            throw new BusinessException(ErrorCode.SALE_DISCOUNT_AUTH_SELF);
+        }
+        return authorizer.realName();
     }
 
     /**
@@ -440,7 +459,8 @@ public class SalesCheckoutService {
 
     /** 销售单落库：唯一键冲突（并发出单）自动换单号重试（BR-SALE-02 全局唯一） */
     private SalesOrder insertOrder(CheckoutCommand cmd, LoginUser cashier, LocalDateTime now,
-                                   CalculatedLines lines, BigDecimal paid, BigDecimal change) {
+                                   CalculatedLines lines, BigDecimal paid, BigDecimal change,
+                                   String authorizerName) {
         // 件数按落库行计算（无码商品恒为 1 件，FR-SALE-13）
         int itemCount = lines.lines().stream()
                 .mapToInt(l -> l.quantity().stripTrailingZeros().scale() <= 0
@@ -469,7 +489,7 @@ public class SalesCheckoutService {
         order.setCostAmount(BigDecimal.ZERO);
         order.setProfitAmount(BigDecimal.ZERO);
         order.setReturnStatus("NONE");
-        order.setAuthorizerName(cmd.authorizerName());
+        order.setAuthorizerName(authorizerName);
         order.setRemark(cmd.remark());
 
         DuplicateKeyException conflict = null;

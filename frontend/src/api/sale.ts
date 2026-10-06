@@ -38,8 +38,10 @@ export interface CheckoutPayload {
   memberId?: number
   /** 店长整单折扣率 0.7~1（BR-SALE-10） */
   orderDiscountRate?: number
-  /** 店长授权人姓名（整单折扣时必填，FR-SALE-07） */
-  authorizerName?: string
+  /** 店长授权账号（整单折扣时必填，FR-SALE-07：店长现场输入账号密码授权） */
+  authorizerUsername?: string
+  /** 店长授权密码（与授权账号一并校验） */
+  authorizerPassword?: string
   remark?: string
   items: {
     /** 商品ID（无码商品为空，FR-SALE-13） */
@@ -276,8 +278,10 @@ export interface ReturnCreatePayload {
   refundType: PayType
   returnReason: ReturnReason
   reasonRemark?: string
-  /** 店长授权人姓名（退款超阈值或误操作时必填，FR-SALE-11） */
-  authorizerName?: string
+  /** 店长授权账号（退款超阈值/误操作/超期特批时填写，FR-SALE-11：店长账号+密码授权） */
+  authorizerUsername?: string
+  /** 店长授权密码（与授权账号一并校验） */
+  authorizerPassword?: string
   items: {
     /** 原销售明细行ID */
     salesItemId: number

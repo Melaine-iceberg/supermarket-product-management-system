@@ -28,6 +28,7 @@ import com.smms.security.LoginUser;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.OperationLogService;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,6 +78,7 @@ class ReceiptServiceTest {
     @Mock private InventoryService inventoryService;
     @Mock private SysConfigService configService;
     @Mock private OperationLogService operationLogService;
+    @Mock private SensitiveAuthService sensitiveAuthService;
 
     private ReceiptService service;
 
@@ -91,7 +93,7 @@ class ReceiptServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
         service = new ReceiptService(orderMapper, orderItemMapper, purchaseOrderService,
                 receiptMapper, receiptItemMapper, supplierMapper, goodsMapper, unitMapper,
-                inventoryService, configService, operationLogService);
+                inventoryService, configService, operationLogService, sensitiveAuthService);
     }
 
     // ==================== 入库验收（FR-PUR-06） ====================
@@ -151,13 +153,15 @@ class ReceiptServiceTest {
     }
 
     @Test
-    @DisplayName("超收容差：店长授权后放行并记录授权人（BR-PUR-04）")
+    @DisplayName("超收容差：店长账号密码授权后放行并记录授权人（BR-PUR-04）")
     void createAllowsOverToleranceWithAuthorizer() {
         PurchaseOrder order = order(PurchaseOrder.STATUS_APPROVED);
         PurchaseOrderItem item = poItem("10", "10", "0");
-        stubFullReceiptFlow(order, item, "11", "10", "王店长");
+        stubFullReceiptFlow(order, item, "11", "10", "manager");
+        when(sensitiveAuthService.authorize("manager", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(2L, "manager", "王店长"));
 
-        ReceiptOrderVO vo = service.create(request("11", "10", "王店长"), operator("验收员"));
+        ReceiptOrderVO vo = service.create(request("11", "10", "manager"), operator("验收员"));
 
         assertThat(vo.authorizerName()).isEqualTo("王店长");
         verify(inventoryService).stockIn(any(StockChange.class));
@@ -337,7 +341,8 @@ class ReceiptServiceTest {
     private ReceiptCreateRequest request(String receivedQty, String receivedPrice, String authorizer) {
         ReceiptCreateRequest req = new ReceiptCreateRequest();
         req.setPurchaseOrderId(100L);
-        req.setAuthorizerName(authorizer);
+        req.setAuthorizerUsername(authorizer);
+        req.setAuthorizerPassword(authorizer == null ? null : "pwd");
         ReceiptCreateRequest.ItemRequest item = new ReceiptCreateRequest.ItemRequest();
         item.setPurchaseItemId(200L);
         item.setReceivedQty(new BigDecimal(receivedQty));

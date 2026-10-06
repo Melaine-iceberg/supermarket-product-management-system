@@ -39,6 +39,8 @@ public enum ErrorCode {
     SUPER_ADMIN_ROLE_PROTECTED(1109, "超级管理员角色仅可授予初始账号（BR-SYS-03）"),
     SENSITIVE_PWD_REQUIRED(1110, "该操作为敏感操作，需输入当前账号密码二次确认（BR-SYS-06）"),
     SENSITIVE_PWD_ERROR(1111, "密码错误，操作未执行"),
+    AUTHORIZER_AUTH_FAILED(1112, "授权账号或密码错误"),
+    AUTHORIZER_NOT_MANAGER(1113, "授权人须为店长及以上账号（FR-SALE-07/11、FR-PUR-06）"),
 
     // ---------- CAT 分类模块（1200 ~ 1299，FR-CAT-01 ~ 07） ----------
     CAT_NAME_EXISTS(1201, "同级下已存在同名分类"),
@@ -84,6 +86,7 @@ public enum ErrorCode {
     SALE_PAID_NOT_ENOUGH(1507, "实收金额不足应收金额"),
     SALE_DISCOUNT_BELOW_MIN(1508, "整单折扣率低于系统下限（BR-SALE-05）"),
     SALE_DISCOUNT_AUTH_REQUIRED(1509, "整单折扣须店长授权（FR-SALE-07）"),
+    SALE_DISCOUNT_AUTH_SELF(1516, "整单折扣授权人不得为当前收银员（FR-SALE-07）"),
     SALE_MEMBER_DISABLED(1510, "会员已停用，请按散客结算（BR-MEM-03）"),
     SALE_MEMBER_NOT_FOUND(1511, "会员不存在"),
     SALE_BALANCE_UNAVAILABLE(1512, "储值支付/退款仅限会员使用"),

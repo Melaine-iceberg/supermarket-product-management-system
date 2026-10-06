@@ -32,8 +32,11 @@ public record ReturnCreateRequest(
         @Size(max = 200, message = "原因说明最多 200 字")
         String reasonRemark,
 
-        /** 店长授权人（超阈值或误操作时必填，FR-SALE-11） */
-        String authorizerName,
+        /** 店长授权账号（超阈值/误操作/超期特批时填写，FR-SALE-11：店长账号+密码授权） */
+        String authorizerUsername,
+
+        /** 店长授权密码（与授权账号一并校验） */
+        String authorizerPassword,
 
         @NotEmpty(message = "退货明细不能为空")
         @Valid

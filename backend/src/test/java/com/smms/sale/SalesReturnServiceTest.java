@@ -25,6 +25,7 @@ import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.service.SalesReturnService;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,6 +93,7 @@ class SalesReturnServiceTest {
     @Mock private InventoryService inventoryService;
     @Mock private SysConfigService configService;
     @Mock private MemberBusinessService memberBusinessService;
+    @Mock private SensitiveAuthService sensitiveAuthService;
 
     private SalesReturnService service;
     private final List<ReturnOrder> insertedReturns = new ArrayList<>();
@@ -103,7 +105,7 @@ class SalesReturnServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReturnOrderItem.class);
         service = new SalesReturnService(returnOrderMapper, returnOrderItemMapper, salesOrderMapper,
                 salesOrderItemMapper, goodsMapper, memberMapper, shiftMapper, inventoryService,
-                configService, memberBusinessService);
+                configService, memberBusinessService, sensitiveAuthService);
 
         doAnswer(inv -> {
             ReturnOrder ro = inv.getArgument(0);
@@ -177,6 +179,7 @@ class SalesReturnServiceTest {
     private ReturnCreateRequest request(String refundType, String reason, String authorizer,
                                         String returnQty) {
         return new ReturnCreateRequest(ORDER_ID, refundType, reason, null, authorizer,
+                authorizer == null ? null : "pwd",
                 List.of(new ReturnCreateRequest.ReturnItemRequest(ITEM_ID, new BigDecimal(returnQty), null)));
     }
 
@@ -269,7 +272,7 @@ class SalesReturnServiceTest {
     // ---------- 授权校验（FR-SALE-11） ----------
 
     @Test
-    @DisplayName("退款超阈值：无授权人拒绝；授权人=发起人拒绝；他人授权通过并落库授权信息")
+    @DisplayName("退款超阈值：无授权账号拒绝；授权人=发起人拒绝；他人店长账号授权通过并落库授权信息")
     void createReturn_authThreshold() {
         mockStandard(null, "300.00", "3", "0"); // 退 3 件全额 300 > 200
 
@@ -277,11 +280,17 @@ class SalesReturnServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("授权");
 
-        assertThatThrownBy(() -> service.createReturn(request("CASH", "QUALITY", "陈收银", "3"), CASHIER))
+        // 授权账号为发起人本人（按账号核验出的 userId 判定）→ 拒绝
+        when(sensitiveAuthService.authorize("cashier", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(CASHIER.userId(), "cashier", "陈收银"));
+        assertThatThrownBy(() -> service.createReturn(request("CASH", "QUALITY", "cashier", "3"), CASHIER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("发起人");
 
-        service.createReturn(request("CASH", "QUALITY", "王店长", "3"), CASHIER);
+        // 其他店长账号授权：授权人姓名取核验后的真实姓名
+        when(sensitiveAuthService.authorize("manager", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(MANAGER.userId(), "manager", "王店长"));
+        service.createReturn(request("CASH", "QUALITY", "manager", "3"), CASHIER);
         ReturnOrder returnOrder = insertedReturns.get(0);
         assertThat(returnOrder.getAuthorizerName()).isEqualTo("王店长");
         assertThat(returnOrder.getAuthorizeTime()).isNotNull();
@@ -312,6 +321,12 @@ class SalesReturnServiceTest {
 
         ReturnOrderDetailVO vo = service.createReturn(request("CASH", "QUALITY", null, "1"), MANAGER);
         assertThat(vo.authorizerName()).isEqualTo("王店长");
+
+        // 经办店长亦可请其他店长账号现场授权：授权人取核验后的真实姓名
+        when(sensitiveAuthService.authorize("manager2", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(3L, "manager2", "赵店长"));
+        service.createReturn(request("CASH", "QUALITY", "manager2", "1"), MANAGER);
+        assertThat(insertedReturns.get(1).getAuthorizerName()).isEqualTo("赵店长");
     }
 
     @Test

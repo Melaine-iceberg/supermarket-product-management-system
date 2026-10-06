@@ -178,7 +178,8 @@ const receiveDialog = reactive({
   orderCreateBy: '',
   deliveryOrderNo: '',
   remark: '',
-  authorizerName: '',
+  authorizerUsername: '',
+  authorizerPassword: '',
   items: [] as ReceiveItem[],
   precheck: null as ReceiptPreCheckVO | null,
 })
@@ -191,7 +192,8 @@ async function openReceive(row: PurchaseOrderVO) {
   receiveDialog.orderCreateBy = detail.createBy
   receiveDialog.deliveryOrderNo = ''
   receiveDialog.remark = ''
-  receiveDialog.authorizerName = ''
+  receiveDialog.authorizerUsername = ''
+  receiveDialog.authorizerPassword = ''
   receiveDialog.precheck = null
   receiveDialog.items = detail.items.map((i: PurchaseOrderItemVO) => ({
     purchaseItemId: i.id,
@@ -218,7 +220,8 @@ function buildPayload() {
     purchaseOrderId: receiveDialog.orderId,
     deliveryOrderNo: receiveDialog.deliveryOrderNo.trim() || undefined,
     remark: receiveDialog.remark.trim() || undefined,
-    authorizerName: receiveDialog.authorizerName.trim() || undefined,
+    authorizerUsername: receiveDialog.authorizerUsername.trim() || undefined,
+    authorizerPassword: receiveDialog.authorizerPassword || undefined,
     items: filledItems.value.map((i) => ({
       purchaseItemId: i.purchaseItemId,
       receivedQty: Number(i.receivedQty),
@@ -255,9 +258,15 @@ async function submitReceive() {
     ElMessage.warning('请先执行预检，确认容差与价差提示（BR-PUR-04/05）')
     return
   }
-  if (needAuth.value && !receiveDialog.authorizerName.trim()) {
-    ElMessage.warning('存在超收或价差超容差行，须填写店长授权人（BR-PUR-04/05）')
-    return
+  if (needAuth.value) {
+    if (!receiveDialog.authorizerUsername.trim()) {
+      ElMessage.warning('存在超收或价差超容差行，须填写店长授权账号（BR-PUR-04/05）')
+      return
+    }
+    if (!receiveDialog.authorizerPassword) {
+      ElMessage.warning('请填写授权店长密码以完成授权（FR-PUR-06）')
+      return
+    }
   }
   if (receiveDialog.orderCreateBy === auth.user?.realName) {
     ElMessage.warning('验收人与采购单创建人不能为同一人（职责分离，BR-SYS-01）')
@@ -451,8 +460,18 @@ onMounted(() => {
         与近 3 次均价偏离超 ±{{ receiveDialog.precheck.priceWarnRate }}% 为黄色提示不阻断
       </div>
       <el-form v-if="needAuth" label-width="90px" @submit.prevent>
-        <el-form-item label="店长授权人" required>
-          <el-input v-model="receiveDialog.authorizerName" maxlength="30" placeholder="超收/价差超容差时必填（BR-PUR-04/05）" style="width: 240px" />
+        <el-form-item label="授权账号" required>
+          <el-input v-model="receiveDialog.authorizerUsername" maxlength="30" placeholder="店长登录账号" style="width: 240px" />
+        </el-form-item>
+        <el-form-item label="授权密码" required>
+          <el-input
+            v-model="receiveDialog.authorizerPassword"
+            type="password"
+            show-password
+            maxlength="50"
+            placeholder="店长账号密码（超收/价差超容差时必填，BR-PUR-04/05）"
+            style="width: 240px"
+          />
         </el-form-item>
       </el-form>
 

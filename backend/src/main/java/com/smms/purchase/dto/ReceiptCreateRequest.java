@@ -19,8 +19,11 @@ public class ReceiptCreateRequest {
     @NotNull(message = "采购单不能为空")
     private Long purchaseOrderId;
 
-    /** 店长授权人（超收/价差超容差时必填，BR-PUR-04/05） */
-    private String authorizerName;
+    /** 店长授权账号（超收/价差超容差时必填，BR-PUR-04/05：店长账号+密码授权） */
+    private String authorizerUsername;
+
+    /** 店长授权密码（与授权账号一并校验） */
+    private String authorizerPassword;
 
     /** 供应商送货单号 */
     private String deliveryOrderNo;

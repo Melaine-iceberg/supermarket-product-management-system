@@ -238,8 +238,10 @@ export interface ReceiptItemPayload {
 
 export interface ReceiptCreatePayload {
   purchaseOrderId: number
-  /** 店长授权人（超收/价差超容差时必填，BR-PUR-04/05） */
-  authorizerName?: string
+  /** 店长授权账号（超收/价差超容差时必填，BR-PUR-04/05：店长账号+密码授权） */
+  authorizerUsername?: string
+  /** 店长授权密码（与授权账号一并校验） */
+  authorizerPassword?: string
   deliveryOrderNo?: string
   remark?: string
   items: ReceiptItemPayload[]
