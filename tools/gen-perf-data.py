@@ -422,8 +422,12 @@ class PerfDataGenerator:
                 "NULL" if plu is None else sql_str(plu),
                 weighed, p["allow_return"], "%d.000" % p["safety_lo"], p["safety_hi"]))
             # 初始库存 = 期望销量 × (1.15~1.45) + 底量；INIT 流水与结存同步
+            # 非称重商品须取整为整件（毫单位 ×1000）：否则毫单位隐藏小数碎片会与
+            # 落库的整件数量截断显示不一致，导致 成本金额 ≠ 数量×成本单价
             expect_milli = total_units * weights[i - 1] / total_w
             init_milli = int(expect_milli * rng.uniform(1.15, 1.45)) + rng.randint(20, 60) * 1000
+            if not weighed:
+                init_milli = init_milli // 1000 * 1000
             self.qty_milli[gid] = init_milli
             # INIT 流水 id 取 1..n 段（销售/采购等流水使用 10^9+ 独立段）
             rec_rows.append("(%d, %d, 1, 'INIT', %s, 0, %s, %s, 'PD', NULL, 'system', %s, '仿真数据期初建账')" % (
@@ -1051,7 +1055,9 @@ class PerfDataGenerator:
             change = paid - payable
             pay_rows = [("CASH", paid)]
         paid = sum(a for _, a in pay_rows)
-        item_count = sum(1 if x[1][2] else x[4] // 1000 for x in lines)
+        # 件数口径与 SalesCheckoutService 一致：整数量行按整数值计（含恰好整数的称重行），
+        # 非整数量行（仅称重商品可能出现）计 1 件
+        item_count = sum(x[4] // 1000 if x[4] % 1000 == 0 else 1 for x in lines)
         cur_date = t.date()
         # 班次 id 公式：(day_index × 收银员数) + 收银员序号 + 1，与班次表落库保持一致
         day_idx = (cur_date - self.period_start).days
@@ -1164,7 +1170,8 @@ class PerfDataGenerator:
         for it, q in sel:
             item_id, gid, g, qty_milli, paid_c, cost_c, price_c = it
             refund = half_up(paid_c * q, qty_milli)
-            refund_price = half_up(paid_c, qty_milli // 1000 * 1000) if qty_milli >= 1000 else half_up(paid_c * 1000, qty_milli)
+            # 退款单价 = 实付金额 ÷ 数量（BR-SALE-06，对齐 SalesReturnService：paidAmount/quantity 四舍五入 2 位）
+            refund_price = half_up(paid_c * 1000, qty_milli)
             cost_amount = half_up(cost_c * q, 1000)
             total_refund += refund
             total_cost += cost_amount
