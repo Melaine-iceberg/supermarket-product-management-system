@@ -14,10 +14,10 @@ import {
   recentDaysRange,
   thisMonthRange,
   todayRange,
-  type DrillOrderRow,
   type GoodsRankRow,
   type ReportRange,
 } from '@/api/report'
+import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
 
 type ViewKey = 'ranking' | 'category-structure' | 'slow-moving' | 'brand-sales'
 
@@ -201,48 +201,23 @@ async function handlePrint() {
   })
 }
 
-// ---------- 下钻（BR-RPT-06） ----------
+// ---------- 下钻（BR-RPT-06）：汇总行 → 构成它的销售单列表 ----------
 const drillVisible = ref(false)
-const drillLoading = ref(false)
-const drillRows = ref<DrillOrderRow[]>([])
-const drillTotal = ref(0)
-const drillPage = ref(1)
-const drillQuery = reactive({
-  goodsId: undefined as number | undefined,
-  goodsName: '',
-})
+const drillTitle = ref('')
+let drillFilter: { goodsId?: number; categoryId?: number } = {}
 
-async function openDrill(row: GoodsRankRow) {
-  if (!row.goodsId) return
-  drillQuery.goodsId = row.goodsId
-  drillQuery.goodsName = row.goodsName ?? ''
-  drillPage.value = 1
+function openDrill(row: GoodsRankRow, by: 'goods' | 'category') {
+  drillFilter =
+    by === 'goods'
+      ? { goodsId: row.goodsId ?? undefined }
+      : { categoryId: row.categoryId ?? undefined }
+  const name = by === 'goods' ? row.goodsName : row.categoryName
+  drillTitle.value = `下钻：${name ?? '—'} 销售单（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`
   drillVisible.value = true
-  await loadDrill()
 }
 
-async function loadDrill() {
-  drillLoading.value = true
-  try {
-    const data = await fetchDrillOrders(range, {
-      goodsId: drillQuery.goodsId,
-      page: drillPage.value,
-      size: 20,
-    })
-    drillRows.value = data.list
-    drillTotal.value = data.total
-  } finally {
-    drillLoading.value = false
-  }
-}
-
-function handleDrillPageChange(p: number) {
-  drillPage.value = p
-  loadDrill()
-}
-
-function fmtTime(v: string | null | undefined) {
-  return v ? v.replace('T', ' ').slice(0, 19) : '—'
+function fetchDrillPage(p: number, size: number) {
+  return fetchDrillOrders('goods', { ...range, ...drillFilter, page: p, size })
 }
 
 onMounted(async () => {
@@ -363,7 +338,14 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column v-if="view === 'ranking'" label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDrill(row as GoodsRankRow)">下钻</el-button>
+            <el-button link type="primary" @click="openDrill(row as GoodsRankRow, 'goods')">下钻</el-button>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="view === 'category-structure'" label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.categoryId" link type="primary" @click="openDrill(row as GoodsRankRow, 'category')">
+              下钻
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -381,39 +363,7 @@ onMounted(async () => {
     </el-card>
 
     <!-- 下钻单据列表（BR-RPT-06） -->
-    <el-drawer v-model="drillVisible" :title="`下钻：${drillQuery.goodsName}`" size="70%">
-      <el-table v-loading="drillLoading" :data="drillRows" stripe size="small">
-        <el-table-column prop="orderNo" label="销售单号" width="170" />
-        <el-table-column prop="cashierName" label="收银员" width="90" />
-        <el-table-column label="台号" width="60" align="center">
-          <template #default="{ row }">{{ String(row.counterNo).padStart(2, '0') }}</template>
-        </el-table-column>
-        <el-table-column label="会员" width="100">
-          <template #default="{ row }">{{ row.memberName ?? '散客' }}</template>
-        </el-table-column>
-        <el-table-column label="销售时间" width="160">
-          <template #default="{ row }">{{ fmtTime(row.saleTime) }}</template>
-        </el-table-column>
-        <el-table-column label="件数" prop="itemCount" width="60" align="right" />
-        <el-table-column label="应收" width="90" align="right">
-          <template #default="{ row }">{{ money(row.payableAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="实收" width="90" align="right">
-          <template #default="{ row }">{{ money(row.paidAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="毛利额" width="90" align="right">
-          <template #default="{ row }">{{ money(row.profitAmount) }}</template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
-        v-model:current-page="drillPage"
-        :total="drillTotal"
-        :page-size="20"
-        layout="total, prev, pager, next"
-        class="pager"
-        @current-change="handleDrillPageChange"
-      />
-    </el-drawer>
+    <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
   </div>
 </template>
 

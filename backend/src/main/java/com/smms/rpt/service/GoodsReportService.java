@@ -5,8 +5,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
-import com.smms.rpt.dto.DrillOrderQuery;
-import com.smms.rpt.dto.DrillOrderRow;
 import com.smms.rpt.dto.GoodsRankRow;
 import com.smms.rpt.dto.ReportRange;
 import com.smms.rpt.dto.RptRoles;
@@ -22,7 +20,7 @@ import java.util.Set;
 
 /**
  * 商品销售分析（FR-RPT-03）：商品销售排行（销量/销售额/毛利额，TOP N 与全量）、
- * 品类销售结构、滞销商品清单、品牌销售分析；并提供汇总数字下钻（BR-RPT-06）。
+ * 品类销售结构、滞销商品清单、品牌销售分析。
  * 毛利额为快照口径（AC-17）：Σ(实付金额 − 成本快照 × 数量)。
  */
 @Service
@@ -114,22 +112,7 @@ public class GoodsReportService {
                 .map(r -> mask(r, canProfit)).toList();
     }
 
-    /** 汇总数字下钻（BR-RPT-06）：构成该汇总的销售单列表，逐单金额之和与汇总一致（AC-16） */
-    public PageVO<DrillOrderRow> drillOrders(ReportRange range, DrillOrderQuery q, LoginUser user) {
-        DrillOrderQuery scoped = new DrillOrderQuery(range.beginDate(), range.endDate(),
-                q.goodsId(), q.cashierName(), q.counterNo(), q.memberOnly(), q.page(), q.size());
-        long total = reportMapper.countDrillOrders(scoped);
-        if (total == 0) {
-            return new PageVO<>(List.of(), 0);
-        }
-        Page<DrillOrderRow> p = new Page<>(scoped.page(), scoped.size(), false);
-        p.setTotal(total);
-        IPage<DrillOrderRow> result = reportMapper.selectDrillOrders(p, scoped);
-        boolean canProfit = RptRoles.canViewProfit(user);
-        result.setRecords(result.getRecords().stream()
-                .map(r -> mask(r, canProfit)).toList());
-        return PageVO.of(result);
-    }
+    /** 汇总数字下钻（BR-RPT-06）：见 {@link DrillDownService} */
 
     private String normalize(String orderBy) {
         if (orderBy == null || orderBy.isBlank()) {
@@ -182,16 +165,5 @@ public class GoodsReportService {
                 r.orderCount(), r.qty(), r.salesAmount(), r.discountAmount(),
                 r.netSalesAmount(), r.refundAmount(), null, null,
                 null, null, r.shareRate(), r.stockQty(), null, r.occupiedAmount(), r.retailPrice());
-    }
-
-    /** BR-RPT-07：下钻单据的成本/毛利同样按角色过滤 */
-    private DrillOrderRow mask(DrillOrderRow r, boolean canProfit) {
-        if (canProfit) {
-            return r;
-        }
-        return new DrillOrderRow(r.id(), r.orderNo(), r.cashierName(),
-                r.counterNo(), r.memberName(), r.saleTime(), r.businessDate(), r.itemCount(),
-                r.goodsAmount(), r.discountAmount(), r.payableAmount(), r.paidAmount(),
-                null, null, r.returnStatus());
     }
 }

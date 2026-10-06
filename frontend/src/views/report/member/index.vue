@@ -6,6 +6,7 @@ import { pMoney, pPercent, printSheet, pTime, type PrintColumn } from '@/utils/p
 import {
   exportMemberReport,
   fetchBirthdayMembers,
+  fetchDrillOrders,
   fetchMemberConsumptionRanking,
   fetchMemberContribution,
   fetchMemberGrowth,
@@ -13,10 +14,12 @@ import {
   fetchSleepingMembers,
   recentDaysRange,
   thisMonthRange,
+  type DrillOrderFilters,
   type MemberContributionVO,
   type MemberRptRow,
   type ReportRange,
 } from '@/api/report'
+import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
 
 type ViewKey = 'growth' | 'consumption-ranking' | 'level-distribution' | 'contribution' | 'sleeping' | 'birthday'
 
@@ -296,6 +299,39 @@ async function handlePrint() {
   }
 }
 
+// ---------- 下钻（BR-RPT-06）：汇总数字 → 构成它的销售单 ----------
+const drillVisible = ref(false)
+const drillTitle = ref('')
+let drillFilters: DrillOrderFilters = {}
+
+function openDrill(filters: DrillOrderFilters, label: string) {
+  drillFilters = filters
+  drillTitle.value = `下钻：${label}`
+  drillVisible.value = true
+}
+
+function fetchDrillPage(p: number, size: number) {
+  return fetchDrillOrders('member', { ...drillFilters, page: p, size })
+}
+
+/** 消费排行行 → 该会员的全部销售单（与“累计消费”同口径，不限日期） */
+function drillRankingRow(row: MemberRptRow) {
+  if (row.id == null) {
+    ElMessage.warning('该会员暂无可下钻单据')
+    return
+  }
+  openDrill({ memberId: row.id }, `会员 ${row.name ?? row.memberNo} 的销售单`)
+}
+
+/** 消费贡献 → 会员口径传 memberOnly=true；总额口径不传（null 表示不过滤，false 反而排除会员单） */
+function drillContribution(memberOnly: boolean, label: string) {
+  syncRange()
+  openDrill(
+    memberOnly ? { memberOnly: true, ...range } : { ...range },
+    `${label}（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`,
+  )
+}
+
 onMounted(load)
 </script>
 
@@ -378,6 +414,11 @@ onMounted(load)
         <el-table-column label="最近消费" width="160">
           <template #default="{ row }">{{ fmtTime(row.lastConsumeTime) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="drillRankingRow(row as MemberRptRow)">消费明细</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -400,18 +441,21 @@ onMounted(load)
             <div class="stat-card">
               <div class="stat-label">会员销售额</div>
               <div class="stat-value primary">￥{{ money(contribution.memberNetAmount) }}</div>
+              <el-link type="primary" :underline="false" @click="drillContribution(true, '会员销售额')">查看会员单</el-link>
             </div>
           </el-col>
           <el-col :span="6">
             <div class="stat-card">
               <div class="stat-label">总销售额</div>
               <div class="stat-value">￥{{ money(contribution.totalNetAmount) }}</div>
+              <el-link type="primary" :underline="false" @click="drillContribution(false, '总销售额')">查看全部单据</el-link>
             </div>
           </el-col>
           <el-col :span="6">
             <div class="stat-card">
               <div class="stat-label">会员单数</div>
               <div class="stat-value">{{ contribution.memberOrderCount }}</div>
+              <el-link type="primary" :underline="false" @click="drillContribution(true, '会员单')">查看会员单</el-link>
             </div>
           </el-col>
           <el-col :span="6">
@@ -476,6 +520,9 @@ onMounted(load)
         </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- 下钻单据列表（BR-RPT-06） -->
+    <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
   </div>
 </template>
 

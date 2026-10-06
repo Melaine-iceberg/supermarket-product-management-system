@@ -14,6 +14,8 @@ import {
 import {
   CHANGE_TYPE_MAP,
   exportInventoryReport,
+  fetchInventoryDrillLoss,
+  fetchInventoryDrillRecords,
   fetchInvChanges,
   fetchInvSummaryByCategory,
   fetchInvSummaryByGoods,
@@ -24,13 +26,18 @@ import {
   recentDaysRange,
   STOCK_STATUS_MAP,
   thisMonthRange,
+  type DrillInvRecordRow,
+  type DrillLossRow,
   type InvChangeRow,
   type InvSummaryRow,
+  type LossGoodsRow,
   type LossReportVO,
   type ReportRange,
   type TurnoverRow,
   type WarningRptRow,
 } from '@/api/report'
+import type { DrillColumn } from '../components/drill'
+import DrillTableDrawer from '../components/DrillTableDrawer.vue'
 
 type ViewKey = 'summary-goods' | 'summary-category' | 'warnings' | 'changes' | 'turnover-goods' | 'turnover-category' | 'loss'
 
@@ -272,6 +279,64 @@ async function handlePrint() {
   }
 }
 
+// ---------- 下钻（BR-RPT-06）：汇总数字 → 构成它的库存流水/损耗单据 ----------
+// 库存流水下钻（变动明细行、周转商品行 → SALE_OUT 流水）
+const drillRecordVisible = ref(false)
+const drillRecordTitle = ref('')
+let drillRecordFilter: { recordType?: string; goodsId?: number } = {}
+
+function openDrillRecords(filter: { recordType?: string; goodsId?: number }, label: string) {
+  drillRecordFilter = filter
+  drillRecordTitle.value = `下钻：${label}（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`
+  drillRecordVisible.value = true
+}
+
+function fetchDrillRecordsPage(p: number, size: number) {
+  return fetchInventoryDrillRecords({ ...range, ...drillRecordFilter, page: p, size })
+}
+
+const drillRecordColumns: DrillColumn<DrillInvRecordRow>[] = [
+  { label: '商品编码', width: 120, value: (r) => r.goodsCode },
+  { label: '商品名称', minWidth: 140, value: (r) => r.goodsName },
+  { label: '变动类型', width: 100, value: (r) => CHANGE_TYPE_MAP[r.recordType] ?? r.recordType },
+  { label: '变动数量', width: 100, align: 'right', value: (r) => qty(r.changeQty) },
+  { label: '变动前', width: 90, align: 'right', value: (r) => qty(r.beforeQty) },
+  { label: '变动后', width: 90, align: 'right', value: (r) => qty(r.afterQty) },
+  { label: '成本单价', width: 90, align: 'right', value: (r) => money(r.unitCost) },
+  { label: '来源单据', width: 160, value: (r) => r.bizNo },
+  { label: '操作员', width: 90, value: (r) => r.operatorName },
+  { label: '操作时间', width: 160, value: (r) => fmtTime(r.operateTime) },
+  { label: '备注', minWidth: 120, value: (r) => r.remark },
+]
+
+// 损耗单据下钻（损耗报表行 → 报损单 / 盘亏差异）
+const drillLossVisible = ref(false)
+const drillLossTitle = ref('')
+let drillLossFilter: { kind: 'loss' | 'check'; goodsId?: number } = { kind: 'loss' }
+
+function openDrillLoss(row: LossGoodsRow, kind: 'loss' | 'check') {
+  drillLossFilter = { kind, goodsId: row.goodsId }
+  drillLossTitle.value = `下钻：${row.goodsName} ${kind === 'loss' ? '报损单' : '盘亏差异'}（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`
+  drillLossVisible.value = true
+}
+
+function fetchDrillLossPage(p: number, size: number) {
+  return fetchInventoryDrillLoss({ ...range, ...drillLossFilter, page: p, size })
+}
+
+const drillLossColumns: DrillColumn<DrillLossRow>[] = [
+  { label: '单据号', width: 160, value: (r) => r.orderNo },
+  { label: '类型', width: 80, align: 'center', value: (r) => (r.kind === 'LOSS' ? '报损' : '盘亏') },
+  { label: '商品名称', minWidth: 140, value: (r) => r.goodsName },
+  { label: '数量', width: 90, align: 'right', value: (r) => qty(r.qty) },
+  { label: '成本单价', width: 90, align: 'right', value: (r) => money(r.costPrice) },
+  { label: '金额', width: 100, align: 'right', value: (r) => money(r.amount) },
+  { label: '原因', minWidth: 140, value: (r) => r.reason },
+  { label: '制单人', width: 90, value: (r) => r.applyName },
+  { label: '审核人', width: 90, value: (r) => r.auditorName },
+  { label: '业务时间', width: 160, value: (r) => fmtTime(r.bizTime) },
+]
+
 onMounted(async () => {
   categoryTree.value = await getCategoryTree()
   load()
@@ -452,6 +517,13 @@ onMounted(async () => {
         <el-table-column label="金额" width="120" align="right">
           <template #default="{ row }">{{ money(row.amount) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="openDrillRecords({ recordType: row.recordType }, '变动类型 ' + (CHANGE_TYPE_MAP[row.recordType] ?? row.recordType))">
+              明细
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -483,6 +555,19 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="周转天数" width="90" align="right">
           <template #default="{ row }">{{ qty(row.turnoverDays) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.goodsId != null"
+              link
+              type="primary"
+              size="small"
+              @click="openDrillRecords({ recordType: 'SALE_OUT', goodsId: row.goodsId }, '商品 ' + row.goodsName + ' 销售出库流水')"
+            >
+              销售流水
+            </el-button>
+          </template>
         </el-table-column>
       </el-table>
       <el-pagination
@@ -539,13 +624,23 @@ onMounted(async () => {
         <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
         <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
         <el-table-column label="报损数量" width="90" align="right">
-          <template #default="{ row }">{{ qty(row.lossQty) }}</template>
+          <template #default="{ row }">
+            <el-link v-if="row.lossQty > 0" type="primary" @click="openDrillLoss(row as LossGoodsRow, 'loss')">
+              {{ qty(row.lossQty) }}
+            </el-link>
+            <span v-else>{{ qty(row.lossQty) }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="报损金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.lossAmount) }}</template>
         </el-table-column>
         <el-table-column label="盘亏数量" width="90" align="right">
-          <template #default="{ row }">{{ qty(row.checkQty) }}</template>
+          <template #default="{ row }">
+            <el-link v-if="row.checkQty > 0" type="primary" @click="openDrillLoss(row as LossGoodsRow, 'check')">
+              {{ qty(row.checkQty) }}
+            </el-link>
+            <span v-else>{{ qty(row.checkQty) }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="盘亏金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.checkAmount) }}</template>
@@ -557,6 +652,20 @@ onMounted(async () => {
         </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- 下钻抽屉（BR-RPT-06） -->
+    <DrillTableDrawer
+      v-model="drillRecordVisible"
+      :title="drillRecordTitle"
+      :columns="drillRecordColumns"
+      :fetch-page="fetchDrillRecordsPage"
+    />
+    <DrillTableDrawer
+      v-model="drillLossVisible"
+      :title="drillLossTitle"
+      :columns="drillLossColumns"
+      :fetch-page="fetchDrillLossPage"
+    />
   </div>
 </template>
 

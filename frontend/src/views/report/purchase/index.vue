@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
+import { useRouter } from 'vue-router'
 import { pageGoods, type GoodsListVO } from '@/api/goods'
+import { PURCHASE_STATUS_MAP, SETTLE_STATUS_MAP } from '@/api/purchase'
 import { useAuthStore } from '@/stores/auth'
 import {
   dropEmptyColumns,
@@ -16,15 +18,21 @@ import {
   exportPurchaseReport,
   fetchArrival,
   fetchPriceTrend,
+  fetchPurchaseDrillOrders,
+  fetchPurchaseDrillReceipts,
   fetchPurchaseSummary,
   fetchSupplierRanking,
   recentDaysRange,
   thisMonthRange,
   type ArrivalRow,
+  type DrillPurchaseRow,
+  type DrillReceiptRow,
   type PriceTrendRow,
   type PurchSummaryRow,
   type ReportRange,
 } from '@/api/report'
+import type { DrillColumn } from '../components/drill'
+import DrillTableDrawer from '../components/DrillTableDrawer.vue'
 
 type ViewKey = 'summary-supplier' | 'summary-goods' | 'supplier-ranking' | 'price-trend' | 'arrival'
 
@@ -164,6 +172,76 @@ function handleGoodsChange() {
   if (view.value === 'price-trend') {
     load()
   }
+}
+
+// ---------- 下钻（BR-RPT-06）：汇总数字 → 构成它的采购单/入库单列表 ----------
+const router = useRouter()
+
+// 采购单下钻（供应商/商品汇总行、供应商排行行）
+const drillOrderVisible = ref(false)
+const drillOrderTitle = ref('')
+let drillOrderFilter: { supplierId?: number; goodsId?: number } = {}
+
+function openDrillOrders(filter: { supplierId?: number; goodsId?: number }, label: string) {
+  drillOrderFilter = filter
+  drillOrderTitle.value = `下钻：${label}（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`
+  drillOrderVisible.value = true
+}
+
+function fetchDrillOrdersPage(p: number, size: number) {
+  return fetchPurchaseDrillOrders({ ...range, ...drillOrderFilter, page: p, size })
+}
+
+const drillOrderColumns: DrillColumn<DrillPurchaseRow>[] = [
+  { label: '采购单号', width: 160, value: (r) => r.orderNo },
+  { label: '供应商', minWidth: 150, value: (r) => r.supplierName },
+  { label: '状态', width: 110, value: (r) => PURCHASE_STATUS_MAP[r.status]?.label ?? r.status },
+  { label: '下单时间', width: 160, value: (r) => fmtTime(r.createTime) },
+  { label: '预计到货', width: 100, value: (r) => r.expectDate },
+  { label: '金额', width: 100, align: 'right', value: (r) => money(r.totalAmount) },
+  { label: '已入库', width: 100, align: 'right', value: (r) => money(r.receivedAmount) },
+  { label: '退货金额', width: 100, align: 'right', value: (r) => money(r.returnAmount) },
+  { label: '结算状态', width: 100, value: (r) => SETTLE_STATUS_MAP[r.settleStatus] ?? r.settleStatus },
+  { label: '已结算金额', width: 110, align: 'right', value: (r) => money(r.settleAmount) },
+]
+
+/** 打开采购单详情：采购单页支持 ?orderNo= 深链并自动弹出详情 */
+function openDrillOrder(row: DrillPurchaseRow) {
+  const { href } = router.resolve({ path: '/purchase/order', query: { orderNo: row.orderNo } })
+  window.open(href, '_blank')
+}
+
+// 入库单下钻（到货及时率行）
+const drillReceiptVisible = ref(false)
+const drillReceiptTitle = ref('')
+let drillReceiptSupplierId: number | undefined
+
+function openDrillReceipts(row: ArrivalRow) {
+  drillReceiptSupplierId = row.supplierId
+  drillReceiptTitle.value = `下钻：${row.supplierName} 入库单（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`
+  drillReceiptVisible.value = true
+}
+
+function fetchDrillReceiptsPage(p: number, size: number) {
+  return fetchPurchaseDrillReceipts({ ...range, supplierId: drillReceiptSupplierId, page: p, size })
+}
+
+const drillReceiptColumns: DrillColumn<DrillReceiptRow>[] = [
+  { label: '入库单号', width: 160, value: (r) => r.receiptNo },
+  { label: '原采购单', width: 160, value: (r) => r.purchaseOrderNo },
+  { label: '供应商', minWidth: 150, value: (r) => r.supplierName },
+  { label: '验收时间', width: 160, value: (r) => fmtTime(r.receiptTime) },
+  { label: '验收人', width: 90, value: (r) => r.operatorName },
+  { label: '送货单号', width: 120, value: (r) => r.deliveryOrderNo },
+  { label: '金额', width: 100, align: 'right', value: (r) => money(r.totalAmount) },
+  { label: '预计到货', width: 100, value: (r) => r.expectDate },
+  { label: '按期', width: 80, align: 'center', value: (r) => (r.onTime == null ? null : r.onTime ? '按期' : '超期') },
+]
+
+/** 打开入库单详情：入库单页支持 ?orderNo= 深链并自动弹出详情 */
+function openDrillReceipt(row: DrillReceiptRow) {
+  const { href } = router.resolve({ path: '/purchase/receipt', query: { orderNo: row.receiptNo } })
+  window.open(href, '_blank')
 }
 
 // ---------- 打印视图（FR-RPT-09）：列与后端 Excel 导出口径一致 ----------
@@ -350,6 +428,26 @@ onMounted(load)
         <el-table-column label="部分结算" width="100" align="right">
           <template #default="{ row }">{{ money(row.partialSettledAmount) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="view === 'summary-supplier'"
+              link
+              type="primary"
+              @click="openDrillOrders({ supplierId: row.supplierId ?? undefined }, `供应商 ${row.supplierName}`)"
+            >
+              下钻
+            </el-button>
+            <el-button
+              v-else
+              link
+              type="primary"
+              @click="openDrillOrders({ goodsId: row.goodsId ?? undefined }, `商品 ${row.goodsName}`)"
+            >
+              下钻
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -379,6 +477,17 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="退货金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.returnAmount) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              @click="openDrillOrders({ supplierId: row.supplierId ?? undefined }, `供应商 ${row.supplierName}`)"
+            >
+              下钻
+            </el-button>
+          </template>
         </el-table-column>
       </el-table>
     </el-card>
@@ -430,8 +539,35 @@ onMounted(load)
             </span>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDrillReceipts(row as ArrivalRow)">下钻</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- 下钻单据列表（BR-RPT-06） -->
+    <DrillTableDrawer
+      v-model="drillOrderVisible"
+      :title="drillOrderTitle"
+      :columns="drillOrderColumns"
+      :fetch-page="fetchDrillOrdersPage"
+    >
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openDrillOrder(row as DrillPurchaseRow)">查看</el-button>
+      </template>
+    </DrillTableDrawer>
+    <DrillTableDrawer
+      v-model="drillReceiptVisible"
+      :title="drillReceiptTitle"
+      :columns="drillReceiptColumns"
+      :fetch-page="fetchDrillReceiptsPage"
+    >
+      <template #actions="{ row }">
+        <el-button link type="primary" @click="openDrillReceipt(row as DrillReceiptRow)">查看</el-button>
+      </template>
+    </DrillTableDrawer>
   </div>
 </template>
 

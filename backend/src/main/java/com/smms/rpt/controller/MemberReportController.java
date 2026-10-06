@@ -4,8 +4,11 @@ import com.smms.common.annotation.OpLog;
 import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
 import com.smms.common.api.PageVO;
+import com.smms.rpt.dto.DrillOrderQuery;
+import com.smms.rpt.dto.DrillOrderRow;
 import com.smms.rpt.dto.MemberRptRow;
 import com.smms.rpt.dto.ReportRange;
+import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.MemberReportService;
 import com.smms.rpt.service.ReportExcelService;
 import com.smms.security.SecurityUtils;
@@ -59,6 +62,7 @@ public class MemberReportController {
     };
 
     private final MemberReportService memberReportService;
+    private final DrillDownService drillDownService;
     private final ReportExcelService excelService;
 
     /** 会员增长趋势（①）：每日新增与累计 */
@@ -114,6 +118,22 @@ public class MemberReportController {
     public ApiResponse<List<MemberRptRow>> birthday(
             @RequestParam(defaultValue = "week") String scope) {
         return ApiResponse.ok(memberReportService.birthday(scope, SecurityUtils.getLoginUser()));
+    }
+
+    /** 汇总数字下钻（BR-RPT-06）：会员消费排行/贡献行 → 构成它的销售单列表；
+     *  日期为空时全量下钻（与消费排行口径一致），memberOnly=true 仅会员单 / false 仅散客单 / 空为全部 */
+    @GetMapping("/drill-orders")
+    @RequirePerm("sys:rpt:member")
+    public ApiResponse<PageVO<DrillOrderRow>> drillOrders(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long memberId,
+            @RequestParam(required = false) Boolean memberOnly,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        DrillOrderQuery q = new DrillOrderQuery(beginDate, endDate,
+                null, null, null, null, memberOnly, memberId, null, null, page, size);
+        return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }
 
     /** 会员报表导出（FR-RPT-08）：view=growth|consumption-ranking|level-distribution|sleeping|birthday */

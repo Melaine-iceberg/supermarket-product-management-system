@@ -4,11 +4,17 @@ import com.smms.common.annotation.OpLog;
 import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
 import com.smms.common.api.ErrorCode;
+import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.rpt.dto.ArrivalRow;
+import com.smms.rpt.dto.DrillPurchaseQuery;
+import com.smms.rpt.dto.DrillPurchaseRow;
+import com.smms.rpt.dto.DrillReceiptQuery;
+import com.smms.rpt.dto.DrillReceiptRow;
 import com.smms.rpt.dto.PriceTrendRow;
 import com.smms.rpt.dto.PurchSummaryRow;
 import com.smms.rpt.dto.ReportRange;
+import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.PurchaseReportService;
 import com.smms.rpt.service.ReportExcelService;
 import com.smms.security.SecurityUtils;
@@ -65,6 +71,7 @@ public class PurchaseReportController {
     };
 
     private final PurchaseReportService purchaseReportService;
+    private final DrillDownService drillDownService;
     private final ReportExcelService excelService;
 
     /** 采购汇总表（①）：dim=supplier 供应商 / goods 商品 */
@@ -107,6 +114,35 @@ public class PurchaseReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ApiResponse.ok(purchaseReportService.arrival(
                 new ReportRange(beginDate, endDate), SecurityUtils.getLoginUser()));
+    }
+
+    /** 汇总数字下钻（BR-RPT-06）：供应商/商品汇总行 → 构成它的采购单列表（同口径：正式单据） */
+    @GetMapping("/drill-orders")
+    @RequirePerm("sys:rpt:purchase")
+    public ApiResponse<PageVO<DrillPurchaseRow>> drillOrders(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long supplierId,
+            @RequestParam(required = false) Long goodsId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        ReportRange range = new ReportRange(beginDate, endDate);
+        return ApiResponse.ok(drillDownService.purchaseOrders(new DrillPurchaseQuery(
+                range.beginDate(), range.endDate(), supplierId, goodsId, page, size)));
+    }
+
+    /** 汇总数字下钻（BR-RPT-06）：到货及时率供应商行 → 构成统计的入库单列表（含按期标记） */
+    @GetMapping("/drill-receipts")
+    @RequirePerm("sys:rpt:purchase")
+    public ApiResponse<PageVO<DrillReceiptRow>> drillReceipts(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long supplierId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        ReportRange range = new ReportRange(beginDate, endDate);
+        return ApiResponse.ok(drillDownService.receipts(new DrillReceiptQuery(
+                range.beginDate(), range.endDate(), supplierId, page, size)));
     }
 
     /** 采购报表导出（FR-RPT-08）：view=summary-supplier|summary-goods|supplier-ranking|price-trend|arrival */

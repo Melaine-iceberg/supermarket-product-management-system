@@ -12,18 +12,21 @@ import {
 } from '@/utils/print'
 import {
   exportProfitReport,
+  fetchDrillOrders,
   fetchNegativeProfit,
   fetchProfitByCategory,
   fetchProfitByDay,
   fetchProfitByGoods,
   recentDaysRange,
   thisMonthRange,
+  type DrillOrderFilters,
   type GoodsRankRow,
   type NegativeProfitRow,
   type ReportRange,
   type SalesReportRow,
   type SalesReportVO,
 } from '@/api/report'
+import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
 
 type ViewKey = 'by-goods' | 'by-category' | 'by-day' | 'negative'
 
@@ -211,6 +214,44 @@ async function handlePrint() {
   }
 }
 
+// ---------- 下钻（BR-RPT-06）：汇总数字 → 构成它的销售单列表（毛利字段按角色过滤） ----------
+const drillVisible = ref(false)
+const drillTitle = ref('')
+let drillFilters: DrillOrderFilters = {}
+
+function openDrill(filters: DrillOrderFilters, label: string) {
+  drillFilters = filters
+  drillTitle.value = `下钻：${label}`
+  drillVisible.value = true
+}
+
+function fetchDrillPage(p: number, size: number) {
+  return fetchDrillOrders('profit', { ...drillFilters, page: p, size })
+}
+
+function drillGoodsRow(row: { goodsId: number | null; goodsName: string | null }) {
+  syncRange()
+  if (!row.goodsId) return
+  openDrill({ goodsId: row.goodsId, ...range }, `商品 ${row.goodsName ?? ''}`)
+}
+
+function drillCategoryRow(row: GoodsRankRow) {
+  syncRange()
+  if (!row.categoryId) return
+  openDrill({ categoryId: row.categoryId, ...range }, `分类 ${row.categoryName ?? ''}`)
+}
+
+function drillDayRow(row: SalesReportRow) {
+  syncRange()
+  const day = (row.bizDate ?? row.groupKey).slice(0, 10)
+  openDrill({ beginDate: day, endDate: day }, `营业日 ${day}`)
+}
+
+function drillTotalRow() {
+  syncRange()
+  openDrill({ ...range }, `合计（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`)
+}
+
 onMounted(async () => {
   categoryTree.value = await getCategoryTree()
   load()
@@ -296,6 +337,11 @@ onMounted(async () => {
         <el-table-column label="占比" width="80" align="right">
           <template #default="{ row }">{{ percent(row.shareRate) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="drillGoodsRow(row as GoodsRankRow)">下钻</el-button>
+          </template>
+        </el-table-column>
       </el-table>
       <el-pagination
         v-model:current-page="page"
@@ -340,6 +386,11 @@ onMounted(async () => {
         <el-table-column label="占比" width="80" align="right">
           <template #default="{ row }">{{ percent(row.shareRate) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="drillCategoryRow(row as GoodsRankRow)">下钻</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -382,6 +433,11 @@ onMounted(async () => {
         <el-table-column label="客单价" width="90" align="right">
           <template #default="{ row }">{{ money(row.avgOrderAmount) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="drillDayRow(row as SalesReportRow)">下钻</el-button>
+          </template>
+        </el-table-column>
       </el-table>
       <div v-if="dayData?.total" class="total-row">
         <span class="total-label">合计</span>
@@ -389,6 +445,7 @@ onMounted(async () => {
         <span>净销售: ￥{{ money(dayData.total.netAmount) }}</span>
         <span>毛利额: ￥{{ money(dayData.total.profitAmount) }}</span>
         <span>毛利率: {{ percent(dayData.total.profitRate) }}</span>
+        <el-button link type="primary" @click="drillTotalRow">下钻</el-button>
       </div>
     </el-card>
 
@@ -429,8 +486,16 @@ onMounted(async () => {
             <span class="loss">{{ money(row.profitAmount) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="drillGoodsRow(row as NegativeProfitRow)">下钻</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- 下钻单据列表（BR-RPT-06） -->
+    <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
   </div>
 </template>
 

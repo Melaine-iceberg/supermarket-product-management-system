@@ -122,7 +122,7 @@ public interface ReportMapper {
     // ==================== 下钻明细（BR-RPT-06） ====================
 
     /** 下钻单据数（分页总数用） */
-    long countDrillOrders(DrillOrderQuery q);
+    long countDrillOrders(@Param("q") DrillOrderQuery q);
 
     /** 汇总数字下钻：构成它的销售单列表（可再打开单据详情） */
     IPage<DrillOrderRow> selectDrillOrders(Page<DrillOrderRow> page, @Param("q") DrillOrderQuery q);

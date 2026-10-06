@@ -253,4 +253,121 @@
                          WHERE ir.operate_time &gt;= #{beginTime}
                            AND ir.operate_time &lt; #{endTime}), 0)
     </select>
+
+    <!-- ==================== 下钻明细（BR-RPT-06） ==================== -->
+
+    <!-- 变动明细下钻条件：与变动汇总同口径（操作时间区间、变动类型） -->
+    <sql id="invRecordDrillWhere">
+        ir.operate_time &gt;= #{q.beginDate}
+        AND ir.operate_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        <if test="q.recordType != null and q.recordType != ''">
+            AND ir.record_type = #{q.recordType}
+        </if>
+        <if test="q.goodsId != null">
+            AND ir.goods_id = #{q.goodsId}
+        </if>
+    </sql>
+
+    <select id="countInvRecordDrill" resultType="long">
+        SELECT COUNT(*)
+        FROM inventory_record ir
+        WHERE <include refid="invRecordDrillWhere"/>
+    </select>
+
+    <!-- 下钻：构成变动汇总的库存流水列表（单据号可回溯来源单据，BR-INV-04 只读） -->
+    <select id="selectInvRecordDrill" resultType="com.smms.rpt.dto.DrillInvRecordRow">
+        SELECT ir.id            AS id,
+               ir.goods_id      AS goodsId,
+               g.goods_code     AS goodsCode,
+               g.name           AS goodsName,
+               ir.record_type   AS recordType,
+               ir.change_qty    AS changeQty,
+               ir.before_qty    AS beforeQty,
+               ir.after_qty     AS afterQty,
+               ir.unit_cost     AS unitCost,
+               ir.biz_type      AS bizType,
+               ir.biz_no        AS bizNo,
+               ir.operator_name AS operatorName,
+               ir.operate_time  AS operateTime,
+               ir.remark        AS remark
+        FROM inventory_record ir
+        JOIN goods g ON g.id = ir.goods_id
+        WHERE <include refid="invRecordDrillWhere"/>
+        ORDER BY ir.operate_time DESC, ir.id DESC
+    </select>
+
+    <!-- 报损下钻条件：与损耗报表同口径（已审核、审核时间区间） -->
+    <sql id="lossDrillWhere">
+        l.status = 'AUDITED'
+        AND l.audit_time &gt;= #{q.beginDate}
+        AND l.audit_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        <if test="q.goodsId != null">
+            AND l.goods_id = #{q.goodsId}
+        </if>
+    </sql>
+
+    <select id="countLossDrill" resultType="long">
+        SELECT COUNT(*)
+        FROM loss_order l
+        WHERE <include refid="lossDrillWhere"/>
+    </select>
+
+    <!-- 下钻：构成报损汇总的已审核报损单列表 -->
+    <select id="selectLossDrill" resultType="com.smms.rpt.dto.DrillLossRow">
+        SELECT l.id           AS id,
+               l.order_no     AS orderNo,
+               'LOSS'         AS kind,
+               l.goods_id     AS goodsId,
+               g.name         AS goodsName,
+               l.quantity     AS qty,
+               l.cost_price   AS costPrice,
+               l.amount       AS amount,
+               l.reason       AS reason,
+               l.apply_name   AS applyName,
+               l.auditor_name AS auditorName,
+               l.audit_time   AS bizTime
+        FROM loss_order l
+        JOIN goods g ON g.id = l.goods_id
+        WHERE <include refid="lossDrillWhere"/>
+        ORDER BY l.audit_time DESC, l.id DESC
+    </select>
+
+    <!-- 盘亏下钻条件：与损耗报表同口径（已审核盘点单、差异 < 0、审核时间区间） -->
+    <sql id="checkShortageDrillWhere">
+        sco.status = 'AUDITED'
+        AND sci.diff_qty &lt; 0
+        AND sco.audit_time &gt;= #{q.beginDate}
+        AND sco.audit_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        <if test="q.goodsId != null">
+            AND sci.goods_id = #{q.goodsId}
+        </if>
+    </sql>
+
+    <select id="countCheckShortageDrill" resultType="long">
+        SELECT COUNT(*)
+        FROM stock_check_item sci
+        JOIN stock_check_order sco ON sco.id = sci.order_id
+        WHERE <include refid="checkShortageDrillWhere"/>
+    </select>
+
+    <!-- 下钻：构成盘亏汇总的已审核盘点单差异行列表 -->
+    <select id="selectCheckShortageDrill" resultType="com.smms.rpt.dto.DrillLossRow">
+        SELECT sci.id            AS id,
+               sco.order_no      AS orderNo,
+               'CHECK'           AS kind,
+               sci.goods_id      AS goodsId,
+               g.name            AS goodsName,
+               ABS(sci.diff_qty) AS qty,
+               sci.cost_price    AS costPrice,
+               ABS(sci.diff_amount) AS amount,
+               sci.diff_reason   AS reason,
+               sco.checker_name  AS applyName,
+               sco.auditor_name  AS auditorName,
+               sco.audit_time    AS bizTime
+        FROM stock_check_item sci
+        JOIN stock_check_order sco ON sco.id = sci.order_id
+        JOIN goods g ON g.id = sci.goods_id
+        WHERE <include refid="checkShortageDrillWhere"/>
+        ORDER BY sco.audit_time DESC, sci.id DESC
+    </select>
 </mapper>

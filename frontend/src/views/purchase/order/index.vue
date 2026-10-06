@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
   PURCHASE_STATUS_MAP,
@@ -33,6 +34,7 @@ import { pageGoods, type GoodsListVO } from '@/api/goods'
 import { pMoney, pQty, printSheet } from '@/utils/print'
 
 const auth = useAuthStore()
+const route = useRoute()
 
 function fmtTime(v: string | null | undefined) {
   return v ? v.replace('T', ' ').slice(0, 19) : '—'
@@ -595,8 +597,22 @@ async function auditReturn(row: PurchaseReturnVO) {
   loadReturns()
 }
 
+// 报表下钻深链（BR-RPT-06）：?orderNo=PO... 自动筛选并打开该单据详情
+async function bootstrap() {
+  const no = route.query.orderNo
+  if (typeof no === 'string' && no) {
+    query.orderNo = no
+    await load()
+    list.value = list.value.filter((o) => o.orderNo === no)
+    const target = list.value[0]
+    if (target) openDetail(target)
+  } else {
+    await load()
+  }
+}
+
 onMounted(() => {
-  load()
+  bootstrap()
   loadSuppliers()
 })
 </script>

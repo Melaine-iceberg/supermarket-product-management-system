@@ -6,10 +6,13 @@ import com.smms.common.api.ApiResponse;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.rpt.dto.DrillOrderQuery;
+import com.smms.rpt.dto.DrillOrderRow;
 import com.smms.rpt.dto.GoodsRankRow;
 import com.smms.rpt.dto.NegativeProfitRow;
 import com.smms.rpt.dto.ReportRange;
 import com.smms.rpt.dto.SalesReportVO;
+import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.ProfitReportService;
 import com.smms.rpt.service.ReportExcelService;
 import com.smms.security.SecurityUtils;
@@ -63,6 +66,7 @@ public class ProfitReportController {
     };
 
     private final ProfitReportService profitReportService;
+    private final DrillDownService drillDownService;
     private final ReportExcelService excelService;
 
     /** 按商品分析毛利（默认按毛利额倒序，含毛利率） */
@@ -107,6 +111,22 @@ public class ProfitReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ApiResponse.ok(profitReportService.negative(
                 new ReportRange(beginDate, endDate), SecurityUtils.getLoginUser()));
+    }
+
+    /** 汇总数字下钻（BR-RPT-06）：构成毛利汇总的销售单列表（成本/毛利按角色过滤，BR-RPT-07） */
+    @GetMapping("/drill-orders")
+    @RequirePerm("sys:rpt:profit")
+    public ApiResponse<PageVO<DrillOrderRow>> drillOrders(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long goodsId,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        ReportRange range = new ReportRange(beginDate, endDate);
+        DrillOrderQuery q = new DrillOrderQuery(range.beginDate(), range.endDate(),
+                goodsId, categoryId, null, null, null, null, null, null, page, size);
+        return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }
 
     /** 毛利分析导出（FR-RPT-08）：view=by-goods|by-category|by-day|negative */

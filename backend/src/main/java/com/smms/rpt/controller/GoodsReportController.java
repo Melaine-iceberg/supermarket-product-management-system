@@ -10,6 +10,7 @@ import com.smms.rpt.dto.DrillOrderQuery;
 import com.smms.rpt.dto.DrillOrderRow;
 import com.smms.rpt.dto.GoodsRankRow;
 import com.smms.rpt.dto.ReportRange;
+import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.GoodsReportService;
 import com.smms.rpt.service.ReportExcelService;
 import com.smms.security.SecurityUtils;
@@ -59,6 +60,7 @@ public class GoodsReportController {
     };
 
     private final GoodsReportService goodsReportService;
+    private final DrillDownService drillDownService;
     private final ReportExcelService excelService;
 
     /** 商品销售排行（①）：orderBy=qty|salesAmount|profitAmount|netSalesAmount */
@@ -118,6 +120,7 @@ public class GoodsReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long goodsId,
+            @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) String cashierName,
             @RequestParam(required = false) Integer counterNo,
             @RequestParam(required = false) Boolean memberOnly,
@@ -125,8 +128,9 @@ public class GoodsReportController {
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         DrillOrderQuery q = new DrillOrderQuery(range.beginDate(), range.endDate(),
-                goodsId, cashierName, counterNo, memberOnly, page, size);
-        return ApiResponse.ok(goodsReportService.drillOrders(range, q, SecurityUtils.getLoginUser()));
+                goodsId, categoryId, cashierName, counterNo, memberOnly, null,
+                null, null, page, size);
+        return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }
 
     /** 商品分析导出（FR-RPT-08）：view=ranking|category-structure|slow-moving|brand-sales */

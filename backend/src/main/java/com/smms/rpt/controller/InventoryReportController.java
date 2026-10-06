@@ -6,11 +6,16 @@ import com.smms.common.api.ApiResponse;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.rpt.dto.DrillInvRecordQuery;
+import com.smms.rpt.dto.DrillInvRecordRow;
+import com.smms.rpt.dto.DrillLossQuery;
+import com.smms.rpt.dto.DrillLossRow;
 import com.smms.rpt.dto.InvChangeRow;
 import com.smms.rpt.dto.InvSummaryRow;
 import com.smms.rpt.dto.ReportRange;
 import com.smms.rpt.dto.TurnoverRow;
 import com.smms.rpt.dto.WarningRptRow;
+import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.InventoryReportService;
 import com.smms.rpt.service.ReportExcelService;
 import lombok.RequiredArgsConstructor;
@@ -64,6 +69,7 @@ public class InventoryReportController {
     };
 
     private final InventoryReportService inventoryReportService;
+    private final DrillDownService drillDownService;
     private final ReportExcelService excelService;
 
     /** 库存汇总表（①，商品维度） */
@@ -133,6 +139,36 @@ public class InventoryReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ApiResponse.ok(inventoryReportService.loss(new ReportRange(beginDate, endDate)));
+    }
+
+    /** 汇总数字下钻（BR-RPT-06）：变动类型/周转商品行 → 构成汇总的库存流水明细（含单据号回溯） */
+    @GetMapping("/drill-records")
+    @RequirePerm("sys:rpt:inventory")
+    public ApiResponse<PageVO<DrillInvRecordRow>> drillRecords(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String recordType,
+            @RequestParam(required = false) Long goodsId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        ReportRange range = new ReportRange(beginDate, endDate);
+        return ApiResponse.ok(drillDownService.inventoryRecords(new DrillInvRecordQuery(
+                range.beginDate(), range.endDate(), recordType, goodsId, page, size)));
+    }
+
+    /** 汇总数字下钻（BR-RPT-06）：损耗商品行 → 报损单（kind=loss）/盘亏差异（kind=check）明细 */
+    @GetMapping("/drill-loss")
+    @RequirePerm("sys:rpt:inventory")
+    public ApiResponse<PageVO<DrillLossRow>> drillLoss(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(defaultValue = "loss") String kind,
+            @RequestParam(required = false) Long goodsId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        ReportRange range = new ReportRange(beginDate, endDate);
+        return ApiResponse.ok(drillDownService.lossDocuments(new DrillLossQuery(
+                range.beginDate(), range.endDate(), kind, goodsId, page, size)));
     }
 
     /** 库存报表导出（FR-RPT-08）：view=summary-goods|summary-category|warnings|changes|turnover-goods|turnover-category|loss */

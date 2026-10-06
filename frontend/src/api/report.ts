@@ -206,43 +206,6 @@ export function fetchBrandSales(range: ReportRange) {
   return http.get<GoodsRankRow[]>('/report/goods/brand-sales', range)
 }
 
-/** 下钻销售单行（BR-RPT-06） */
-export interface DrillOrderRow {
-  id: number
-  orderNo: string
-  cashierName: string
-  counterNo: number
-  memberName: string | null
-  saleTime: string
-  businessDate: string
-  itemCount: number
-  goodsAmount: number
-  discountAmount: number
-  payableAmount: number
-  paidAmount: number
-  costAmount: number | null
-  profitAmount: number | null
-  returnStatus: string
-}
-
-/** 汇总数字下钻（BR-RPT-06）：构成汇总的销售单列表 */
-export function fetchDrillOrders(
-  range: ReportRange,
-  q: {
-    goodsId?: number
-    cashierName?: string
-    counterNo?: number
-    memberOnly?: boolean
-    page?: number
-    size?: number
-  },
-) {
-  return http.get<PageResult<DrillOrderRow>>('/report/goods/drill-orders', {
-    ...range,
-    ...q,
-  })
-}
-
 /** 商品分析导出（FR-RPT-08）：view=ranking|category-structure|slow-moving|brand-sales */
 export function exportGoodsReport(
   view: string,
@@ -595,6 +558,169 @@ export function exportMemberReport(
   return http
     .download('/report/member/export', { view, ...range, ...extra })
     .then((blob) => saveBlob(blob, `member-${view}.xlsx`))
+}
+
+// =====================================================================
+// 汇总数字下钻（BR-RPT-06）：任一汇总数字 → 构成它的明细单据列表
+// =====================================================================
+
+/** 下钻销售单行 */
+export interface DrillOrderRow {
+  id: number
+  orderNo: string
+  cashierName: string
+  counterNo: number
+  memberName: string | null
+  saleTime: string
+  businessDate: string
+  itemCount: number
+  goodsAmount: number
+  discountAmount: number
+  payableAmount: number
+  paidAmount: number
+  costAmount: number | null
+  profitAmount: number | null
+  returnStatus: string
+}
+
+/** 销售单下钻筛选：与对应报表行同口径；日期为空时全量下钻（会员消费排行） */
+export interface DrillOrderFilters {
+  beginDate?: string
+  endDate?: string
+  goodsId?: number
+  categoryId?: number
+  cashierName?: string
+  counterNo?: number
+  /** true 仅会员单 / false 仅散客单 / 空为全部 */
+  memberOnly?: boolean
+  memberId?: number
+  payType?: string
+  hour?: number
+  page?: number
+  size?: number
+}
+
+/** 汇总数字下钻（BR-RPT-06）：构成汇总的销售单列表（商品/销售/毛利/会员报表共用） */
+export function fetchDrillOrders(
+  report: 'goods' | 'sales' | 'profit' | 'member',
+  filters: DrillOrderFilters,
+) {
+  return http.get<PageResult<DrillOrderRow>>(`/report/${report}/drill-orders`, filters)
+}
+
+/** 下钻采购单行（供应商/商品汇总、供应商排行行 → 采购单） */
+export interface DrillPurchaseRow {
+  id: number
+  orderNo: string
+  supplierId: number
+  supplierName: string
+  status: string
+  createBy: string | null
+  createTime: string
+  auditTime: string | null
+  expectDate: string | null
+  totalAmount: number
+  receivedAmount: number
+  returnAmount: number
+  settleStatus: string
+  settleAmount: number
+}
+
+/** 采购单下钻（BR-RPT-06）：supplierId/goodsId 与汇总行对应 */
+export function fetchPurchaseDrillOrders(filters: {
+  beginDate?: string
+  endDate?: string
+  supplierId?: number
+  goodsId?: number
+  page?: number
+  size?: number
+}) {
+  return http.get<PageResult<DrillPurchaseRow>>('/report/purchase/drill-orders', filters)
+}
+
+/** 下钻入库单行（到货及时率供应商行 → 入库单，含按期标记） */
+export interface DrillReceiptRow {
+  id: number
+  receiptNo: string
+  purchaseOrderId: number
+  purchaseOrderNo: string
+  supplierId: number
+  supplierName: string
+  receiptTime: string
+  operatorName: string | null
+  deliveryOrderNo: string | null
+  totalAmount: number
+  expectDate: string | null
+  onTime: boolean | null
+}
+
+/** 入库单下钻（BR-RPT-06）：到货及时率行 → 构成统计的入库单列表 */
+export function fetchPurchaseDrillReceipts(filters: {
+  beginDate?: string
+  endDate?: string
+  supplierId?: number
+  page?: number
+  size?: number
+}) {
+  return http.get<PageResult<DrillReceiptRow>>('/report/purchase/drill-receipts', filters)
+}
+
+/** 下钻库存流水行（变动明细汇总行/周转商品行 → 库存流水） */
+export interface DrillInvRecordRow {
+  id: number
+  goodsId: number
+  goodsCode: string | null
+  goodsName: string | null
+  recordType: string
+  changeQty: number
+  beforeQty: number | null
+  afterQty: number | null
+  unitCost: number | null
+  bizType: string | null
+  bizNo: string | null
+  operatorName: string | null
+  operateTime: string
+  remark: string | null
+}
+
+/** 库存流水下钻（BR-RPT-06）：recordType/goodsId 与报表行对应 */
+export function fetchInventoryDrillRecords(filters: {
+  beginDate?: string
+  endDate?: string
+  recordType?: string
+  goodsId?: number
+  page?: number
+  size?: number
+}) {
+  return http.get<PageResult<DrillInvRecordRow>>('/report/inventory/drill-records', filters)
+}
+
+/** 下钻损耗单据行：kind=loss 报损单 / kind=check 盘亏差异行 */
+export interface DrillLossRow {
+  id: number
+  orderNo: string
+  kind: 'LOSS' | 'CHECK'
+  goodsId: number
+  goodsName: string
+  qty: number
+  costPrice: number | null
+  amount: number
+  reason: string | null
+  applyName: string | null
+  auditorName: string | null
+  bizTime: string
+}
+
+/** 损耗下钻（BR-RPT-06）：损耗商品行 → 报损/盘亏明细单据 */
+export function fetchInventoryDrillLoss(filters: {
+  beginDate?: string
+  endDate?: string
+  kind?: 'loss' | 'check'
+  goodsId?: number
+  page?: number
+  size?: number
+}) {
+  return http.get<PageResult<DrillLossRow>>('/report/inventory/drill-loss', filters)
 }
 
 // =====================================================================

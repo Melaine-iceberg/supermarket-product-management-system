@@ -2,6 +2,10 @@ package com.smms.rpt.mapper;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smms.rpt.dto.DrillInvRecordQuery;
+import com.smms.rpt.dto.DrillInvRecordRow;
+import com.smms.rpt.dto.DrillLossQuery;
+import com.smms.rpt.dto.DrillLossRow;
 import com.smms.rpt.dto.InvChangeRow;
 import com.smms.rpt.dto.InvSummaryRow;
 import com.smms.rpt.dto.LossRow;
@@ -72,4 +76,25 @@ public interface InventoryReportMapper {
     /** 期初库存金额 = Σ当前库存成本 − Σ(区间流水变动金额)（损耗率分母） */
     BigDecimal selectBeginInventoryAmount(@Param("beginTime") LocalDateTime beginTime,
                                           @Param("endTime") LocalDateTime endTime);
+
+    // ==================== 下钻明细（BR-RPT-06） ====================
+
+    /** 库存变动明细下钻：构成该类型汇总的流水数（分页总数用） */
+    long countInvRecordDrill(@Param("q") DrillInvRecordQuery q);
+
+    /** 库存变动明细下钻：构成该类型/商品汇总的流水列表（含关联单据号可回溯） */
+    IPage<DrillInvRecordRow> selectInvRecordDrill(Page<DrillInvRecordRow> page,
+                                                  @Param("q") DrillInvRecordQuery q);
+
+    /** 损耗报表下钻（报损）：构成报损汇总的报损单数（分页总数用） */
+    long countLossDrill(@Param("q") DrillLossQuery q);
+
+    /** 损耗报表下钻（报损）：构成报损汇总的已审核报损单列表 */
+    IPage<DrillLossRow> selectLossDrill(Page<DrillLossRow> page, @Param("q") DrillLossQuery q);
+
+    /** 损耗报表下钻（盘亏）：构成盘亏汇总的盘点差异行数（分页总数用） */
+    long countCheckShortageDrill(@Param("q") DrillLossQuery q);
+
+    /** 损耗报表下钻（盘亏）：构成盘亏汇总的已审核盘点单差异行列表 */
+    IPage<DrillLossRow> selectCheckShortageDrill(Page<DrillLossRow> page, @Param("q") DrillLossQuery q);
 }

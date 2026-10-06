@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   getSalesOrderDetail,
   pageSalesOrders,
@@ -10,6 +11,8 @@ import {
   type SalesOrderVO,
 } from '@/api/sale'
 import { printSalesReceipt } from '@/utils/receipt'
+
+const route = useRoute()
 
 function fmtTime(v: string | null | undefined) {
   return v ? v.replace('T', ' ').slice(0, 19) : '—'
@@ -79,7 +82,21 @@ function resetQuery() {
   load()
 }
 
-onMounted(load)
+// 报表下钻深链（BR-RPT-06）：?orderNo=XS... 自动筛选并打开该单据详情
+async function bootstrap() {
+  const no = route.query.orderNo
+  if (typeof no === 'string' && no) {
+    query.orderNo = no
+    await load()
+    list.value = list.value.filter((o) => o.orderNo === no)
+    const target = list.value[0]
+    if (target) openDetail(target)
+  } else {
+    await load()
+  }
+}
+
+onMounted(bootstrap)
 
 // ---------- 详情（FR-SALE-09：明细快照 + 收款 + 关联退货） ----------
 const drawer = reactive({ visible: false, loading: false, detail: null as SalesOrderDetailVO | null })

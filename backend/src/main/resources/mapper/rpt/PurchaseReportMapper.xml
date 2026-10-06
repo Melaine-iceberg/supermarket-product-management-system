@@ -107,4 +107,86 @@
         GROUP BY po.supplier_id, s.name
         ORDER BY receiptCount DESC
     </select>
+
+    <!-- ==================== 下钻明细（BR-RPT-06） ==================== -->
+
+    <!-- 采购汇总下钻条件：与汇总同口径（正式单据、下单时间区间、供应商/商品筛选） -->
+    <sql id="purchaseDrillWhere">
+        po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
+        AND po.create_time &gt;= #{q.beginDate}
+        AND po.create_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        <if test="q.supplierId != null">
+            AND po.supplier_id = #{q.supplierId}
+        </if>
+        <if test="q.goodsId != null">
+            AND EXISTS (SELECT 1 FROM purchase_order_item poi
+                        WHERE poi.order_id = po.id AND poi.goods_id = #{q.goodsId})
+        </if>
+    </sql>
+
+    <select id="countPurchaseDrill" resultType="long">
+        SELECT COUNT(*)
+        FROM purchase_order po
+        WHERE <include refid="purchaseDrillWhere"/>
+    </select>
+
+    <!-- 下钻：构成该供应商/商品采购汇总的采购单列表（点击可再打开采购单详情） -->
+    <select id="selectPurchaseDrill" resultType="com.smms.rpt.dto.DrillPurchaseRow">
+        SELECT po.id             AS id,
+               po.order_no       AS orderNo,
+               po.supplier_id    AS supplierId,
+               s.name            AS supplierName,
+               po.status         AS status,
+               po.create_by      AS createBy,
+               po.create_time    AS createTime,
+               po.audit_time     AS auditTime,
+               po.expect_date    AS expectDate,
+               po.total_amount   AS totalAmount,
+               po.received_amount AS receivedAmount,
+               po.return_amount  AS returnAmount,
+               po.settle_status  AS settleStatus,
+               po.settle_amount  AS settleAmount
+        FROM purchase_order po
+        JOIN supplier s ON s.id = po.supplier_id
+        WHERE <include refid="purchaseDrillWhere"/>
+        ORDER BY po.create_time DESC, po.id DESC
+    </select>
+
+    <!-- 到货及时率下钻条件：与统计同口径（有预计到货日、入库时间区间） -->
+    <sql id="receiptDrillWhere">
+        po.expect_date IS NOT NULL
+        AND ro.receipt_time &gt;= #{q.beginDate}
+        AND ro.receipt_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        <if test="q.supplierId != null">
+            AND ro.supplier_id = #{q.supplierId}
+        </if>
+    </sql>
+
+    <select id="countReceiptDrill" resultType="long">
+        SELECT COUNT(*)
+        FROM receipt_order ro
+        JOIN purchase_order po ON po.id = ro.purchase_order_id
+        WHERE <include refid="receiptDrillWhere"/>
+    </select>
+
+    <!-- 下钻：构成该供应商到货统计的入库单列表（按期标记与统计口径一致） -->
+    <select id="selectReceiptDrill" resultType="com.smms.rpt.dto.DrillReceiptRow">
+        SELECT ro.id                    AS id,
+               ro.order_no               AS receiptNo,
+               ro.purchase_order_id      AS purchaseOrderId,
+               po.order_no               AS purchaseOrderNo,
+               ro.supplier_id            AS supplierId,
+               s.name                    AS supplierName,
+               ro.receipt_time           AS receiptTime,
+               ro.operator_name          AS operatorName,
+               ro.delivery_order_no      AS deliveryOrderNo,
+               ro.total_amount           AS totalAmount,
+               po.expect_date            AS expectDate,
+               CASE WHEN DATE(ro.receipt_time) &lt;= po.expect_date THEN 1 ELSE 0 END AS onTime
+        FROM receipt_order ro
+        JOIN purchase_order po ON po.id = ro.purchase_order_id
+        JOIN supplier s ON s.id = ro.supplier_id
+        WHERE <include refid="receiptDrillWhere"/>
+        ORDER BY ro.receipt_time DESC, ro.id DESC
+    </select>
 </mapper>

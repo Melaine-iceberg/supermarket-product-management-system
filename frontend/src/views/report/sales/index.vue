@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { dropEmptyColumns, pMoney, pPercent, printSheet, type PrintColumn } from '@/utils/print'
 import {
   exportSalesReport,
+  fetchDrillOrders,
   fetchSalesByCashier,
   fetchSalesByCounter,
   fetchSalesByHour,
@@ -16,10 +17,12 @@ import {
   thisWeekRange,
   todayRange,
   yesterdayRange,
+  type DrillOrderFilters,
   type ReportRange,
   type SalesReportRow,
   type SalesReportVO,
 } from '@/api/report'
+import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
 
 type ViewKey = 'daily' | 'pay-method' | 'hour' | 'cashier' | 'counter' | 'member-ratio'
 
@@ -173,6 +176,67 @@ async function handlePrint() {
   })
 }
 
+// ---------- 下钻（BR-RPT-06）：汇总数字 → 构成它的销售单列表（AC-16） ----------
+const PAY_LABEL_TO_CODE: Record<string, string> = {
+  现金: 'CASH',
+  银行卡: 'BANK',
+  移动支付: 'MOBILE',
+  会员储值: 'BALANCE',
+}
+
+const drillVisible = ref(false)
+const drillTitle = ref('')
+let drillFilters: DrillOrderFilters = {}
+
+function openDrill(filters: DrillOrderFilters, label: string) {
+  drillFilters = filters
+  drillTitle.value = `下钻：${label}`
+  drillVisible.value = true
+}
+
+function fetchDrillPage(p: number, size: number) {
+  return fetchDrillOrders('sales', { ...drillFilters, page: p, size })
+}
+
+/** 报表行 → 下钻筛选（口径与行一致；日报按月行取整月区间） */
+function drillRow(row: SalesReportRow) {
+  syncRange()
+  if (view.value === 'daily') {
+    if (monthly.value) {
+      const [y, m] = row.groupKey.split('-').map(Number)
+      const last = new Date(y, m, 0).getDate()
+      openDrill(
+        { beginDate: `${row.groupKey}-01`, endDate: `${row.groupKey}-${String(last).padStart(2, '0')}` },
+        `销售月报 ${row.groupKey}`,
+      )
+    } else {
+      const day = (row.bizDate ?? row.groupKey).slice(0, 10)
+      openDrill({ beginDate: day, endDate: day }, `销售日报 ${day}`)
+    }
+  } else if (view.value === 'pay-method') {
+    const code = PAY_LABEL_TO_CODE[row.groupKey]
+    if (!code) {
+      ElMessage.warning('该收款方式暂不支持下钻')
+      return
+    }
+    openDrill({ payType: code, ...range }, `收款方式 ${row.groupKey}`)
+  } else if (view.value === 'hour') {
+    openDrill({ hour: parseInt(row.groupKey), ...range }, `时段 ${row.groupKey}`)
+  } else if (view.value === 'cashier') {
+    openDrill({ cashierName: row.groupKey, ...range }, `收银员 ${row.groupKey}`)
+  } else if (view.value === 'counter') {
+    openDrill({ counterNo: parseInt(row.groupKey), ...range }, `收银台 ${row.groupKey}`)
+  } else {
+    openDrill({ memberOnly: row.groupKey === '会员单', ...range }, `单据类型 ${row.groupKey}`)
+  }
+}
+
+/** 合计行下钻：整个查询区间的销售单 */
+function drillTotalRow() {
+  syncRange()
+  openDrill({ ...range }, `合计（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`)
+}
+
 onMounted(load)
 </script>
 
@@ -274,6 +338,11 @@ onMounted(load)
         <el-table-column label="占比" width="80" align="right">
           <template #default="{ row }">{{ percent(row.shareRate) }}</template>
         </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="drillRow(row as SalesReportRow)">下钻</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <!-- 合计行 -->
@@ -284,8 +353,12 @@ onMounted(load)
         <span>净销售: ￥{{ money(total.netAmount) }}</span>
         <span>毛利额: ￥{{ money(total.profitAmount) }}</span>
         <span>毛利率: {{ percent(total.profitRate) }}</span>
+        <el-button link type="primary" class="total-drill" @click="drillTotalRow">下钻</el-button>
       </div>
     </el-card>
+
+    <!-- 下钻单据列表（BR-RPT-06） -->
+    <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
   </div>
 </template>
 
