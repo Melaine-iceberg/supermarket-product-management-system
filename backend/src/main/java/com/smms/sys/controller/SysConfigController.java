@@ -7,6 +7,7 @@ import com.smms.security.SecurityUtils;
 import com.smms.sys.dto.ConfigUpdateRequest;
 import com.smms.sys.dto.PrintInfoVO;
 import com.smms.sys.entity.SysConfig;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ import java.util.List;
 public class SysConfigController {
 
     private final SysConfigService configService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     @GetMapping
     @RequirePerm("sys:config:list")
@@ -46,6 +48,7 @@ public class SysConfigController {
     @OpLog(module = "系统管理", action = "修改参数", target = "#key")
     public ApiResponse<Void> update(@PathVariable String key,
                                     @Valid @RequestBody ConfigUpdateRequest req) {
+        sensitiveAuthService.confirmPassword(req.password());
         configService.update(key, req.configValue(), req.remark(),
                 SecurityUtils.getLoginUser().username());
         return ApiResponse.ok();

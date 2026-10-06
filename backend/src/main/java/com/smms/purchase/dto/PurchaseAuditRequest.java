@@ -9,6 +9,8 @@ public record PurchaseAuditRequest(
         @NotNull(message = "审核结论不能为空")
         Boolean approved,
         /** 审核意见：驳回时必填 */
-        String remark
+        String remark,
+        /** 当前账号密码二次确认（BR-SYS-06） */
+        String password
 ) {
 }

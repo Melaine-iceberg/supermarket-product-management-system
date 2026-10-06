@@ -5,10 +5,12 @@ import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
 import com.smms.common.api.PageVO;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.dto.PasswordConfirmRequest;
 import com.smms.sys.dto.UserCreateRequest;
 import com.smms.sys.dto.UserStatusRequest;
 import com.smms.sys.dto.UserUpdateRequest;
 import com.smms.sys.dto.UserVO;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SysUserController {
 
     private final SysUserService userService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     @GetMapping
     @RequirePerm("sys:user:list")
@@ -68,7 +71,9 @@ public class SysUserController {
     @PutMapping("/{id}/reset-password")
     @RequirePerm("sys:user:reset-password")
     @OpLog(module = "系统管理", action = "重置密码", target = "#id")
-    public ApiResponse<String> resetPassword(@PathVariable Long id) {
+    public ApiResponse<String> resetPassword(@PathVariable Long id,
+                                             @Valid @RequestBody PasswordConfirmRequest req) {
+        sensitiveAuthService.confirmPassword(req.password());
         return ApiResponse.ok(userService.resetPassword(id, SecurityUtils.getLoginUser().username()));
     }
 }

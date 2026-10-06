@@ -133,9 +133,9 @@ export function submitStockCheck(id: number) {
   return http.post<CheckSummaryVO>(`/stock-checks/${id}/submit`)
 }
 
-/** 审核盘点单（FR-INV-09）：approved=true 通过（覆盖结存生成流水），false 驳回（意见必填） */
-export function auditStockCheck(id: number, approved: boolean, remark?: string) {
-  return http.post<CheckOrderVO>(`/stock-checks/${id}/audit`, { approved, remark })
+/** 审核盘点单（FR-INV-09）：approved=true 通过（覆盖结存生成流水），false 驳回（意见必填）；password 为当前账号密码二次确认（BR-SYS-06） */
+export function auditStockCheck(id: number, approved: boolean, remark?: string, password?: string) {
+  return http.post<CheckOrderVO>(`/stock-checks/${id}/audit`, { approved, remark, password })
 }
 
 /** 实盘录入模板下载（FR-INV-08）：按盘点单明细导出 xlsx */
@@ -225,9 +225,9 @@ export function getLossOrder(id: number) {
   return http.get<LossOrderVO>(`/loss-orders/${id}`)
 }
 
-/** 店长审核（FR-INV-10）：approved=true 通过（生成 LOSS_OUT/OVERFLOW_IN 流水），false 驳回（意见必填） */
-export function auditLossOrder(id: number, approved: boolean, remark?: string) {
-  return http.post<LossOrderVO>(`/loss-orders/${id}/audit`, { approved, remark })
+/** 店长审核（FR-INV-10）：approved=true 通过（生成 LOSS_OUT/OVERFLOW_IN 流水），false 驳回（意见必填）；password 为当前账号密码二次确认（BR-SYS-06） */
+export function auditLossOrder(id: number, approved: boolean, remark?: string, password?: string) {
+  return http.post<LossOrderVO>(`/loss-orders/${id}/audit`, { approved, remark, password })
 }
 
 // ---------- 实时库存查询（FR-INV-01，只读：结存为派生数据 BR-INV-11） ----------

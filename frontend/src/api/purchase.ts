@@ -139,9 +139,9 @@ export function withdrawPurchaseOrder(id: number) {
   return http.put<void>(`/purchase-orders/${id}/withdraw`)
 }
 
-/** 店长审核（FR-PUR-04）：通过 → APPROVED；驳回须意见并退回草稿 */
-export function auditPurchaseOrder(id: number, approved: boolean, remark?: string) {
-  return http.put<void>(`/purchase-orders/${id}/audit`, { approved, remark })
+/** 店长审核（FR-PUR-04）：通过 → APPROVED；驳回须意见并退回草稿；password 为当前账号密码二次确认（BR-SYS-06） */
+export function auditPurchaseOrder(id: number, approved: boolean, remark?: string, password?: string) {
+  return http.put<void>(`/purchase-orders/${id}/audit`, { approved, remark, password })
 }
 
 /** 作废（FR-PUR-05）：仅草稿，须填原因 */
@@ -346,9 +346,9 @@ export function createPurchaseReturn(data: PurchaseReturnPayload) {
   return http.post<PurchaseReturnVO>('/purchase-returns', data)
 }
 
-/** 退货审核（FR-PUR-08）：通过后事务内执行退货；驳回须填意见 */
-export function auditPurchaseReturn(id: number, approved: boolean, remark?: string) {
-  return http.put<void>(`/purchase-returns/${id}/audit`, { approved, remark })
+/** 退货审核（FR-PUR-08）：通过后事务内执行退货；驳回须填意见；password 为当前账号密码二次确认（BR-SYS-06） */
+export function auditPurchaseReturn(id: number, approved: boolean, remark?: string, password?: string) {
+  return http.put<void>(`/purchase-returns/${id}/audit`, { approved, remark, password })
 }
 
 // ---------- 建议采购清单（FR-PUR-02，BR-INV-07） ----------

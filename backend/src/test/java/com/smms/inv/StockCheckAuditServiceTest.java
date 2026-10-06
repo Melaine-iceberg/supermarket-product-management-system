@@ -117,7 +117,7 @@ class StockCheckAuditServiceTest {
         when(orderMapper.update(eq(null), any())).thenReturn(1);
         when(itemMapper.selectCount(any())).thenReturn(1L, 0L);
 
-        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(true, "同意"), AUDITOR);
+        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(true, "同意", null), AUDITOR);
 
         ArgumentCaptor<InventoryRecord> captor = ArgumentCaptor.forClass(InventoryRecord.class);
         verify(inventoryRecordMapper).insert(captor.capture());
@@ -151,7 +151,7 @@ class StockCheckAuditServiceTest {
         when(orderMapper.update(eq(null), any())).thenReturn(1);
         when(itemMapper.selectCount(any())).thenReturn(1L, 1L);
 
-        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(true, null), AUDITOR);
+        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(true, null, null), AUDITOR);
 
         ArgumentCaptor<InventoryRecord> captor = ArgumentCaptor.forClass(InventoryRecord.class);
         verify(inventoryRecordMapper).insert(captor.capture());
@@ -177,7 +177,7 @@ class StockCheckAuditServiceTest {
         when(orderMapper.update(eq(null), any())).thenReturn(1);
         when(itemMapper.selectCount(any())).thenReturn(1L, 1L);
 
-        service.audit(1L, new CheckAuditRequest(true, null), AUDITOR);
+        service.audit(1L, new CheckAuditRequest(true, null, null), AUDITOR);
 
         verify(inventoryRecordMapper, never()).insert(any(InventoryRecord.class));
         verify(inventoryMapper, never()).updateQuantityAndCost(anyLong(), anyLong(), any(), any(), any());
@@ -194,7 +194,7 @@ class StockCheckAuditServiceTest {
         when(orderMapper.update(eq(null), any())).thenReturn(1);
         when(itemMapper.selectCount(any())).thenReturn(1L, 1L);
 
-        service.audit(1L, new CheckAuditRequest(true, null), AUDITOR);
+        service.audit(1L, new CheckAuditRequest(true, null, null), AUDITOR);
 
         verify(inventoryMapper).ensureRow(9L, 1L);
         ArgumentCaptor<InventoryRecord> captor = ArgumentCaptor.forClass(InventoryRecord.class);
@@ -221,7 +221,7 @@ class StockCheckAuditServiceTest {
         when(orderMapper.update(eq(null), any())).thenReturn(1);
         when(itemMapper.selectCount(any())).thenReturn(2L, 2L);
 
-        service.audit(1L, new CheckAuditRequest(true, null), AUDITOR);
+        service.audit(1L, new CheckAuditRequest(true, null, null), AUDITOR);
 
         InOrder inOrder = inOrder(inventoryMapper);
         inOrder.verify(inventoryMapper).selectByGoodsIdForUpdate(9L, 1L);
@@ -237,7 +237,7 @@ class StockCheckAuditServiceTest {
         StockCheckOrder order = pendingOrder();
         when(orderMapper.selectById(1L)).thenReturn(order);
 
-        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(true, null), CHECKER))
+        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(true, null, null), CHECKER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("必须为不同用户");
 
@@ -253,7 +253,7 @@ class StockCheckAuditServiceTest {
         order.setStatus("CHECKING");
         when(orderMapper.selectById(1L)).thenReturn(order);
 
-        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(true, null), AUDITOR))
+        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(true, null, null), AUDITOR))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("仅待审核的盘点单可审核");
     }
@@ -266,13 +266,13 @@ class StockCheckAuditServiceTest {
         StockCheckOrder order = pendingOrder();
         when(orderMapper.selectById(1L)).thenReturn(order);
 
-        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(false, " "), AUDITOR))
+        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(false, " ", null), AUDITOR))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("驳回意见不能为空");
 
         when(orderMapper.update(eq(null), any())).thenReturn(1);
         when(itemMapper.selectCount(any())).thenReturn(0L, 0L);
-        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(false, "差异原因不实，请复核"), AUDITOR);
+        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(false, "差异原因不实，请复核", null), AUDITOR);
 
         assertThat(vo.status()).isEqualTo("CHECKING");
         assertThat(vo.auditRemark()).isEqualTo("差异原因不实，请复核");
@@ -290,7 +290,7 @@ class StockCheckAuditServiceTest {
         when(inventoryMapper.selectByGoodsIdForUpdate(9L, 1L)).thenReturn(inv("10", "2.5"));
         when(orderMapper.update(eq(null), any())).thenReturn(0);
 
-        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(true, null), AUDITOR))
+        assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(true, null, null), AUDITOR))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("请刷新后重试");
     }

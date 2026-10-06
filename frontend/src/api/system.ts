@@ -52,8 +52,9 @@ export function updateUserStatus(id: number, status: number) {
   return http.put<void>(`/users/${id}/status`, { status })
 }
 
-export function resetUserPassword(id: number) {
-  return http.put<string>(`/users/${id}/reset-password`)
+/** 重置密码：password 为当前登录账号密码二次确认（BR-SYS-06） */
+export function resetUserPassword(id: number, password: string) {
+  return http.put<string>(`/users/${id}/reset-password`, { password })
 }
 
 // ---------- 角色管理（FR-SYS-04 / FR-SYS-05） ----------
@@ -117,8 +118,9 @@ export function listConfigs() {
   return http.get<SysConfigVO[]>('/configs')
 }
 
-export function updateConfig(key: string, configValue: string, remark?: string) {
-  return http.put<void>(`/configs/${key}`, { configValue, remark })
+/** 修改参数：password 为当前登录账号密码二次确认（BR-SYS-06） */
+export function updateConfig(key: string, configValue: string, remark?: string, password?: string) {
+  return http.put<void>(`/configs/${key}`, { configValue, remark, password })
 }
 
 /** 打印页眉参数（IR-UI-08）：任意已登录用户可读，收银员无 sys:config:list 也能打印小票 */

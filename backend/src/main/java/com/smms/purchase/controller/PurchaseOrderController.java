@@ -13,6 +13,7 @@ import com.smms.purchase.dto.PurchaseSaveRequest;
 import com.smms.purchase.dto.PurchaseSettleRequest;
 import com.smms.purchase.service.PurchaseOrderService;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.service.SensitiveAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -39,6 +40,7 @@ import java.time.LocalDate;
 public class PurchaseOrderController {
 
     private final PurchaseOrderService purchaseOrderService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     /** 采购单分页查询（FR-PUR-03）：单号/供应商/状态/创建人/日期区间/商品筛选 */
     @GetMapping
@@ -119,6 +121,7 @@ public class PurchaseOrderController {
     @OpLog(module = "采购管理", action = "审核采购单", target = "#id")
     public ApiResponse<Void> audit(@PathVariable Long id,
                                    @Valid @RequestBody PurchaseAuditRequest req) {
+        sensitiveAuthService.confirmPassword(req.password());
         purchaseOrderService.audit(id, req, SecurityUtils.getLoginUser().realName());
         return ApiResponse.ok();
     }

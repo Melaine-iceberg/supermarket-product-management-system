@@ -454,12 +454,13 @@ async function doSubmit(id: number) {
 }
 
 // ---------- 审核（FR-INV-09：通过覆盖结存，驳回退回盘点中） ----------
-const auditDialog = reactive({ visible: false, approved: true, remark: '' })
+const auditDialog = reactive({ visible: false, approved: true, remark: '', password: '' })
 const auditing = ref(false)
 
 function openAudit(approved: boolean) {
   auditDialog.approved = approved
   auditDialog.remark = ''
+  auditDialog.password = ''
   auditDialog.visible = true
 }
 
@@ -469,10 +470,15 @@ async function saveAudit() {
     ElMessage.warning('驳回意见不能为空')
     return
   }
+  if (!auditDialog.password) {
+    ElMessage.warning('请输入当前账号密码以确认操作')
+    return
+  }
   auditing.value = true
   try {
-    await auditStockCheck(drawer.id, auditDialog.approved, remark || undefined)
+    await auditStockCheck(drawer.id, auditDialog.approved, remark || undefined, auditDialog.password)
     auditDialog.visible = false
+    auditDialog.password = ''
     ElMessage.success(auditDialog.approved ? '审核通过，库存已按实盘数调整' : '已驳回，单据退回盘点中')
     await loadDetail()
     load()
@@ -1019,6 +1025,14 @@ async function onImportFile(e: Event) {
         maxlength="200"
         :placeholder="auditDialog.approved ? '审核意见（选填）' : '驳回意见（必填）'"
       />
+      <el-input
+        v-model="auditDialog.password"
+        type="password"
+        show-password
+        maxlength="50"
+        placeholder="当前账号密码（敏感操作二次确认）"
+        class="audit-pwd"
+      />
       <template #footer>
         <el-button @click="auditDialog.visible = false">取消</el-button>
         <el-button
@@ -1091,6 +1105,10 @@ async function onImportFile(e: Event) {
 
   .dialog-alert {
     margin-bottom: 14px;
+  }
+
+  .audit-pwd {
+    margin-top: 12px;
   }
 
   .form-tip {

@@ -266,7 +266,7 @@ class LossOrderServiceTest {
         when(lossOrderMapper.update(any(), any())).thenReturn(1);
         when(lossOrderMapper.selectLossDetail(ORDER_ID)).thenReturn(vo("AUDITED"));
 
-        service.audit(ORDER_ID, new LossAuditRequest(true, "同意报废"), AUDITOR);
+        service.audit(ORDER_ID, new LossAuditRequest(true, "同意报废", null), AUDITOR);
 
         ArgumentCaptor<StockChange> changeCaptor = ArgumentCaptor.forClass(StockChange.class);
         verify(inventoryService).stockOut(changeCaptor.capture());
@@ -298,7 +298,7 @@ class LossOrderServiceTest {
         when(lossOrderMapper.update(any(), any())).thenReturn(1);
         when(lossOrderMapper.selectLossDetail(ORDER_ID)).thenReturn(vo("AUDITED"));
 
-        service.audit(ORDER_ID, new LossAuditRequest(true, null), AUDITOR);
+        service.audit(ORDER_ID, new LossAuditRequest(true, null, null), AUDITOR);
 
         ArgumentCaptor<StockChange> changeCaptor = ArgumentCaptor.forClass(StockChange.class);
         verify(inventoryService).stockIn(changeCaptor.capture());
@@ -328,7 +328,7 @@ class LossOrderServiceTest {
         when(inventoryService.stockOut(any())).thenThrow(
                 new BusinessException(ErrorCode.STOCK_NOT_ENOUGH, "商品【可乐 330ml】库存不足"));
 
-        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(true, null), AUDITOR))
+        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(true, null, null), AUDITOR))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("库存不足");
 
@@ -341,13 +341,13 @@ class LossOrderServiceTest {
         LossOrder order = pendingOrder("LOSS", "3", "2.5000");
         when(lossOrderMapper.selectById(ORDER_ID)).thenReturn(order);
 
-        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(false, " "), AUDITOR))
+        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(false, " ", null), AUDITOR))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("驳回意见不能为空");
 
         when(lossOrderMapper.update(any(), any())).thenReturn(1);
         when(lossOrderMapper.selectLossDetail(ORDER_ID)).thenReturn(vo("REJECTED"));
-        service.audit(ORDER_ID, new LossAuditRequest(false, "数量与实物不符"), AUDITOR);
+        service.audit(ORDER_ID, new LossAuditRequest(false, "数量与实物不符", null), AUDITOR);
 
         ArgumentCaptor<LossOrder> patchCaptor = ArgumentCaptor.forClass(LossOrder.class);
         verify(lossOrderMapper).update(patchCaptor.capture(), any());
@@ -364,7 +364,7 @@ class LossOrderServiceTest {
         order.setStatus("AUDITED");
         when(lossOrderMapper.selectById(ORDER_ID)).thenReturn(order);
 
-        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(true, null), AUDITOR))
+        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(true, null, null), AUDITOR))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("仅待审核的单据可审核");
 
@@ -379,7 +379,7 @@ class LossOrderServiceTest {
         when(inventoryService.stockOut(any())).thenReturn(new BigDecimal("2.5"));
         when(lossOrderMapper.update(any(), any())).thenReturn(0);
 
-        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(true, null), AUDITOR))
+        assertThatThrownBy(() -> service.audit(ORDER_ID, new LossAuditRequest(true, null, null), AUDITOR))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("请刷新后重试");
     }

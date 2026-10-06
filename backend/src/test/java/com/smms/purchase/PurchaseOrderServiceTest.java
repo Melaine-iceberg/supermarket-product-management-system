@@ -218,7 +218,7 @@ class PurchaseOrderServiceTest {
     void auditRejectRequiresRemark() {
         when(orderMapper.selectById(100L)).thenReturn(order(PurchaseOrder.STATUS_SUBMITTED));
 
-        assertThatThrownBy(() -> service.audit(100L, new PurchaseAuditRequest(false, "  "), "王店长"))
+        assertThatThrownBy(() -> service.audit(100L, new PurchaseAuditRequest(false, "  ", null), "王店长"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(ErrorCode.PARAM_INVALID.getCode());
@@ -230,7 +230,7 @@ class PurchaseOrderServiceTest {
         when(orderMapper.selectById(100L)).thenReturn(order(PurchaseOrder.STATUS_SUBMITTED));
         when(orderMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
 
-        service.audit(100L, new PurchaseAuditRequest(true, null), "王店长");
+        service.audit(100L, new PurchaseAuditRequest(true, null, null), "王店长");
         verify(orderMapper).update(isNull(), any(Wrapper.class));
     }
 

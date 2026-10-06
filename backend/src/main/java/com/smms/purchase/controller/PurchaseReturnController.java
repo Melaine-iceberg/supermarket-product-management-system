@@ -10,6 +10,7 @@ import com.smms.purchase.dto.PurchaseReturnQuery;
 import com.smms.purchase.dto.PurchaseReturnVO;
 import com.smms.purchase.service.PurchaseReturnService;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.service.SensitiveAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -34,6 +35,7 @@ import java.time.LocalDate;
 public class PurchaseReturnController {
 
     private final PurchaseReturnService purchaseReturnService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     /** 退货单分页：退货单号/采购单号/供应商/状态/日期区间 */
     @GetMapping
@@ -73,6 +75,7 @@ public class PurchaseReturnController {
     @OpLog(module = "采购管理", action = "审核采购退货单", target = "#id")
     public ApiResponse<Void> audit(@PathVariable Long id,
                                    @Valid @RequestBody PurchaseAuditRequest req) {
+        sensitiveAuthService.confirmPassword(req.password());
         purchaseReturnService.audit(id, req, SecurityUtils.getLoginUser().realName());
         return ApiResponse.ok();
     }

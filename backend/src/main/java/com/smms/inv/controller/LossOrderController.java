@@ -10,6 +10,7 @@ import com.smms.inv.dto.LossOrderQuery;
 import com.smms.inv.dto.LossOrderVO;
 import com.smms.inv.service.LossOrderService;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.service.SensitiveAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -34,6 +35,7 @@ import java.time.LocalDate;
 public class LossOrderController {
 
     private final LossOrderService lossOrderService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     /** 登记报损/报溢单（FR-INV-10）：报溢须录入成本单价，原因取自 loss_reason 字典 */
     @PostMapping
@@ -77,6 +79,7 @@ public class LossOrderController {
     @OpLog(module = "库存管理", action = "报损报溢审核", target = "#id")
     public ApiResponse<LossOrderVO> audit(@PathVariable Long id,
                                           @Valid @RequestBody LossAuditRequest req) {
+        sensitiveAuthService.confirmPassword(req.password());
         return ApiResponse.ok(lossOrderService.audit(id, req, SecurityUtils.getLoginUser().username()));
     }
 }

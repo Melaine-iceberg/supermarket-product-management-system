@@ -48,10 +48,11 @@ const dialogVisible = ref(false)
 const editing = ref<SysConfigVO | null>(null)
 const formRef = ref()
 const saving = ref(false)
-const form = reactive({ configValue: '', remark: '' })
+const form = reactive({ configValue: '', remark: '', password: '' })
 
 const rules = {
   configValue: [{ required: true, message: '请输入参数值', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入当前账号密码以确认操作', trigger: 'blur' }],
 }
 
 const VALUE_TYPE_PLACEHOLDER: Record<string, string> = {
@@ -65,6 +66,7 @@ function openEdit(row: SysConfigVO) {
   editing.value = row
   form.configValue = row.configValue
   form.remark = row.remark || ''
+  form.password = ''
   dialogVisible.value = true
 }
 
@@ -73,11 +75,12 @@ async function save() {
   if (!editing.value) return
   saving.value = true
   try {
-    await updateConfig(editing.value.configKey, form.configValue, form.remark)
+    await updateConfig(editing.value.configKey, form.configValue, form.remark, form.password)
     ElMessage.success(
       editing.value.instantEffect === 1 ? '参数已保存并即时生效' : '参数已保存，重启后生效',
     )
     dialogVisible.value = false
+    form.password = ''
     load()
   } catch {
     // 拦截器已提示
@@ -152,6 +155,15 @@ onMounted(load)
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="form.remark" type="textarea" maxlength="200" />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="password">
+          <el-input
+            v-model="form.password"
+            type="password"
+            show-password
+            maxlength="50"
+            placeholder="当前账号密码（敏感操作二次确认）"
+          />
         </el-form-item>
       </el-form>
       <template #footer>

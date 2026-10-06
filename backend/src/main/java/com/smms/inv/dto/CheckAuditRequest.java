@@ -12,5 +12,8 @@ public record CheckAuditRequest(
         Boolean approved,
 
         /** 审核意见（驳回必填） */
-        String remark) {
+        String remark,
+
+        /** 当前账号密码二次确认（BR-SYS-06） */
+        String password) {
 }

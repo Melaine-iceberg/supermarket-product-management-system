@@ -14,5 +14,8 @@ public record LossAuditRequest(
 
         /** 审核意见（驳回必填） */
         @Size(max = 200, message = "审核意见最多 200 字")
-        String remark) {
+        String remark,
+
+        /** 当前账号密码二次确认（BR-SYS-06） */
+        String password) {
 }

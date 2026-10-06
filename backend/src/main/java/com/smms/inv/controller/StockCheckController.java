@@ -17,6 +17,7 @@ import com.smms.inv.dto.CheckSummaryVO;
 import com.smms.inv.service.StockCheckExcelService;
 import com.smms.inv.service.StockCheckService;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.service.SensitiveAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -55,6 +56,7 @@ public class StockCheckController {
 
     private final StockCheckService stockCheckService;
     private final StockCheckExcelService checkExcelService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     /** 创建盘点单（FR-INV-07）：选择范围并快照账面数量，返回单号供跳转录入页 */
     @PostMapping
@@ -148,6 +150,7 @@ public class StockCheckController {
     @OpLog(module = "库存管理", action = "盘点审核")
     public ApiResponse<CheckOrderVO> audit(@PathVariable Long id,
                                            @Valid @RequestBody CheckAuditRequest req) {
+        sensitiveAuthService.confirmPassword(req.password());
         return ApiResponse.ok(stockCheckService.audit(id, req, SecurityUtils.getLoginUser().username()));
     }
 

@@ -244,12 +244,13 @@ async function loadDetail() {
 }
 
 // ---------- 审核（FR-INV-10：通过生成流水，驳回意见必填） ----------
-const auditDialog = reactive({ visible: false, approved: true, remark: '' })
+const auditDialog = reactive({ visible: false, approved: true, remark: '', password: '' })
 const auditing = ref(false)
 
 function openAudit(approved: boolean) {
   auditDialog.approved = approved
   auditDialog.remark = ''
+  auditDialog.password = ''
   auditDialog.visible = true
 }
 
@@ -259,10 +260,15 @@ async function saveAudit() {
     ElMessage.warning('驳回意见不能为空')
     return
   }
+  if (!auditDialog.password) {
+    ElMessage.warning('请输入当前账号密码以确认操作')
+    return
+  }
   auditing.value = true
   try {
-    await auditLossOrder(drawer.id, auditDialog.approved, remark || undefined)
+    await auditLossOrder(drawer.id, auditDialog.approved, remark || undefined, auditDialog.password)
     auditDialog.visible = false
+    auditDialog.password = ''
     ElMessage.success(
       auditDialog.approved
         ? detail.value?.bizType === 'LOSS'
@@ -619,6 +625,14 @@ async function saveAudit() {
         maxlength="200"
         :placeholder="auditDialog.approved ? '审核意见（选填）' : '驳回意见（必填）'"
       />
+      <el-input
+        v-model="auditDialog.password"
+        type="password"
+        show-password
+        maxlength="50"
+        placeholder="当前账号密码（敏感操作二次确认）"
+        class="audit-pwd"
+      />
       <template #footer>
         <el-button @click="auditDialog.visible = false">取消</el-button>
         <el-button
@@ -675,6 +689,10 @@ async function saveAudit() {
 
   .dialog-alert {
     margin-bottom: 14px;
+  }
+
+  .audit-pwd {
+    margin-top: 12px;
   }
 
   .form-tip {

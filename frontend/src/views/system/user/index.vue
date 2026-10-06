@@ -149,14 +149,19 @@ async function toggleStatus(row: SysUserVO) {
 const resetting = ref(false)
 
 async function handleResetPwd(row: SysUserVO) {
-  await ElMessageBox.confirm(
-    `将为 ${row.realName}（${row.username}）生成随机初始密码，并要求其首次登录后修改，确定继续？`,
-    '重置密码',
-    { type: 'warning' },
+  const { value: confirmPwd } = await ElMessageBox.prompt(
+    `将为 ${row.realName}（${row.username}）生成随机初始密码，并要求其首次登录后修改。请输入您的登录密码确认：`,
+    '重置密码（敏感操作二次确认）',
+    {
+      type: 'warning',
+      inputType: 'password',
+      inputPlaceholder: '当前账号密码',
+      inputValidator: (v: string) => (v ? true : '密码不能为空'),
+    },
   )
   resetting.value = true
   try {
-    const password = await resetUserPassword(row.id)
+    const password = await resetUserPassword(row.id, confirmPwd)
     showInitialPassword(password)
   } finally {
     resetting.value = false

@@ -176,7 +176,7 @@ class PurchaseReturnServiceTest {
         when(orderItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(item));
         when(orderMapper.updateReturnState(eq(100L), any(), any(), any(), any())).thenReturn(1);
 
-        service.audit(400L, new PurchaseAuditRequest(true, null), "王店长");
+        service.audit(400L, new PurchaseAuditRequest(true, null, null), "王店长");
 
         // 库存退货负数流水（PURCHASE_RETURN）
         ArgumentCaptor<StockChange> stockCaptor = ArgumentCaptor.forClass(StockChange.class);
@@ -208,7 +208,7 @@ class PurchaseReturnServiceTest {
         when(orderItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(item));
         when(orderMapper.updateReturnState(eq(100L), any(), any(), any(), any())).thenReturn(1);
 
-        service.audit(400L, new PurchaseAuditRequest(true, null), "王店长");
+        service.audit(400L, new PurchaseAuditRequest(true, null, null), "王店长");
 
         verify(orderMapper).updateReturnState(eq(100L), any(),
                 eq(PurchaseOrder.STATUS_PARTIAL_RETURNED), eq("王店长"), eq(0));
@@ -219,7 +219,7 @@ class PurchaseReturnServiceTest {
     void auditRejectRequiresRemark() {
         when(returnMapper.selectById(400L)).thenReturn(returnOrder(BigDecimal.TEN));
 
-        assertThatThrownBy(() -> service.audit(400L, new PurchaseAuditRequest(false, " "), "王店长"))
+        assertThatThrownBy(() -> service.audit(400L, new PurchaseAuditRequest(false, " ", null), "王店长"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(ErrorCode.PARAM_INVALID.getCode());
@@ -235,7 +235,7 @@ class PurchaseReturnServiceTest {
         // 并发退货导致可退不足 → 原子更新返回 0
         when(orderMapper.addReturnedQtyIfEnough(eq(200L), any())).thenReturn(0);
 
-        assertThatThrownBy(() -> service.audit(400L, new PurchaseAuditRequest(true, null), "王店长"))
+        assertThatThrownBy(() -> service.audit(400L, new PurchaseAuditRequest(true, null, null), "王店长"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(ErrorCode.PUR_RETURN_LINE_INVALID.getCode());
@@ -249,7 +249,7 @@ class PurchaseReturnServiceTest {
         approved.setStatus(PurchaseReturnOrder.STATUS_APPROVED);
         when(returnMapper.selectById(400L)).thenReturn(approved);
 
-        assertThatThrownBy(() -> service.audit(400L, new PurchaseAuditRequest(true, null), "王店长"))
+        assertThatThrownBy(() -> service.audit(400L, new PurchaseAuditRequest(true, null, null), "王店长"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(ErrorCode.PUR_RETURN_STATUS_INVALID.getCode());

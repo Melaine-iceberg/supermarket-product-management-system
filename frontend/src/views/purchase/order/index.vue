@@ -329,7 +329,7 @@ async function withdrawOrder(row: PurchaseOrderVO) {
   load()
 }
 
-/** 审核弹窗：通过 / 驳回（驳回必填意见，BR-PUR-02） */
+/** 审核弹窗：通过 / 驳回（驳回必填意见，BR-PUR-02）；密码二次确认（BR-SYS-06） */
 const auditDialog = reactive({
   visible: false,
   saving: false,
@@ -337,6 +337,7 @@ const auditDialog = reactive({
   orderNo: '',
   approved: true,
   remark: '',
+  password: '',
 })
 
 function openAudit(row: PurchaseOrderVO) {
@@ -344,6 +345,7 @@ function openAudit(row: PurchaseOrderVO) {
   auditDialog.orderNo = row.orderNo
   auditDialog.approved = true
   auditDialog.remark = ''
+  auditDialog.password = ''
   auditDialog.visible = true
 }
 
@@ -352,11 +354,17 @@ async function saveAudit() {
     ElMessage.warning('驳回时必须填写审核意见（FR-PUR-04）')
     return
   }
+  if (!auditDialog.password) {
+    ElMessage.warning('请输入当前账号密码以确认操作')
+    return
+  }
   auditDialog.saving = true
   try {
-    await auditPurchaseOrder(auditDialog.id, auditDialog.approved, auditDialog.remark.trim() || undefined)
+    await auditPurchaseOrder(auditDialog.id, auditDialog.approved,
+      auditDialog.remark.trim() || undefined, auditDialog.password)
     ElMessage.success(auditDialog.approved ? '审核通过' : '已驳回退回草稿')
     auditDialog.visible = false
+    auditDialog.password = ''
     load()
   } finally {
     auditDialog.saving = false
@@ -576,7 +584,7 @@ async function saveReturn() {
   }
 }
 
-/** 退货审核：通过执行退货 / 驳回须意见 */
+/** 退货审核：通过执行退货 / 驳回须意见；密码二次确认（BR-SYS-06） */
 async function auditReturn(row: PurchaseReturnVO) {
   const { value } = await ElMessageBox.prompt(
     `审核退货单 ${row.orderNo}：输入"通过"执行退货（生成负数流水并冲减结存），或填写意见驳回`,
@@ -592,7 +600,16 @@ async function auditReturn(row: PurchaseReturnVO) {
     ElMessage.warning('驳回时必须填写审核意见')
     return
   }
-  await auditPurchaseReturn(row.id, approved, approved ? undefined : value.trim())
+  const { value: password } = await ElMessageBox.prompt(
+    '该操作将按退货单执行库存冲减，请输入当前账号密码确认：',
+    '敏感操作二次确认',
+    {
+      inputType: 'password',
+      inputPlaceholder: '当前账号密码',
+      inputValidator: (v: string) => (v ? true : '密码不能为空'),
+    },
+  )
+  await auditPurchaseReturn(row.id, approved, approved ? undefined : value.trim(), password)
   ElMessage.success(approved ? '退货已执行' : '已驳回')
   loadReturns()
 }
@@ -972,6 +989,15 @@ onMounted(() => {
             :rows="3"
             maxlength="200"
             :placeholder="auditDialog.approved ? '选填' : '驳回时必填（FR-PUR-04）'"
+          />
+        </el-form-item>
+        <el-form-item label="确认密码" required>
+          <el-input
+            v-model="auditDialog.password"
+            type="password"
+            show-password
+            maxlength="50"
+            placeholder="当前账号密码（敏感操作二次确认）"
           />
         </el-form-item>
       </el-form>
