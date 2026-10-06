@@ -205,19 +205,141 @@ export interface GoodsRecord {
   image: string | null
   remark: string | null
   status: number
+  createTime?: string
+  updateTime?: string
 }
 
-/** 商品详情聚合（FR-GOODS-04）：此处仅声明表单回填所需字段 */
+/** 库存结存（详情接口内嵌，无结存行时为 null） */
+export interface GoodsInventoryVO {
+  goodsId: number
+  quantity: number
+  costPrice: number
+  costAmount: number
+  lastChangeTime: string | null
+}
+
+/** 库存流水行（详情接口最近 10 条） */
+export interface GoodsInventoryRecordVO {
+  id: number
+  goodsId: number
+  /** INIT/PURCHASE_IN/PURCHASE_RETURN/SALE_OUT/SALE_RETURN/CHECK_SURPLUS/CHECK_SHORTAGE/LOSS_OUT/OVERFLOW_IN */
+  recordType: string
+  changeQty: number
+  beforeQty: number
+  afterQty: number
+  unitCost: number
+  /** 关联单据类型 PO/RK/PT/XS/XT/PD/SZ/BY */
+  bizType: string | null
+  bizNo: string | null
+  operatorName: string | null
+  operateTime: string
+  remark: string | null
+}
+
+/** 最近采购价行（来源入库单） */
+export interface GoodsPurchasePriceVO {
+  orderNo: string
+  receiptTime: string
+  price: number
+  quantity: number
+}
+
+/** 近 30 天销量销售额 */
+export interface GoodsSalesSummaryVO {
+  totalQuantity: number | null
+  totalAmount: number | null
+}
+
+/** 关联供应商行 */
+export interface GoodsSupplierBriefVO {
+  supplierId: number
+  supplierName: string
+  supplyPrice: number | null
+  isDefault: number
+  lastSupplyTime: string | null
+}
+
+/** 商品详情聚合（FR-GOODS-04）：档案 + 当前库存成本 + 流水/采购价/销量/供应商/生效促销 */
 export interface GoodsDetailVO {
   goods: GoodsRecord
   categoryName: string
   unitName: string
   brandName: string | null
+  inventory: GoodsInventoryVO | null
+  activePromotion: PromotionVO | null
+  recentInventoryRecords: GoodsInventoryRecordVO[]
+  recentPurchasePrices: GoodsPurchasePriceVO[]
+  salesSummary30d: GoodsSalesSummaryVO
+  suppliers: GoodsSupplierBriefVO[]
 }
 
 /** 商品详情（FR-GOODS-04）：档案 + 库存成本 + 流水/采购价/销量/供应商聚合 */
 export function getGoodsDetail(id: number) {
   return http.get<GoodsDetailVO>(`/goods/${id}/detail`)
+}
+
+// ---------- 单品促销（FR-GOODS-09） ----------
+
+/** 促销记录（后端按实体直出） */
+export interface PromotionVO {
+  id: number
+  goodsId: number
+  promoPrice: number
+  startTime: string
+  endTime: string
+  /** ACTIVE生效 / EXPIRED过期 / DISABLED停用 */
+  status: 'ACTIVE' | 'EXPIRED' | 'DISABLED'
+  createBy: string | null
+  createTime: string | null
+  updateBy: string | null
+  updateTime: string | null
+  remark: string | null
+}
+
+/** 促销设置请求（FR-GOODS-09）：单个或批量；同商品同时间段只允许一条生效促销（BR-GOODS-04） */
+export interface PromotionCreatePayload {
+  goodsIds: number[]
+  promoPrice: number
+  startTime: string
+  endTime: string
+  remark?: string
+}
+
+/** 设置促销（单个/批量，时间格式 yyyy-MM-dd HH:mm:ss） */
+export function createPromotion(data: PromotionCreatePayload) {
+  return http.post<void>('/promotions', data)
+}
+
+/** 停用促销：仅 ACTIVE 可停用，非 ACTIVE 幂等返回 */
+export function disablePromotion(id: number) {
+  return http.put<void>(`/promotions/${id}/disable`)
+}
+
+/** 某商品的促销记录（含历史，时间倒序） */
+export function listPromotionsByGoods(goodsId: number) {
+  return http.get<PromotionVO[]>('/promotions', { goodsId })
+}
+
+// ---------- 调价历史（FR-GOODS-10） ----------
+
+export interface PriceHistoryVO {
+  id: number
+  goodsId: number
+  /** RETAIL零售 / MEMBER会员 / PURCHASE进货 */
+  priceType: 'RETAIL' | 'MEMBER' | 'PURCHASE'
+  /** 前值（新设价格时为 null） */
+  oldValue: number | null
+  /** 后值（清空价格时为 null） */
+  newValue: number | null
+  effectiveTime: string | null
+  operatorName: string | null
+  reason: string | null
+  createTime: string
+}
+
+/** 调价轨迹（FR-GOODS-10）：按商品查询，时间倒序，最多 500 条 */
+export function getGoodsPriceHistory(id: number) {
+  return http.get<PriceHistoryVO[]>(`/goods/${id}/price-history`)
 }
 
 /** 新增商品请求（FR-GOODS-01）：编码/条码留空自动生成 */

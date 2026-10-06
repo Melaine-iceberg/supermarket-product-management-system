@@ -621,12 +621,14 @@ public class GoodsService {
     }
 
     /**
-     * 调价历史（FR-GOODS-10）：仅记录前后值均存在且发生变化的调价；
-     * 新设/清空价格不产生历史（由操作日志兜底留痕）。
+     * 调价历史（FR-GOODS-10）：记录零售价/会员价/进货参考价每次变更的前值、后值；
+     * 前值/后值可为空（新设会员价、清空价格均留痕），仅前后完全一致时跳过。
      */
     private void recordPriceChange(Long goodsId, String priceType, BigDecimal oldValue,
                                    BigDecimal newValue, String operator, String reason) {
-        if (oldValue == null || newValue == null || oldValue.compareTo(newValue) == 0) {
+        boolean unchanged = (oldValue == null && newValue == null)
+                || (oldValue != null && newValue != null && oldValue.compareTo(newValue) == 0);
+        if (unchanged) {
             return;
         }
         PriceHistory history = new PriceHistory();

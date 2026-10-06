@@ -57,6 +57,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -427,12 +428,12 @@ class GoodsServiceTest {
     }
 
     @Test
-    @DisplayName("FR-GOODS-10：零售价变更记录调价历史（前值/后值/操作人/原因）")
+    @DisplayName("FR-GOODS-10：调价历史记录价格变更与清空（前值/后值/操作人/原因）")
     void update_priceChange_recordsHistory() {
         stubCommonLookups();
         when(goodsMapper.selectById(100L)).thenReturn(existingGoods());
 
-        // 零售价 10→12；会员价 9 不变；进货价 8→清空（不产生历史）
+        // 零售价 10→12（留痕）；会员价 9 不变（不留痕）；进货价 8→清空（留痕，后值为空）
         GoodsUpdateRequest req = new GoodsUpdateRequest(
                 "可乐", 5L, 1L, null, "500ml", "上海",
                 null, new BigDecimal("12.00"), new BigDecimal("9.00"),
@@ -441,12 +442,44 @@ class GoodsServiceTest {
         service.update(100L, req, "admin");
 
         ArgumentCaptor<PriceHistory> captor = ArgumentCaptor.forClass(PriceHistory.class);
+        verify(priceHistoryMapper, times(2)).insert(captor.capture());
+        List<PriceHistory> histories = captor.getAllValues();
+        // 进货价清空：8.00 → 空
+        PriceHistory purchase = histories.get(0);
+        assertThat(purchase.getPriceType()).isEqualTo("PURCHASE");
+        assertThat(purchase.getOldValue()).isEqualByComparingTo("8.00");
+        assertThat(purchase.getNewValue()).isNull();
+        // 零售价变更：10.00 → 12.00
+        PriceHistory retail = histories.get(1);
+        assertThat(retail.getPriceType()).isEqualTo("RETAIL");
+        assertThat(retail.getOldValue()).isEqualByComparingTo("10.00");
+        assertThat(retail.getNewValue()).isEqualByComparingTo("12.00");
+        assertThat(retail.getOperatorName()).isEqualTo("admin");
+        assertThat(retail.getReason()).isEqualTo("促销备货");
+    }
+
+    @Test
+    @DisplayName("FR-GOODS-10：新设会员价（前值为空）同样留痕")
+    void update_memberPriceFirstSet_recordsHistory() {
+        stubCommonLookups();
+        Goods goods = existingGoods();
+        goods.setMemberPrice(null);
+        when(goodsMapper.selectById(100L)).thenReturn(goods);
+
+        GoodsUpdateRequest req = new GoodsUpdateRequest(
+                "可乐", 5L, 1L, null, "500ml", "上海",
+                new BigDecimal("8.00"), new BigDecimal("10.00"), new BigDecimal("9.50"),
+                "2000000000015", true, null, 0, 1,
+                BigDecimal.ZERO, new BigDecimal("100"), null, "新设会员价", null);
+        service.update(100L, req, "admin");
+
+        ArgumentCaptor<PriceHistory> captor = ArgumentCaptor.forClass(PriceHistory.class);
         verify(priceHistoryMapper).insert(captor.capture());
-        assertThat(captor.getValue().getPriceType()).isEqualTo("RETAIL");
-        assertThat(captor.getValue().getOldValue()).isEqualByComparingTo("10.00");
-        assertThat(captor.getValue().getNewValue()).isEqualByComparingTo("12.00");
-        assertThat(captor.getValue().getOperatorName()).isEqualTo("admin");
-        assertThat(captor.getValue().getReason()).isEqualTo("促销备货");
+        PriceHistory history = captor.getValue();
+        assertThat(history.getPriceType()).isEqualTo("MEMBER");
+        assertThat(history.getOldValue()).isNull();
+        assertThat(history.getNewValue()).isEqualByComparingTo("9.50");
+        assertThat(history.getReason()).isEqualTo("新设会员价");
     }
 
     @Test

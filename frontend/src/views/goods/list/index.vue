@@ -20,6 +20,10 @@ import {
   validateGoodsImport,
   commitGoodsImport,
   exportGoodsFailedRows,
+  createPromotion,
+  disablePromotion,
+  listPromotionsByGoods,
+  getGoodsPriceHistory,
   type CategoryNode,
   type BrandVO,
   type UnitVO,
@@ -27,6 +31,9 @@ import {
   type GoodsCreatedVO,
   type GoodsImportReportVO,
   type GoodsImportResultVO,
+  type GoodsDetailVO,
+  type PromotionVO,
+  type PriceHistoryVO,
 } from '@/api/goods'
 
 const auth = useAuthStore()
@@ -570,6 +577,178 @@ const reportRows = computed(() => {
 function money(v: number | null | undefined) {
   return v == null ? '—' : Number(v).toFixed(2)
 }
+
+// ---------- 商品详情（FR-GOODS-04：档案 + 库存成本 + 流水/采购价/销量/供应商） ----------
+
+/** 库存流水类型（§8.2 九类变动来源） */
+const RECORD_TYPE_MAP: Record<string, string> = {
+  INIT: '期初建账',
+  PURCHASE_IN: '采购入库',
+  PURCHASE_RETURN: '采购退货',
+  SALE_OUT: '销售出库',
+  SALE_RETURN: '销售退货',
+  CHECK_SURPLUS: '盘盈',
+  CHECK_SHORTAGE: '盘亏',
+  LOSS_OUT: '报损出库',
+  OVERFLOW_IN: '报溢入库',
+}
+
+/** 价格类型（FR-GOODS-10） */
+const PRICE_TYPE_MAP: Record<string, string> = {
+  RETAIL: '零售价',
+  MEMBER: '会员价',
+  PURCHASE: '进货价',
+}
+
+const promoStatusMap: Record<string, { label: string; type: 'success' | 'info' }> = {
+  ACTIVE: { label: '生效中', type: 'success' },
+  EXPIRED: { label: '已过期', type: 'info' },
+  DISABLED: { label: '已停用', type: 'info' },
+}
+
+const detailDrawer = reactive({
+  visible: false,
+  loading: false,
+  goodsId: 0,
+  tab: 'profile' as 'profile' | 'promotion' | 'history',
+  data: null as GoodsDetailVO | null,
+  promotions: [] as PromotionVO[],
+  promotionsLoading: false,
+  priceHistory: [] as PriceHistoryVO[],
+  historyLoading: false,
+})
+
+async function openDetail(row: GoodsListVO) {
+  detailDrawer.visible = true
+  detailDrawer.goodsId = row.id
+  detailDrawer.tab = 'profile'
+  detailDrawer.data = null
+  detailDrawer.promotions = []
+  detailDrawer.priceHistory = []
+  await loadDetail()
+}
+
+async function loadDetail() {
+  detailDrawer.loading = true
+  try {
+    detailDrawer.data = await getGoodsDetail(detailDrawer.goodsId)
+  } finally {
+    detailDrawer.loading = false
+  }
+}
+
+function onDetailTabChange(name: number | string) {
+  if (name === 'promotion') loadPromotions()
+  else if (name === 'history') loadPriceHistory()
+}
+
+async function loadPromotions() {
+  detailDrawer.promotionsLoading = true
+  try {
+    detailDrawer.promotions = await listPromotionsByGoods(detailDrawer.goodsId)
+  } finally {
+    detailDrawer.promotionsLoading = false
+  }
+}
+
+async function loadPriceHistory() {
+  detailDrawer.historyLoading = true
+  try {
+    detailDrawer.priceHistory = await getGoodsPriceHistory(detailDrawer.goodsId)
+  } finally {
+    detailDrawer.historyLoading = false
+  }
+}
+
+// ---------- 设置促销（FR-GOODS-09：单个/批量，时间区间冲突由后端校验 BR-GOODS-04） ----------
+
+const promoteDialog = reactive({
+  visible: false,
+  goodsIds: [] as number[],
+  goodsNames: [] as string[],
+  promoPrice: null as number | null,
+  timeRange: null as [string, string] | null,
+  remark: '',
+  saving: false,
+})
+
+/** 表格勾选行（批量设置促销入口） */
+const selectedRows = ref<GoodsListVO[]>([])
+
+function onSelectionChange(rows: GoodsListVO[]) {
+  selectedRows.value = rows
+}
+
+function openPromote(ids: number[], names: string[]) {
+  if (!ids.length) {
+    ElMessage.warning('请先勾选需要设置促销的商品')
+    return
+  }
+  Object.assign(promoteDialog, {
+    visible: true,
+    goodsIds: ids,
+    goodsNames: names,
+    promoPrice: null,
+    timeRange: null,
+    remark: '',
+    saving: false,
+  })
+}
+
+function openPromoteForSelection() {
+  openPromote(
+    selectedRows.value.map((r) => r.id),
+    selectedRows.value.map((r) => r.name),
+  )
+}
+
+function openPromoteForDetail() {
+  const name = detailDrawer.data?.goods.name ?? ''
+  openPromote([detailDrawer.goodsId], [name])
+}
+
+async function confirmPromote() {
+  if (promoteDialog.promoPrice == null || promoteDialog.promoPrice <= 0) {
+    ElMessage.warning('请输入大于 0 的促销价')
+    return
+  }
+  if (!promoteDialog.timeRange || promoteDialog.timeRange.length !== 2) {
+    ElMessage.warning('请选择促销生效起止时间')
+    return
+  }
+  promoteDialog.saving = true
+  try {
+    await createPromotion({
+      goodsIds: promoteDialog.goodsIds,
+      promoPrice: promoteDialog.promoPrice,
+      startTime: promoteDialog.timeRange[0],
+      endTime: promoteDialog.timeRange[1],
+      remark: promoteDialog.remark.trim() || undefined,
+    })
+    ElMessage.success(`已为 ${promoteDialog.goodsIds.length} 个商品设置促销`)
+    promoteDialog.visible = false
+    load()
+    if (detailDrawer.visible && promoteDialog.goodsIds.includes(detailDrawer.goodsId)) {
+      loadDetail()
+      if (detailDrawer.tab === 'promotion') loadPromotions()
+    }
+  } finally {
+    promoteDialog.saving = false
+  }
+}
+
+async function handleDisablePromotion(promo: PromotionVO) {
+  await ElMessageBox.confirm(
+    `停用后促销价 ${money(promo.promoPrice)} 元立即失效，确定停用？`,
+    '停用促销',
+    { type: 'warning' },
+  )
+  await disablePromotion(promo.id)
+  ElMessage.success('促销已停用')
+  loadPromotions()
+  loadDetail()
+  load()
+}
 </script>
 
 <template>
@@ -660,6 +839,12 @@ function money(v: number | null | undefined) {
               <el-icon><Upload /></el-icon>批量导入
             </el-button>
             <el-button
+              v-if="auth.hasPerm('sys:goods:update')"
+              @click="openPromoteForSelection"
+            >
+              <el-icon><PriceTag /></el-icon>设置促销
+            </el-button>
+            <el-button
               v-if="auth.hasPerm('sys:goods:export')"
               :loading="exporting"
               @click="handleExport"
@@ -676,7 +861,9 @@ function money(v: number | null | undefined) {
         :data="list"
         stripe
         @sort-change="onSortChange"
+        @selection-change="onSelectionChange"
       >
+        <el-table-column type="selection" width="36" />
         <el-table-column prop="goodsCode" label="商品编码" width="130" sortable="custom" />
         <el-table-column prop="barcode" label="条码" width="150">
           <template #default="{ row }">{{ row.barcode || '—' }}</template>
@@ -742,8 +929,13 @@ function money(v: number | null | undefined) {
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="170" sortable="custom" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              @click="openDetail(row as GoodsListVO)"
+            >详情</el-button>
             <el-button
               v-if="auth.hasPerm('sys:goods:update')"
               link
@@ -1162,6 +1354,251 @@ function money(v: number | null | undefined) {
         </template>
       </template>
     </el-dialog>
+
+    <!-- 商品详情抽屉（FR-GOODS-04 / FR-GOODS-09 促销记录 / FR-GOODS-10 调价历史） -->
+    <el-drawer
+      v-model="detailDrawer.visible"
+      :title="`商品详情：${detailDrawer.data?.goods.name ?? ''}`"
+      size="62%"
+      destroy-on-close
+    >
+      <div v-loading="detailDrawer.loading" class="detail-body">
+        <el-tabs v-model="detailDrawer.tab" @tab-change="onDetailTabChange">
+          <el-tab-pane label="档案与库存" name="profile">
+            <template v-if="detailDrawer.data">
+              <el-alert
+                v-if="detailDrawer.data.goods.status === 0"
+                type="warning"
+                :closable="false"
+                show-icon
+                title="该商品已停用，不可销售/采购（档案保留）"
+                class="dialog-alert"
+              />
+              <el-descriptions title="商品档案" :column="3" size="small" border class="detail-desc">
+                <el-descriptions-item label="商品编码">{{ detailDrawer.data.goods.goodsCode }}</el-descriptions-item>
+                <el-descriptions-item label="商品条码">{{ detailDrawer.data.goods.barcode || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="PLU 码">{{ detailDrawer.data.goods.pluCode || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="分类">{{ detailDrawer.data.categoryName || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="品牌">{{ detailDrawer.data.brandName || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="计量单位">{{ detailDrawer.data.unitName || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="规格">{{ detailDrawer.data.goods.spec || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="产地">{{ detailDrawer.data.goods.origin || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="称重商品">{{ detailDrawer.data.goods.isWeighed === 1 ? '是' : '否' }}</el-descriptions-item>
+                <el-descriptions-item label="允许退货">{{ detailDrawer.data.goods.allowReturn === 1 ? '允许' : '不允许' }}</el-descriptions-item>
+                <el-descriptions-item label="状态">
+                  <el-tag size="small" :type="detailDrawer.data.goods.status === 1 ? 'success' : 'info'">
+                    {{ detailDrawer.data.goods.status === 1 ? '启用' : '停用' }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="创建时间">{{ detailDrawer.data.goods.createTime || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="备注" :span="3">{{ detailDrawer.data.goods.remark || '—' }}</el-descriptions-item>
+              </el-descriptions>
+
+              <el-descriptions title="价格与库存" :column="3" size="small" border class="detail-desc">
+                <el-descriptions-item label="进货参考价">{{ money(detailDrawer.data.goods.purchasePrice) }}</el-descriptions-item>
+                <el-descriptions-item label="零售单价">{{ money(detailDrawer.data.goods.retailPrice) }}</el-descriptions-item>
+                <el-descriptions-item label="会员价">{{ money(detailDrawer.data.goods.memberPrice) }}</el-descriptions-item>
+                <el-descriptions-item label="生效促销">
+                  <template v-if="detailDrawer.data.activePromotion">
+                    <el-tag type="danger" size="small">{{ money(detailDrawer.data.activePromotion.promoPrice) }} 元</el-tag>
+                    <span class="detail-sub">至 {{ detailDrawer.data.activePromotion.endTime }}</span>
+                  </template>
+                  <span v-else>—</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="结存数量">
+                  {{ detailDrawer.data.inventory?.quantity ?? 0 }} {{ detailDrawer.data.unitName ?? '' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="成本单价">{{ money(detailDrawer.data.inventory?.costPrice) }}</el-descriptions-item>
+                <el-descriptions-item label="成本金额">{{ money(detailDrawer.data.inventory?.costAmount) }}</el-descriptions-item>
+                <el-descriptions-item label="安全库存">
+                  {{ detailDrawer.data.goods.safetyStockLower ?? 0 }} ~ {{ detailDrawer.data.goods.safetyStockUpper ?? '不限' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="近 30 天销量">{{ detailDrawer.data.salesSummary30d.totalQuantity ?? 0 }}</el-descriptions-item>
+                <el-descriptions-item label="近 30 天销售额">{{ money(detailDrawer.data.salesSummary30d.totalAmount) }}</el-descriptions-item>
+              </el-descriptions>
+
+              <div class="detail-section-title">最近库存流水（10 条）</div>
+              <el-table :data="detailDrawer.data.recentInventoryRecords" size="small" max-height="240">
+                <el-table-column label="类型" width="90">
+                  <template #default="{ row }">{{ RECORD_TYPE_MAP[row.recordType] ?? row.recordType }}</template>
+                </el-table-column>
+                <el-table-column label="变动数量" width="90" align="right">
+                  <template #default="{ row }">
+                    <span :class="row.changeQty >= 0 ? 'qty-in' : 'qty-out'">
+                      {{ row.changeQty > 0 ? '+' : '' }}{{ row.changeQty }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="beforeQty" label="变动前" width="80" align="right" />
+                <el-table-column prop="afterQty" label="变动后" width="80" align="right" />
+                <el-table-column label="关联单据" min-width="150">
+                  <template #default="{ row }">{{ row.bizNo || '—' }}</template>
+                </el-table-column>
+                <el-table-column label="操作人" width="90">
+                  <template #default="{ row }">{{ row.operatorName || '—' }}</template>
+                </el-table-column>
+                <el-table-column prop="operateTime" label="时间" width="160" />
+              </el-table>
+
+              <div class="detail-section-title">最近采购价（5 次）</div>
+              <el-table :data="detailDrawer.data.recentPurchasePrices" size="small" max-height="220">
+                <el-table-column prop="orderNo" label="入库单号" min-width="170" />
+                <el-table-column prop="receiptTime" label="入库时间" width="160" />
+                <el-table-column label="实收单价" width="100" align="right">
+                  <template #default="{ row }">{{ money(row.price) }}</template>
+                </el-table-column>
+                <el-table-column prop="quantity" label="实收数量" width="100" align="right" />
+              </el-table>
+
+              <div class="detail-section-title">关联供应商</div>
+              <el-table :data="detailDrawer.data.suppliers" size="small" max-height="220">
+                <el-table-column prop="supplierName" label="供应商" min-width="150" />
+                <el-table-column label="供货价" width="100" align="right">
+                  <template #default="{ row }">{{ money(row.supplyPrice) }}</template>
+                </el-table-column>
+                <el-table-column label="默认供应商" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.isDefault === 1" type="success" size="small">默认</el-tag>
+                    <span v-else>—</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="最近供货时间" width="160">
+                  <template #default="{ row }">{{ row.lastSupplyTime || '—' }}</template>
+                </el-table-column>
+              </el-table>
+            </template>
+          </el-tab-pane>
+
+          <el-tab-pane label="促销记录" name="promotion">
+            <div class="detail-toolbar">
+              <el-button
+                v-if="auth.hasPerm('sys:goods:update')"
+                type="primary"
+                size="small"
+                @click="openPromoteForDetail"
+              >设置促销</el-button>
+              <span class="detail-sub">同一商品同一时间段只允许一条生效促销（BR-GOODS-04），到期自动失效</span>
+            </div>
+            <el-table v-loading="detailDrawer.promotionsLoading" :data="detailDrawer.promotions" size="small">
+              <el-table-column label="促销价" width="100" align="right">
+                <template #default="{ row }">{{ money(row.promoPrice) }}</template>
+              </el-table-column>
+              <el-table-column prop="startTime" label="开始时间" width="160" />
+              <el-table-column prop="endTime" label="结束时间" width="160" />
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="promoStatusMap[row.status]?.type ?? 'info'">
+                    {{ promoStatusMap[row.status]?.label ?? row.status }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="创建人" width="90">
+                <template #default="{ row }">{{ row.createBy || '—' }}</template>
+              </el-table-column>
+              <el-table-column label="备注" min-width="120">
+                <template #default="{ row }">{{ row.remark || '—' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ row }">
+                  <el-button
+                    v-if="row.status === 'ACTIVE' && auth.hasPerm('sys:goods:update')"
+                    link
+                    type="danger"
+                    @click="handleDisablePromotion(row as PromotionVO)"
+                  >停用</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+
+          <el-tab-pane label="调价历史" name="history">
+            <el-table
+              v-loading="detailDrawer.historyLoading"
+              :data="detailDrawer.priceHistory"
+              size="small"
+              max-height="520"
+            >
+              <el-table-column prop="createTime" label="操作时间" width="160" />
+              <el-table-column label="价格类型" width="90">
+                <template #default="{ row }">{{ PRICE_TYPE_MAP[row.priceType] ?? row.priceType }}</template>
+              </el-table-column>
+              <el-table-column label="前值" width="100" align="right">
+                <template #default="{ row }">{{ money(row.oldValue) }}</template>
+              </el-table-column>
+              <el-table-column label="后值" width="100" align="right">
+                <template #default="{ row }">
+                  <span class="detail-strong">{{ money(row.newValue) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="生效时间" width="160">
+                <template #default="{ row }">{{ row.effectiveTime || '—' }}</template>
+              </el-table-column>
+              <el-table-column label="操作人" width="100">
+                <template #default="{ row }">{{ row.operatorName || '—' }}</template>
+              </el-table-column>
+              <el-table-column label="调价原因" min-width="150">
+                <template #default="{ row }">{{ row.reason || '—' }}</template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+    </el-drawer>
+
+    <!-- 设置促销对话框（FR-GOODS-09：表格勾选批量 或 详情页单个） -->
+    <el-dialog
+      v-model="promoteDialog.visible"
+      title="设置促销价"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="促销价须低于零售价；同一商品同一时间段只允许一条生效促销（BR-GOODS-04）"
+        class="dialog-alert"
+      />
+      <el-form label-width="90px">
+        <el-form-item label="商品">
+          <span>
+            {{ promoteDialog.goodsIds.length === 1
+              ? promoteDialog.goodsNames[0]
+              : `${promoteDialog.goodsNames[0]} 等 ${promoteDialog.goodsIds.length} 个商品` }}
+          </span>
+        </el-form-item>
+        <el-form-item label="促销价" required>
+          <el-input-number
+            v-model="promoteDialog.promoPrice"
+            :min="0.01"
+            :precision="2"
+            :controls="false"
+            placeholder=">0 且低于零售价"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="生效时间" required>
+          <el-date-picker
+            v-model="promoteDialog.timeRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="promoteDialog.remark" maxlength="200" placeholder="选填" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="promoteDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="promoteDialog.saving" @click="confirmPromote">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -1259,6 +1696,48 @@ function money(v: number | null | undefined) {
       font-size: 12px;
       color: #909399;
     }
+  }
+
+  .detail-body {
+    min-height: 200px;
+  }
+
+  .detail-desc {
+    margin-bottom: 16px;
+  }
+
+  .detail-section-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin: 16px 0 8px;
+    padding-left: 8px;
+    border-left: 3px solid var(--el-color-primary);
+  }
+
+  .detail-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .detail-sub {
+    font-size: 12px;
+    color: #909399;
+    margin-left: 6px;
+  }
+
+  .detail-strong {
+    font-weight: 600;
+    color: var(--el-color-danger);
+  }
+
+  .qty-in {
+    color: var(--el-color-success);
+  }
+
+  .qty-out {
+    color: var(--el-color-danger);
   }
 }
 </style>
