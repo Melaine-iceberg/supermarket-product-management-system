@@ -27,6 +27,9 @@ public class Goods {
 
     private String name;
 
+    /** 名称拼音首字母简称（收银台关键字检索，FR-SALE-02；随名称自动生成） */
+    private String pinyinInitial;
+
     /** 所属分类（必须是叶子分类，BR-CAT-04） */
     private Long categoryId;
 

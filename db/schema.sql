@@ -257,6 +257,7 @@ CREATE TABLE IF NOT EXISTS goods (
     goods_code        VARCHAR(20)  NOT NULL COMMENT '商品编码：分类码+流水（BR-GOODS-02），创建后不可修改',
     barcode           VARCHAR(20)  NOT NULL COMMENT '商品条码（EAN-13/店内码，全局唯一，BR-GOODS-01）',
     name              VARCHAR(100) NOT NULL COMMENT '商品名称',
+    pinyin_initial    VARCHAR(100) DEFAULT NULL COMMENT '名称拼音首字母（随名称自动生成，收银检索 FR-SALE-02）',
     category_id       BIGINT UNSIGNED NOT NULL COMMENT '所属分类（必须是叶子分类，BR-CAT-04）',
     brand_id          BIGINT UNSIGNED DEFAULT NULL COMMENT '品牌ID',
     unit_id           BIGINT UNSIGNED NOT NULL COMMENT '计量单位ID',

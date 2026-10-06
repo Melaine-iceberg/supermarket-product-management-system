@@ -3,6 +3,7 @@ package com.smms.sale.controller;
 import com.smms.common.annotation.OpLog;
 import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
+import com.smms.sale.dto.CashierGoodsVO;
 import com.smms.sale.dto.CheckoutCommand;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
@@ -46,5 +47,12 @@ public class SalesCheckoutController {
     @RequirePerm("sys:cashier:enter")
     public ApiResponse<List<MemberSearchVO>> searchMembers(@RequestParam String keyword) {
         return ApiResponse.ok(checkoutService.searchMembers(keyword));
+    }
+
+    /** 收银台商品检索（FR-SALE-02）：条码/编码/PLU 精确 + 名称/拼音首字母模糊 */
+    @GetMapping("/cashier/goods")
+    @RequirePerm("sys:cashier:enter")
+    public ApiResponse<List<CashierGoodsVO>> searchCashierGoods(@RequestParam String keyword) {
+        return ApiResponse.ok(checkoutService.searchCashierGoods(keyword));
     }
 }

@@ -85,6 +85,26 @@ export function checkout(data: CheckoutPayload) {
   return http.post<CheckoutVO>('/sales/checkout', data, 30000)
 }
 
+// ---------- 收银台商品检索（FR-SALE-02） ----------
+
+/** 收银检索候选：条码/编码/PLU 精确命中优先，名称/拼音首字母模糊次之 */
+export interface CashierGoodsVO {
+  id: number
+  goodsCode: string
+  barcode: string | null
+  name: string
+  spec: string | null
+  pluCode: string | null
+  unitName: string
+  retailPrice: number
+  isWeighed: number
+}
+
+/** 商品关键字检索：条码/商品编码/PLU 码/名称/拼音首字母，仅启用商品，最多 20 条 */
+export function searchCashierGoods(keyword: string) {
+  return http.get<CashierGoodsVO[]>('/sales/cashier/goods', { keyword })
+}
+
 // ---------- 收银台会员检索（FR-SALE-05） ----------
 
 export interface MemberSearchVO {

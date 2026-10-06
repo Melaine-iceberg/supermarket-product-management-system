@@ -2,12 +2,14 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { pageGoods, type GoodsListVO } from '@/api/goods'
+import { getCategoryTree, pageGoods, type CategoryNode } from '@/api/goods'
 import {
   checkout,
   getSalesOrderDetail,
+  searchCashierGoods,
   searchMembers,
   PAY_TYPE_MAP,
+  type CashierGoodsVO,
   type CheckoutVO,
   type MemberSearchVO,
   type PayType,
@@ -67,32 +69,33 @@ function saveCounter() {
   }
 }
 
-// ---------- 商品录入（FR-SALE-02：条码精确 + 关键字候选） ----------
+// ---------- 商品录入（FR-SALE-02：条码/编码/PLU/名称/拼音首字母 + 分类树浏览） ----------
 const inputRef = ref()
 const input = ref('')
 const searching = ref(false)
 
-/** 录入框回车：先条码/编码精确匹配，唯一命中直接入单；否则弹候选列表（关键字模糊） */
+/** 录入框回车：条码/编码/PLU 唯一精确命中直接入单；否则弹候选列表（名称/拼音模糊） */
 async function onInputEnter() {
   const kw = input.value.trim()
   if (!kw) return
   searching.value = true
   try {
-    // 条码按后端模糊查询，前端再筛精确相等；同时带名称关键字候选
-    const [byBarcode, byKeyword] = await Promise.all([
-      pageGoods({ barcode: kw, status: 1, page: 1, size: 10 }),
-      pageGoods({ name: kw, status: 1, page: 1, size: 10 }),
-    ])
-    const exact = byBarcode.list.filter((g) => g.barcode === kw)
-    const merged = [...exact, ...byKeyword.list.filter((g) => !exact.some((e) => e.id === g.id))]
-    if (exact.length === 1 && merged.length === 1) {
+    const list = await searchCashierGoods(kw)
+    const lower = kw.toLowerCase()
+    const exact = list.filter(
+      (g) =>
+        g.barcode === kw ||
+        g.goodsCode === kw ||
+        (g.pluCode != null && g.pluCode.toLowerCase() === lower),
+    )
+    if (exact.length === 1 && list.length === 1) {
       addToCart(exact[0])
       input.value = ''
       return
     }
-    candidates.value = merged
-    candidateVisible.value = merged.length > 0
-    if (merged.length === 0) {
+    candidates.value = list
+    candidateVisible.value = list.length > 0
+    if (list.length === 0) {
       ElMessage.warning(`未找到匹配【${kw}】的商品`)
     }
   } finally {
@@ -101,10 +104,10 @@ async function onInputEnter() {
 }
 
 /** 候选列表选择入单 */
-const candidates = ref<GoodsListVO[]>([])
+const candidates = ref<CashierGoodsVO[]>([])
 const candidateVisible = ref(false)
 
-function pickCandidate(goods: GoodsListVO) {
+function pickCandidate(goods: CashierGoodsVO) {
   candidateVisible.value = false
   addToCart(goods)
   input.value = ''
@@ -114,11 +117,11 @@ function pickCandidate(goods: GoodsListVO) {
 const weightDialog = reactive({
   visible: false,
   saving: false,
-  goods: null as GoodsListVO | null,
+  goods: null as CashierGoodsVO | null,
   netWeight: null as number | null,
 })
 
-function addToCart(goods: GoodsListVO) {
+function addToCart(goods: CashierGoodsVO) {
   if (goods.isWeighed === 1) {
     weightDialog.goods = goods
     weightDialog.netWeight = null
@@ -138,7 +141,7 @@ function confirmWeight() {
   doAdd(weightDialog.goods!, Math.round(w * 1000) / 1000)
 }
 
-function doAdd(goods: GoodsListVO, quantity: number) {
+function doAdd(goods: CashierGoodsVO, quantity: number) {
   const exist = cart.value.find((l) => l.goodsId === goods.id)
   if (exist) {
     // 同商品重复录入累加数量而非新增行（BR-SALE-01）
@@ -156,6 +159,53 @@ function doAdd(goods: GoodsListVO, quantity: number) {
       quantity,
       remark: '',
     })
+  }
+}
+
+// ---------- 分类树浏览点选（FR-SALE-02③） ----------
+const browseDialog = reactive({
+  visible: false,
+  loading: false,
+  /** 当前选中分类（含子分类，null = 全部） */
+  categoryId: null as number | null,
+  categoryTree: [] as CategoryNode[],
+  goods: [] as CashierGoodsVO[],
+})
+
+function openBrowse() {
+  browseDialog.visible = true
+  browseDialog.categoryId = null
+  if (browseDialog.categoryTree.length === 0) {
+    getCategoryTree().then((data) => (browseDialog.categoryTree = data))
+  }
+  loadBrowseGoods()
+}
+
+/** 加载分类（含子分类）下启用商品，最多 100 条 */
+async function loadBrowseGoods() {
+  browseDialog.loading = true
+  try {
+    const data = await pageGoods({
+      categoryId: browseDialog.categoryId ?? undefined,
+      status: 1,
+      page: 1,
+      size: 100,
+    })
+    browseDialog.goods = data.list
+  } finally {
+    browseDialog.loading = false
+  }
+}
+
+function pickBrowseCategory(node: CategoryNode) {
+  browseDialog.categoryId = node.id
+  loadBrowseGoods()
+}
+
+function pickBrowseGoods(goods: CashierGoodsVO) {
+  addToCart(goods)
+  if (goods.isWeighed !== 1) {
+    ElMessage.success(`已加入：${goods.name}`)
   }
 }
 
@@ -648,13 +698,14 @@ onUnmounted(() => {
           v-model="input"
           size="large"
           class="scan-input"
-          placeholder="扫码 / 输入条码、商品编码或名称后回车录入"
+          placeholder="扫码 / 输入条码、编码、PLU、名称或拼音首字母后回车"
           clearable
           :loading="searching"
           @keyup.enter="onInputEnter"
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
+        <el-button size="large" plain class="temp-btn" @click="openBrowse">分类浏览</el-button>
         <el-button size="large" plain class="temp-btn" @click="openTempDialog">无码商品</el-button>
         <div class="hotkeys">回车 录入 ｜ F2 结算 ｜ F4 挂单</div>
       </div>
@@ -890,6 +941,65 @@ onUnmounted(() => {
       <template #footer>
         <el-button @click="tempDialog.visible = false">取消</el-button>
         <el-button type="primary" @click="confirmTempItem">加入明细</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 分类树浏览点选（FR-SALE-02③）：左分类树右商品，点击行入单 -->
+    <el-dialog v-model="browseDialog.visible" title="分类浏览选品" width="860px" top="6vh">
+      <div class="browse-layout">
+        <div class="browse-tree">
+          <el-button
+            size="small"
+            :type="browseDialog.categoryId === null ? 'primary' : 'default'"
+            class="browse-all-btn"
+            @click="browseDialog.categoryId = null; loadBrowseGoods()"
+          >
+            全部商品
+          </el-button>
+          <el-tree
+            :data="browseDialog.categoryTree"
+            :props="{ label: 'name', children: 'children' }"
+            node-key="id"
+            highlight-current
+            :expand-on-click-node="false"
+            default-expand-all
+            @node-click="pickBrowseCategory"
+          >
+            <template #default="{ data }">
+              <span :class="{ 'node-disabled': data.status !== 1 }">{{ data.name }}</span>
+            </template>
+          </el-tree>
+        </div>
+        <el-table
+          v-loading="browseDialog.loading"
+          :data="browseDialog.goods"
+          size="small"
+          max-height="440"
+          highlight-current-row
+          class="browse-table"
+          empty-text="该分类下暂无启用商品"
+          @row-click="pickBrowseGoods"
+        >
+          <el-table-column prop="barcode" label="条码" width="130" />
+          <el-table-column label="名称" min-width="160">
+            <template #default="{ row }">
+              {{ row.name }}<span v-if="row.spec" class="spec">（{{ row.spec }}）</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="unitName" label="单位" width="56" align="center" />
+          <el-table-column label="零售价" width="86" align="right">
+            <template #default="{ row }">￥{{ money(row.retailPrice) }}</template>
+          </el-table-column>
+          <el-table-column label="称重" width="56" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.isWeighed === 1" size="small" type="warning">称重</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <span class="browse-tip">点击商品行加入明细（称重商品将要求输入净重）</span>
+        <el-button @click="browseDialog.visible = false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -1137,6 +1247,40 @@ onUnmounted(() => {
         color: #909399;
       }
     }
+  }
+
+  .browse-layout {
+    display: flex;
+    gap: 12px;
+
+    .browse-tree {
+      width: 200px;
+      flex-shrink: 0;
+      border-right: 1px solid #ebeef5;
+      padding-right: 8px;
+      overflow-y: auto;
+      max-height: 440px;
+
+      .browse-all-btn {
+        width: 100%;
+        margin-bottom: 8px;
+      }
+
+      .node-disabled {
+        color: #c0c4cc;
+      }
+    }
+
+    .browse-table {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  .browse-tip {
+    margin-right: auto;
+    font-size: 12px;
+    color: #909399;
   }
 
   .main-area {

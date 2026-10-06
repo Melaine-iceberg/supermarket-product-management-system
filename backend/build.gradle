@@ -48,6 +48,9 @@ dependencies {
     // Excel 导入导出（FR-GOODS-11/12，Apache-2.0）
     implementation 'org.apache.poi:poi-ooxml:5.4.1'
 
+    // 汉字转拼音（FR-SALE-02 收银拼音首字母检索，BSD）
+    implementation 'com.belerweb:pinyin4j:2.5.1'
+
     // 数据库驱动
     runtimeOnly 'com.mysql:mysql-connector-j'
 

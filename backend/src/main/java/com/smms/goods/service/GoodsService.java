@@ -7,6 +7,7 @@ import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.common.util.Ean13Util;
+import com.smms.common.util.PinyinUtils;
 import com.smms.goods.dto.GoodsCreateRequest;
 import com.smms.goods.dto.GoodsCreatedVO;
 import com.smms.goods.dto.GoodsDetailVO;
@@ -186,6 +187,7 @@ public class GoodsService {
 
         Goods goods = new Goods();
         goods.setName(req.name().trim());
+        goods.setPinyinInitial(PinyinUtils.toInitials(req.name().trim()));
         goods.setCategoryId(req.categoryId());
         goods.setUnitId(req.unitId());
         goods.setBrandId(req.brandId());
@@ -262,6 +264,7 @@ public class GoodsService {
         BigDecimal oldMember = goods.getMemberPrice();
 
         goods.setName(req.name().trim());
+        goods.setPinyinInitial(PinyinUtils.toInitials(req.name().trim()));
         goods.setCategoryId(req.categoryId());
         goods.setUnitId(req.unitId());
         goods.setBrandId(req.brandId());

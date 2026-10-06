@@ -55,4 +55,8 @@ public interface GoodsMapper extends BaseMapper<Goods> {
                                @Param("lower") BigDecimal lower,
                                @Param("upper") BigDecimal upper,
                                @Param("operator") String operator);
+
+    /** 收银台关键字检索（FR-SALE-02）：条码/编码/PLU 精确优先，名称/拼音首字母模糊次之，仅启用商品 */
+    List<com.smms.sale.dto.CashierGoodsVO> searchForCashier(@Param("keyword") String keyword,
+                                                            @Param("limit") int limit);
 }

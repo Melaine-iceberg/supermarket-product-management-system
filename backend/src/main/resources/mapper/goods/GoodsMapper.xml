@@ -157,6 +157,41 @@
         ORDER BY sg.is_default DESC, sg.last_supply_time DESC
     </select>
 
+    <!-- 收银台关键字检索（FR-SALE-02）：条码/编码/PLU 精确命中排前，名称/拼音首字母包含匹配次之 -->
+    <select id="searchForCashier" resultType="com.smms.sale.dto.CashierGoodsVO">
+        SELECT
+            g.id           AS id,
+            g.goods_code   AS goodsCode,
+            g.barcode      AS barcode,
+            g.name         AS name,
+            g.spec         AS spec,
+            g.plu_code     AS pluCode,
+            u.name         AS unitName,
+            g.retail_price AS retailPrice,
+            g.is_weighed   AS isWeighed
+        FROM goods g
+        JOIN unit u ON u.id = g.unit_id
+        WHERE g.status = 1
+          AND (
+            g.barcode = #{keyword}
+            OR g.goods_code = #{keyword}
+            OR g.plu_code = #{keyword}
+            OR g.name LIKE CONCAT('%', #{keyword}, '%')
+            OR g.pinyin_initial LIKE CONCAT('%', LOWER(#{keyword}), '%')
+          )
+        ORDER BY
+            CASE
+                WHEN g.barcode = #{keyword} THEN 0
+                WHEN g.goods_code = #{keyword} THEN 1
+                WHEN g.plu_code = #{keyword} THEN 2
+                WHEN g.name LIKE CONCAT(#{keyword}, '%') THEN 3
+                WHEN g.pinyin_initial LIKE CONCAT(LOWER(#{keyword}), '%') THEN 4
+                ELSE 5
+            END,
+            g.id DESC
+        LIMIT #{limit}
+    </select>
+
     <!-- ==================== 安全库存阈值维护（FR-INV-06） ==================== -->
 
     <!-- 单商品更新阈值：仅更新阈值字段与更新人，结存等派生数据不受影响（BR-INV-11） -->

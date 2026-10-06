@@ -17,6 +17,7 @@ import com.smms.member.entity.MemberLevel;
 import com.smms.member.mapper.MemberLevelMapper;
 import com.smms.member.mapper.MemberMapper;
 import com.smms.member.service.MemberBusinessService;
+import com.smms.sale.dto.CashierGoodsVO;
 import com.smms.sale.dto.CheckoutCommand;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
@@ -172,7 +173,15 @@ public class SalesCheckoutService {
                 memberLevelUpgraded, order.getSaleTime());
     }
 
-    // ==================== 收银台会员检索（FR-SALE-05） ====================
+    // ==================== 收银台商品/会员检索（FR-SALE-02/05） ====================
+
+    /** 商品关键字检索（FR-SALE-02）：条码/编码/PLU 精确与名称/拼音首字母模糊统一匹配，仅启用商品，最多 20 条 */
+    public List<CashierGoodsVO> searchCashierGoods(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        return goodsMapper.searchForCashier(keyword.trim(), 20);
+    }
 
     /** 手机号/会员编号精确 + 姓名模糊检索，最多 10 条；停用会员返回且折扣率置 1（BR-MEM-03） */
     public List<MemberSearchVO> searchMembers(String keyword) {
