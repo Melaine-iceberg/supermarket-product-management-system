@@ -1,0 +1,6 @@
+build/
+.gradle/
+.idea/
+*.log
+# 本地凭据不入镜像（连接参数一律经环境变量注入）
+src/main/resources/application-local.yaml

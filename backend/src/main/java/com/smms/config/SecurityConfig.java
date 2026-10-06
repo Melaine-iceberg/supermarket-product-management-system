@@ -76,6 +76,9 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList());
+        // 经 Nginx 反代的容器化部署中，浏览器同源请求同样携带 Origin，
+        // 且部署端口可配置——放行本机任意端口来源，非本机来源仍须显式配置（SMMS_CORS_ORIGINS）
+        config.setAllowedOriginPatterns(List.of("http://localhost:[*]", "http://127.0.0.1:[*]"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
