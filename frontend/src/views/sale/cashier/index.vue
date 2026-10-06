@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { getCategoryTree, pageGoods, type CategoryNode } from '@/api/goods'
+import { getBusinessParams } from '@/api/system'
 import {
   checkout,
   createHold,
@@ -343,6 +344,17 @@ function clearMember() {
 }
 
 // ---------- 整单折扣与单品改价（FR-SALE-07，店长现场授权） ----------
+/** 业务参数（BR-SALE-05/10：与后端校验同源，避免硬编码；读取失败按默认值展示） */
+const bizParams = reactive({ minDiscountRate: 0.7 })
+
+async function loadBizParams() {
+  try {
+    Object.assign(bizParams, await getBusinessParams())
+  } catch {
+    // 读取失败按默认值展示，后端结算时仍会校验
+  }
+}
+
 const orderRateInput = ref<number | null>(null)
 /** 整单折扣原因（已生效值，FR-SALE-07 必填） */
 const discountReasonApplied = ref('')
@@ -368,8 +380,8 @@ function openOrderRateDialog() {
 
 function confirmOrderRate() {
   const rate = orderRateDialog.rate
-  if (rate == null || rate < 0.7 || rate > 1) {
-    ElMessage.warning('整单折扣率须在 0.7~1 之间（BR-SALE-10）')
+  if (rate == null || rate < bizParams.minDiscountRate || rate > 1) {
+    ElMessage.warning(`整单折扣率须在 ${bizParams.minDiscountRate}~1 之间（BR-SALE-10）`)
     return
   }
   if (rate < 1) {
@@ -801,6 +813,7 @@ function focusInput() {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  loadBizParams()
   refreshHoldCount()
   focusInput()
 })
@@ -1205,14 +1218,14 @@ onUnmounted(() => {
         <el-form-item label="折扣率">
           <el-input-number
             v-model="orderRateDialog.rate"
-            :min="0.7"
+            :min="bizParams.minDiscountRate"
             :max="1"
             :step="0.05"
             :precision="2"
             :controls="false"
             style="width: 100%"
           />
-          <div class="form-tip">范围 0.7~1（BR-SALE-10），1 为不打折</div>
+          <div class="form-tip">范围 {{ bizParams.minDiscountRate }}~1（BR-SALE-10），1 为不打折</div>
         </el-form-item>
         <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="折扣原因" required>
           <el-input

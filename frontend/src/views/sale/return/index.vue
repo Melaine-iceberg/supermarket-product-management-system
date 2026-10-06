@@ -15,6 +15,7 @@ import {
   type ReturnOrderVO,
   type SalesOrderDetailVO,
 } from '@/api/sale'
+import { getBusinessParams } from '@/api/system'
 import { printReturnVoucher } from '@/utils/receipt'
 import { newRequestToken } from '@/utils/token'
 
@@ -87,7 +88,10 @@ function resetQuery() {
   load()
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadBizParams()
+})
 
 // ---------- 退货单详情 ----------
 const drawer = reactive({ visible: false, loading: false, detail: null as ReturnOrderDetailVO | null })
@@ -103,8 +107,16 @@ async function openDetail(row: ReturnOrderVO) {
 }
 
 // ---------- 办理退货（FR-SALE-10/11） ----------
-/** 退货授权金额阈值（return_auth_amount，默认 200 元，FR-SALE-11） */
-const AUTH_THRESHOLD = 200
+/** 业务参数（BR-SALE-05、FR-SALE-11：与后端校验同源，避免硬编码；读取失败按默认值展示） */
+const bizParams = reactive({ returnAuthAmount: 200, returnValidDays: 7 })
+
+async function loadBizParams() {
+  try {
+    Object.assign(bizParams, await getBusinessParams())
+  } catch {
+    // 读取失败按默认值展示，后端办理时仍会校验
+  }
+}
 
 /** 退货明细行（基于原销售明细的可退信息） */
 interface ReturnLine {
@@ -211,13 +223,13 @@ const estTotalRefund = computed(() =>
 
 /** 是否须店长授权（FR-SALE-11：超阈值或误操作） */
 const needAuth = computed(
-  () => estTotalRefund.value > AUTH_THRESHOLD || createDialog.returnReason === 'MISTAKE',
+  () => estTotalRefund.value > bizParams.returnAuthAmount || createDialog.returnReason === 'MISTAKE',
 )
 
 /** 超过退货有效期（BR-SALE-05，默认 7 天；后端最终校验） */
 const expired = computed(() => {
   if (!createDialog.order) return false
-  return Date.now() - new Date(createDialog.order.saleTime).getTime() > 7 * 24 * 3600 * 1000
+  return Date.now() - new Date(createDialog.order.saleTime).getTime() > bizParams.returnValidDays * 24 * 3600 * 1000
 })
 
 function onLineCheck(line: ReturnLine, checked: boolean) {
@@ -247,7 +259,7 @@ async function submitReturn() {
       ElMessage.warning(
         createDialog.returnReason === 'MISTAKE'
           ? '误操作退货须店长授权（FR-SALE-11），请输入店长账号'
-          : `退款金额超过 ${AUTH_THRESHOLD} 元须店长授权（FR-SALE-11），请输入店长账号`,
+          : `退款金额超过 ${bizParams.returnAuthAmount} 元须店长授权（FR-SALE-11），请输入店长账号`,
       )
       return
     }
@@ -454,7 +466,7 @@ function offerPrintVoucher(d: ReturnOrderDetailVO) {
 
         <el-alert
 v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
-          :title="`已超过退货有效期（默认 7 天，BR-SALE-05）：收银员不可办理，店长办理请在下方填写授权人`" />
+          :title="`已超过退货有效期（${bizParams.returnValidDays} 天，BR-SALE-05）：收银员不可办理，店长办理请在下方填写授权人`" />
 
         <el-table :data="createDialog.lines" size="small" border max-height="300">
           <el-table-column label="" width="44" align="center">
@@ -553,7 +565,7 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
             </el-form-item>
           </el-form>
           <div v-if="needAuth" class="auth-tip">
-            退款超 {{ AUTH_THRESHOLD }} 元或原因为"误操作"须店长输入账号密码现场授权，且授权人 ≠ 发起人（FR-SALE-11）
+            退款超 {{ bizParams.returnAuthAmount }} 元或原因为"误操作"须店长输入账号密码现场授权，且授权人 ≠ 发起人（FR-SALE-11）
           </div>
         </div>
       </template>

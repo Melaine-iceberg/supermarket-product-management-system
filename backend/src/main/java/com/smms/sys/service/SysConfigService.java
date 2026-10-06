@@ -3,12 +3,14 @@ package com.smms.sys.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.exception.BusinessException;
+import com.smms.sys.dto.BusinessParamsVO;
 import com.smms.sys.dto.PrintInfoVO;
 import com.smms.sys.entity.SysConfig;
 import com.smms.sys.mapper.SysConfigMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
@@ -120,5 +122,17 @@ public class SysConfigService {
                 getStr("store_address", ""),
                 getStr("store_phone", ""),
                 width);
+    }
+
+    /**
+     * 前端业务参数（BR-SALE-05/10、FR-SALE-11）：折扣下限/退货授权阈值/退货有效期，
+     * 与结算、退货后端校验同源（min_discount_rate / return_auth_amount / return_valid_days），
+     * 任意已登录用户可读，避免前端硬编码与参数设置不一致。
+     */
+    public BusinessParamsVO businessParams() {
+        return new BusinessParamsVO(
+                new BigDecimal(getStr("min_discount_rate", "0.7")),
+                new BigDecimal(getStr("return_auth_amount", "200")),
+                getInt("return_valid_days", 7));
     }
 }

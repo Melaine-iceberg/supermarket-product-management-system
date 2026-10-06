@@ -4,6 +4,7 @@ import com.smms.common.annotation.OpLog;
 import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.dto.BusinessParamsVO;
 import com.smms.sys.dto.ConfigUpdateRequest;
 import com.smms.sys.dto.PrintInfoVO;
 import com.smms.sys.entity.SysConfig;
@@ -41,6 +42,12 @@ public class SysConfigController {
     @GetMapping("/print-info")
     public ApiResponse<PrintInfoVO> printInfo() {
         return ApiResponse.ok(configService.printInfo());
+    }
+
+    /** 前端业务参数（BR-SALE-05/10、FR-SALE-11）：折扣下限/退货阈值与有效期，任意已登录用户可读 */
+    @GetMapping("/business-params")
+    public ApiResponse<BusinessParamsVO> businessParams() {
+        return ApiResponse.ok(configService.businessParams());
     }
 
     @PutMapping("/{key}")

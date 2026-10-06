@@ -136,6 +136,21 @@ export function getPrintInfo() {
   return http.get<PrintInfoVO>('/configs/print-info')
 }
 
+/** 前端业务参数（BR-SALE-05/10、FR-SALE-11）：与后端校验同源，避免前端硬编码 */
+export interface BusinessParamsVO {
+  /** 整单折扣率下限（如 0.7，BR-SALE-10） */
+  minDiscountRate: number
+  /** 退款金额超过该阈值须店长授权（元，FR-SALE-11） */
+  returnAuthAmount: number
+  /** 退货有效期（天，BR-SALE-05） */
+  returnValidDays: number
+}
+
+/** 折扣下限/退货阈值/退货有效期（任意已登录用户可读） */
+export function getBusinessParams() {
+  return http.get<BusinessParamsVO>('/configs/business-params')
+}
+
 // ---------- 数据字典（FR-SYS-07） ----------
 export interface DictVO {
   id: number
