@@ -110,6 +110,9 @@ public enum ErrorCode {
     SHIFT_NOT_OPEN(1531, "当前收银员没有在班班次，无法交班"),
     SHIFT_NOT_FOUND(1532, "班次不存在"),
     SHIFT_RETURN_FORBIDDEN(1533, "该销售单所属班次已交班，退货须店长处理（BR-SALE-09）"),
+    HOLD_ITEM_INVALID(1534, "挂单明细不合法（无码商品名称/金额，档案商品ID，改价仅限档案商品）"),
+    HOLD_LIMIT_EXCEED(1535, "未取挂单已达上限（50 张），请先取单或删除"),
+    HOLD_NOT_FOUND(1536, "挂单不存在或已被取单/删除"),
 
     // ---------- 会员模块（FR-MEM-01~08） ----------
     MEMBER_NOT_FOUND(1601, "会员不存在或已被删除"),

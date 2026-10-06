@@ -5,12 +5,17 @@ import { useAuthStore } from '@/stores/auth'
 import { getCategoryTree, pageGoods, type CategoryNode } from '@/api/goods'
 import {
   checkout,
+  createHold,
+  deleteHold,
   getSalesOrderDetail,
+  listHolds,
   searchCashierGoods,
   searchMembers,
+  takeHold,
   PAY_TYPE_MAP,
   type CashierGoodsVO,
   type CheckoutVO,
+  type HoldVO,
   type MemberSearchVO,
   type PayType,
 } from '@/api/sale'
@@ -639,95 +644,100 @@ function printDoneReceipt() {
   getSalesOrderDetail(orderId).then((d) => printSalesReceipt(d, win))
 }
 
-// ---------- 挂单与取单（FR-SALE-08，会话级） ----------
-interface HoldOrder {
-  id: number
-  time: string
-  counterNo: number
-  memberId: number | null
-  memberName: string | null
-  items: CartLine[]
-  itemCount: number
-  amount: number
-  orderRate: number | null
-  discountReason: string
-  authorizerUsername: string
-  remark: string
-}
+// ---------- 挂单与取单（FR-SALE-08：落库 hold_order，不扣库存不计报表，超 24 小时自动清理） ----------
+const holdDialog = reactive({ visible: false, holds: [] as HoldVO[] })
 
-function holdKey() {
-  return `smms_holds_${auth.user?.id ?? 0}`
-}
+/** 当前挂单数（角标展示），挂单/取单/删除/进入页面时刷新 */
+const holdCount = ref(0)
 
-function loadHolds(): HoldOrder[] {
+async function refreshHoldCount() {
   try {
-    return JSON.parse(localStorage.getItem(holdKey()) || '[]')
+    holdCount.value = (await listHolds()).length
   } catch {
-    return []
+    // 拦截器已提示；角标保持原值
   }
 }
 
-function saveHolds(holds: HoldOrder[]) {
-  localStorage.setItem(holdKey(), JSON.stringify(holds))
+/** 挂单时间展示（后端 ISO 时间） */
+function fmtHoldTime(v: string | null | undefined) {
+  return v ? v.replace('T', ' ').slice(0, 16) : '—'
 }
 
-const holdDialog = reactive({ visible: false, holds: [] as HoldOrder[] })
-
-/** 当前挂单数（角标展示），挂单/取单/删除时刷新 */
-const holdCount = ref(0)
-
-function refreshHoldCount() {
-  holdCount.value = loadHolds().length
-}
-
-function holdOrder() {
+async function holdOrder() {
   if (cart.value.length === 0) {
     ElMessage.warning('销售明细为空，无需挂单')
     return
   }
-  const holds = loadHolds()
-  holds.unshift({
-    id: Date.now(),
-    time: new Date().toLocaleString('zh-CN', { hour12: false }),
-    counterNo: counterNo.value,
-    memberId: member.value?.id ?? null,
-    memberName: member.value?.name ?? null,
-    items: JSON.parse(JSON.stringify(cart.value)),
-    itemCount: itemCount.value,
-    amount: estGoodsAmount.value,
-    orderRate: orderRateInput.value,
-    discountReason: discountReasonApplied.value,
-    authorizerUsername: orderAuth.username,
-    remark: remark.value,
-  })
-  saveHolds(holds)
-  resetOrder()
-  refreshHoldCount()
-  ElMessage.success('已挂单（挂单不扣库存，交班前请及时取单结算）')
-  focusInput()
+  try {
+    await createHold({
+      counterNo: counterNo.value,
+      memberId: member.value?.id,
+      memberName: member.value?.name,
+      orderRate: orderRateInput.value ?? undefined,
+      discountReason: discountReasonApplied.value || undefined,
+      authorizerUsername: orderAuth.username || undefined,
+      remark: remark.value.trim() || undefined,
+      items: cart.value.map((l) => ({
+        lineType: l.lineType,
+        goodsId: l.goodsId ?? undefined,
+        name: l.name,
+        spec: l.spec,
+        barcode: l.barcode,
+        unitName: l.unitName,
+        retailPrice: l.retailPrice,
+        isWeighed: l.isWeighed,
+        quantity: l.quantity,
+        remark: l.remark || undefined,
+        overridePrice: l.overridePrice ?? undefined,
+        priceReason: l.overridePrice != null ? l.priceReason || undefined : undefined,
+      })),
+    })
+    resetOrder()
+    refreshHoldCount()
+    ElMessage.success('已挂单（挂单不扣库存，交班前请及时取单结算）')
+    focusInput()
+  } catch {
+    // 拦截器已提示
+  }
 }
 
-function openHoldDialog() {
-  holdDialog.holds = loadHolds()
+async function openHoldDialog() {
+  holdDialog.holds = await listHolds().catch(() => holdDialog.holds)
   holdDialog.visible = true
 }
 
-function resumeHold(hold: HoldOrder) {
+/** 取单：先由后端条件更新占用（ACTIVE→TAKEN，防并发重复取单），再恢复购物车 */
+async function resumeHold(hold: HoldVO) {
   if (cart.value.length > 0) {
     ElMessage.warning('当前已有明细，请先结算或清空再取单')
     return
   }
-  // 兼容旧挂单：补齐改价字段
-  cart.value = hold.items.map((l) => ({
-    ...l,
+  const detail = await takeHold(hold.id).catch(() => null)
+  if (!detail) {
+    // 已被取单/删除：刷新列表与角标
+    holdDialog.holds = await listHolds().catch(() => holdDialog.holds)
+    refreshHoldCount()
+    return
+  }
+  cart.value = detail.items.map((l) => ({
+    lineType: l.lineType,
+    goodsId: l.goodsId ?? null,
+    name: l.name,
+    spec: l.spec ?? null,
+    barcode: l.barcode ?? null,
+    unitName: l.unitName,
+    retailPrice: Number(l.retailPrice),
+    isWeighed: l.isWeighed,
+    quantity: Number(l.quantity),
+    remark: l.remark ?? '',
     overridePrice: l.overridePrice ?? null,
     priceReason: l.priceReason ?? '',
   }))
-  if (hold.memberId) {
+  if (detail.memberId) {
     member.value = {
-      id: hold.memberId,
+      id: detail.memberId,
       memberNo: '',
-      name: hold.memberName ?? '',
+      name: detail.memberName ?? '',
       phone: '',
       levelName: '',
       discountRate: 1,
@@ -736,26 +746,42 @@ function resumeHold(hold: HoldOrder) {
       status: 1,
     }
     // 折扣率重新检索一次，保证最新等级
-    searchMembers(hold.memberName ?? '').then((list) => {
-      const m = list.find((x) => x.id === hold.memberId)
+    searchMembers(detail.memberName ?? '').then((list) => {
+      const m = list.find((x) => x.id === detail.memberId)
       if (m) member.value = m
     })
   }
-  orderRateInput.value = hold.orderRate
-  discountReasonApplied.value = hold.discountReason ?? ''
+  orderRateInput.value = detail.orderRate
+  discountReasonApplied.value = detail.discountReason ?? ''
   // 挂单不落密码（安全），取单后结算时须重新录入授权密码
-  orderAuth.username = hold.authorizerUsername ?? ''
+  orderAuth.username = detail.authorizerUsername ?? ''
   orderAuth.password = ''
-  remark.value = hold.remark
-  removeHold(hold)
+  remark.value = detail.remark ?? ''
+  holdDialog.holds = await listHolds().catch(() => [])
   holdDialog.visible = false
+  refreshHoldCount()
+  ElMessage.success(`已取单：${detail.itemCount} 件商品已恢复，请核对后结算`)
   focusInput()
 }
 
-function removeHold(hold: HoldOrder) {
-  saveHolds(loadHolds().filter((h) => h.id !== hold.id))
-  holdDialog.holds = loadHolds()
-  refreshHoldCount()
+async function removeHold(hold: HoldVO) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除 ${fmtHoldTime(hold.holdTime)} 的挂单（${hold.itemCount} 件，￥${money(hold.amount)}）？删除后不可恢复。`,
+      '删除挂单',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await deleteHold(hold.id)
+    holdDialog.holds = await listHolds().catch(() => [])
+    refreshHoldCount()
+    ElMessage.success('挂单已删除')
+  } catch {
+    // 拦截器已提示（如已被取单）
+  }
 }
 
 // ---------- 键盘操作（NFR-USE-02：回车录入 / F2 结算 / F4 挂单） ----------
@@ -1364,10 +1390,12 @@ onUnmounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 挂单列表（FR-SALE-08） -->
-    <el-dialog v-model="holdDialog.visible" title="挂单列表" width="640px">
+    <!-- 挂单列表（FR-SALE-08：落库 hold_order，仅本人可见，超 24 小时自动清理） -->
+    <el-dialog v-model="holdDialog.visible" title="挂单列表" width="660px">
       <el-table v-if="holdDialog.holds.length" :data="holdDialog.holds" size="small">
-        <el-table-column prop="time" label="挂单时间" width="160" />
+        <el-table-column label="挂单时间" width="150">
+          <template #default="{ row }">{{ fmtHoldTime(row.holdTime) }}</template>
+        </el-table-column>
         <el-table-column prop="counterNo" label="台号" width="60" align="center" />
         <el-table-column prop="memberName" label="会员" width="90">
           <template #default="{ row }">{{ row.memberName ?? '散客' }}</template>
@@ -1381,12 +1409,13 @@ onUnmounted(() => {
         </el-table-column>
         <el-table-column label="操作" width="130" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="resumeHold(row as HoldOrder)">取单</el-button>
-            <el-button link type="danger" @click="removeHold(row as HoldOrder)">删除</el-button>
+            <el-button link type="primary" @click="resumeHold(row as HoldVO)">取单</el-button>
+            <el-button link type="danger" @click="removeHold(row as HoldVO)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
       <el-empty v-else description="暂无挂单" :image-size="60" />
+      <div class="muted note">挂单不扣库存、不计入报表（BR-RPT-03）；仅本人可见，超过 24 小时未取将自动清理（IR-SW-06）。</div>
     </el-dialog>
   </div>
 </template>
@@ -1754,6 +1783,16 @@ onUnmounted(() => {
 
   .spec {
     color: #909399;
+  }
+
+  .muted {
+    color: #909399;
+  }
+
+  .note {
+    margin-top: 10px;
+    font-size: 12px;
+    line-height: 1.5;
   }
 }
 </style>

@@ -418,3 +418,73 @@ export function pageShifts(params: ShiftQuery) {
 export function getShiftDetail(id: number) {
   return http.get<ShiftDetailVO>(`/sales/shifts/${id}`)
 }
+
+// ---------- 挂单与取单（FR-SALE-08） ----------
+
+/** 挂单明细快照行（取单后原样恢复购物车；金额摘要由后端按改价价 ?? 零售价 × 数量计算） */
+export interface HoldItemPayload {
+  lineType: 'NORMAL' | 'TEMP'
+  goodsId?: number
+  name: string
+  spec?: string | null
+  barcode?: string | null
+  unitName: string
+  retailPrice: number
+  isWeighed: number
+  quantity: number
+  remark?: string
+  overridePrice?: number
+  priceReason?: string
+}
+
+export interface HoldCreatePayload {
+  counterNo: number
+  memberId?: number
+  memberName?: string
+  orderRate?: number
+  discountReason?: string
+  authorizerUsername?: string
+  remark?: string
+  items: HoldItemPayload[]
+}
+
+/** 挂单摘要（列表展示：时间/件数/金额/会员，超 24 小时自动清理 IR-SW-06） */
+export interface HoldVO {
+  id: number
+  counterNo: number
+  cashierName: string
+  memberId: number | null
+  memberName: string | null
+  itemCount: number
+  amount: number
+  remark: string | null
+  holdTime: string
+}
+
+/** 取单详情（含明细快照与挂单时的会员/折扣信息；授权密码不落库，结算时重新录入） */
+export interface HoldDetailVO extends HoldVO {
+  orderRate: number | null
+  discountReason: string | null
+  authorizerUsername: string | null
+  items: HoldItemPayload[]
+}
+
+/** 挂单（FR-SALE-08）：不扣库存、不计入报表（BR-RPT-03） */
+export function createHold(data: HoldCreatePayload) {
+  return http.post<HoldVO>('/sales/holds', data)
+}
+
+/** 本人未取挂单列表（挂单时间倒序） */
+export function listHolds() {
+  return http.get<HoldVO[]>('/sales/holds')
+}
+
+/** 取单：ACTIVE→TAKEN 条件更新防并发重复取单，返回明细快照 */
+export function takeHold(id: number) {
+  return http.post<HoldDetailVO>(`/sales/holds/${id}/take`)
+}
+
+/** 删除挂单：ACTIVE→DELETED 条件更新 */
+export function deleteHold(id: number) {
+  return http.delete<void>(`/sales/holds/${id}`)
+}

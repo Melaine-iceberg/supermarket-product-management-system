@@ -6,6 +6,7 @@ import {
   closeShift,
   getCurrentShift,
   getShiftDetail,
+  listHolds,
   openShift,
   pageShifts,
   RETURN_STATUS_MAP,
@@ -60,9 +61,18 @@ async function doOpenShift() {
 }
 
 async function doCloseShift() {
+  // 未取挂单提示（FR-SALE-08）：挂单不扣库存不计报表，交班前提醒先处理
+  let holds = 0
+  try {
+    holds = (await listHolds()).length
+  } catch {
+    // 查询失败不阻断交班
+  }
   await ElMessageBox.confirm(
-    '交班后将统计本班次销售与退款生成交班单，本班次单据的退货须店长处理（BR-SALE-09）。确认交班？',
-    '交班对账',
+    holds > 0
+      ? `您还有 ${holds} 张未取挂单（挂单不扣库存、不计入报表），建议先取单结算或删除。确认继续交班？`
+      : '交班后将统计本班次销售与退款生成交班单，本班次单据的退货须店长处理（BR-SALE-09）。确认交班？',
+    holds > 0 ? '存在未取挂单' : '交班对账',
     { type: 'warning' },
   )
   acting.value = true

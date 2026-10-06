@@ -741,20 +741,26 @@ CREATE TABLE IF NOT EXISTS return_order_item (
     KEY idx_roi_sales_item (sales_item_id)
 ) ENGINE = InnoDB COMMENT = '销售退货明细';
 
--- 挂单（DR-21，FR-SALE-08）：临时态，24小时定时清理（IR-SW-06）
+-- 挂单（DR-21，FR-SALE-08）：临时态，不扣库存不计报表（BR-RPT-03），24小时定时清理（IR-SW-06）
 CREATE TABLE IF NOT EXISTS hold_order (
     id           BIGINT UNSIGNED AUTO_INCREMENT COMMENT '挂单ID',
     counter_no   TINYINT UNSIGNED NOT NULL COMMENT '收银台号',
+    cashier_id   BIGINT UNSIGNED NOT NULL COMMENT '收银员ID（挂单归属，仅本人可见）',
     cashier_name VARCHAR(30)  NOT NULL COMMENT '收银员',
     member_id    BIGINT UNSIGNED DEFAULT NULL COMMENT '会员ID（挂单时已选）',
+    member_name  VARCHAR(30)  DEFAULT NULL COMMENT '会员姓名快照（取单展示）',
     items_json   TEXT         NOT NULL COMMENT '明细快照JSON',
     item_count   INT          NOT NULL DEFAULT 0 COMMENT '件数',
-    amount       DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '金额摘要',
+    amount       DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '金额摘要（改价行按改价单价）',
+    order_rate   DECIMAL(5,4) DEFAULT NULL COMMENT '整单折扣率（挂单时已定，FR-SALE-07）',
+    discount_reason   VARCHAR(200) DEFAULT NULL COMMENT '整单折扣原因（FR-SALE-07）',
+    authorizer_username VARCHAR(30) DEFAULT NULL COMMENT '整单折扣/改价授权账号（取单后重录密码）',
+    remark       VARCHAR(200) DEFAULT NULL COMMENT '备注',
     hold_time    DATETIME     NOT NULL COMMENT '挂单时间',
     status       VARCHAR(10)  NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE待取/TAKEN已取/DELETED已删除',
-    taken_time   DATETIME     DEFAULT NULL COMMENT '取单时间',
+    taken_time   DATETIME     DEFAULT NULL COMMENT '取单/删除时间',
     PRIMARY KEY (id),
-    KEY idx_hold_counter (counter_no, status)
+    KEY idx_hold_cashier (cashier_id, status)
 ) ENGINE = InnoDB COMMENT = '收银挂单（临时态，不扣库存不计报表）';
 
 -- 收银班次（DR-37，FR-SALE-12）
