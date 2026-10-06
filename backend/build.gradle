@@ -60,6 +60,13 @@ dependencies {
     // 测试
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // 集成测试：Testcontainers 起真 MariaDB 验证并发不超卖（NFR-MNT-05/AC-08）；
+    // SQL 依赖 MySQL/MariaDB 语义（ON DUPLICATE KEY UPDATE、SET 左到右求值），不可用 H2 替代。
+    // 无 Docker 环境由 @Testcontainers(disabledWithoutDocker = true) 自动跳过。
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-mariadb'
+    testRuntimeOnly 'org.mariadb.jdbc:mariadb-java-client'
 }
 
 tasks.named('test') {

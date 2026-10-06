@@ -13,6 +13,11 @@ spring:
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 5000
+      # READ COMMITTED（跨 MySQL/MariaDB 兼容；非 MySQL 默认 RR）：
+      # MariaDB 11+ 默认 innodb_snapshot_isolation=ON，RR 下"先读后写"事务更新被并发事务改过的行
+      # 会抛 1020（ER_CHECKREAD）中断业务（如并发收银先读商品再扣减库存，NFR-MNT-05/AC-08）；
+      # RC 下条件扣减仍由单语句行锁串行、余量判定语义不变，行为与 MySQL 默认实现一致
+      transaction-isolation: TRANSACTION_READ_COMMITTED
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
