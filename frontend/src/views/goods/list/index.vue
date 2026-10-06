@@ -16,11 +16,17 @@ import {
   createGoods,
   updateGoods,
   nextBarcode,
+  downloadGoodsTemplate,
+  validateGoodsImport,
+  commitGoodsImport,
+  exportGoodsFailedRows,
   type CategoryNode,
   type BrandVO,
   type UnitVO,
   type GoodsListVO,
   type GoodsCreatedVO,
+  type GoodsImportReportVO,
+  type GoodsImportResultVO,
 } from '@/api/goods'
 
 const auth = useAuthStore()
@@ -456,6 +462,111 @@ async function handleExport() {
   }
 }
 
+// ---------- Excel 批量导入（FR-GOODS-11：模板 → 上传校验 → 确认提交 → 失败行导出） ----------
+const importDialog = reactive({
+  visible: false,
+  step: 'upload' as 'upload' | 'report' | 'done',
+  file: null as File | null,
+  validating: false,
+  committing: false,
+  /** 当前长任务的文件上传进度（0~100） */
+  percent: 0,
+  report: null as GoodsImportReportVO | null,
+  result: null as GoodsImportResultVO | null,
+  /** 校验通过后预取的失败行文件：提交后再重新校验会因库内已有数据而失真，故此时取回缓存 */
+  failedBlob: null as Blob | null,
+  /** 报告展示范围：failed 仅失败行（默认，避免大文件全量渲染）/ all 全部行 */
+  scope: 'failed' as 'failed' | 'all',
+})
+
+function openImport() {
+  Object.assign(importDialog, {
+    visible: true,
+    step: 'upload',
+    file: null,
+    validating: false,
+    committing: false,
+    percent: 0,
+    report: null,
+    result: null,
+    failedBlob: null,
+    scope: 'failed',
+  })
+}
+
+function onImportFileChange(file: { raw?: File }) {
+  importDialog.file = file.raw ?? null
+}
+
+function onImportProgress(percent: number) {
+  importDialog.percent = percent
+}
+
+const importProgressText = computed(() => {
+  if (importDialog.percent < 100) return '文件上传中…'
+  return importDialog.committing ? '服务器导入中，请稍候…' : '服务器校验中，请稍候…'
+})
+
+async function doValidate() {
+  if (!importDialog.file) {
+    ElMessage.warning('请先选择导入文件')
+    return
+  }
+  importDialog.validating = true
+  importDialog.percent = 0
+  try {
+    const file = importDialog.file
+    importDialog.report = await validateGoodsImport(file, onImportProgress)
+    importDialog.step = 'report'
+    importDialog.scope = 'failed'
+    importDialog.failedBlob = null
+    if (importDialog.report.failed > 0) {
+      try {
+        importDialog.failedBlob = await exportGoodsFailedRows(file)
+      } catch {
+        // 失败行文件生成失败时导出按钮置灰，不阻断校验流程
+      }
+    }
+  } finally {
+    importDialog.validating = false
+  }
+}
+
+async function doCommit() {
+  if (!importDialog.file) return
+  importDialog.committing = true
+  importDialog.percent = 0
+  try {
+    const file = importDialog.file
+    importDialog.result = await commitGoodsImport(file, onImportProgress)
+    importDialog.step = 'done'
+    if (importDialog.result.imported > 0) {
+      ElMessage.success(`成功导入 ${importDialog.result.imported} 个商品`)
+      load()
+    }
+  } finally {
+    importDialog.committing = false
+  }
+}
+
+async function doDownloadTemplate() {
+  saveBlob(await downloadGoodsTemplate(), 'goods-import-template.xlsx')
+}
+
+function doExportFailedRows() {
+  if (importDialog.failedBlob) {
+    saveBlob(importDialog.failedBlob, '商品导入失败行.xlsx')
+  }
+}
+
+/** 校验报告行：默认仅失败行，可切换全部 */
+const reportRows = computed(() => {
+  if (!importDialog.report) return []
+  return importDialog.scope === 'all'
+    ? importDialog.report.rows
+    : importDialog.report.rows.filter((r) => !r.passed)
+})
+
 function money(v: number | null | undefined) {
   return v == null ? '—' : Number(v).toFixed(2)
 }
@@ -541,6 +652,12 @@ function money(v: number | null | undefined) {
               @click="openCreate"
             >
               <el-icon><Plus /></el-icon>新增商品
+            </el-button>
+            <el-button
+              v-if="auth.hasPerm('sys:goods:import')"
+              @click="openImport"
+            >
+              <el-icon><Upload /></el-icon>批量导入
             </el-button>
             <el-button
               v-if="auth.hasPerm('sys:goods:export')"
@@ -893,6 +1010,158 @@ function money(v: number | null | undefined) {
         </div>
       </div>
     </el-dialog>
+
+    <!-- Excel 批量导入（FR-GOODS-11：模板下载 → 上传校验 → 确认提交 → 失败行导出） -->
+    <el-dialog
+      v-model="importDialog.visible"
+      title="商品批量导入（Excel）"
+      width="760px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="importDialog.validating || importDialog.committing" class="import-progress">
+        <el-progress :percentage="importDialog.percent" :stroke-width="10" />
+        <div class="import-progress-text">{{ importProgressText }}</div>
+      </div>
+
+      <!-- 第一步：下载模板 + 选择文件 -->
+      <template v-if="importDialog.step === 'upload'">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="流程：下载模板 → 填写商品信息 → 上传校验（不写库）→ 确认提交（仅导入校验通过的行）"
+          class="dialog-alert"
+        />
+        <div class="import-actions">
+          <el-button @click="doDownloadTemplate">
+            <el-icon><Download /></el-icon>下载导入模板
+          </el-button>
+        </div>
+        <el-upload
+          drag
+          :auto-upload="false"
+          :limit="1"
+          accept=".xlsx"
+          :on-change="onImportFileChange"
+          :on-remove="() => (importDialog.file = null)"
+        >
+          <el-icon :size="36"><UploadFilled /></el-icon>
+          <div class="el-upload__text">拖拽文件到此处 或 <em>点击选择 .xlsx 文件</em></div>
+          <template #tip>
+            <div class="el-upload__tip">单次不超过 5000 行；表头须与标准模板一致，模板示例行会自动跳过</div>
+          </template>
+        </el-upload>
+      </template>
+
+      <!-- 第二步：全量校验报告 -->
+      <template v-else-if="importDialog.step === 'report'">
+        <el-alert
+          :type="importDialog.report!.failed === 0 ? 'success' : 'warning'"
+          :closable="false"
+          show-icon
+          :title="`共 ${importDialog.report!.total} 行：通过 ${importDialog.report!.passed} 行，失败 ${importDialog.report!.failed} 行`"
+          :description="
+            importDialog.report!.failed > 0
+              ? '确认提交仅导入通过的行；失败行可导出，修正后直接作为导入文件重新上传。'
+              : '全部校验通过，可确认提交。'
+          "
+          class="dialog-alert"
+        />
+        <el-radio-group
+          v-if="importDialog.report!.failed > 0"
+          v-model="importDialog.scope"
+          size="small"
+          class="import-scope"
+        >
+          <el-radio-button value="failed">仅失败行（{{ importDialog.report!.failed }}）</el-radio-button>
+          <el-radio-button value="all">全部行（{{ importDialog.report!.total }}）</el-radio-button>
+        </el-radio-group>
+        <el-table :data="reportRows" size="small" max-height="340">
+          <el-table-column prop="rowNum" label="行号" width="64" align="center" />
+          <el-table-column label="结果" width="72" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.passed ? 'success' : 'danger'" size="small">
+                {{ row.passed ? '通过' : '失败' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="商品名称" min-width="140">
+            <template #default="{ row }">{{ row.data['商品名称*'] || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="商品条码" width="136">
+            <template #default="{ row }">{{ row.data['商品条码'] || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="失败原因" min-width="230">
+            <template #default="{ row }">
+              <span v-if="row.errors?.length" class="import-error">{{ row.errors.join('；') }}</span>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+
+      <!-- 第三步：提交结果 -->
+      <template v-else>
+        <el-result
+          :icon="importDialog.result!.failed === 0 ? 'success' : 'warning'"
+          :title="`导入完成：成功 ${importDialog.result!.imported} 条，失败 ${importDialog.result!.failed} 条`"
+        >
+          <template v-if="importDialog.result!.failed > 0" #sub-title>
+            <span>失败行可点击下方「导出失败行」下载，修正后重新上传（已导入的行不会重复）</span>
+          </template>
+        </el-result>
+        <el-table
+          v-if="importDialog.result!.failedRows.length"
+          :data="importDialog.result!.failedRows"
+          size="small"
+          max-height="220"
+        >
+          <el-table-column prop="rowNum" label="行号" width="64" align="center" />
+          <el-table-column label="商品名称" min-width="140">
+            <template #default="{ row }">{{ row.data['商品名称*'] || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="失败原因" min-width="280">
+            <template #default="{ row }">
+              <span class="import-error">{{ row.errors.join('；') }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+
+      <template #footer>
+        <!-- 上传步 -->
+        <template v-if="importDialog.step === 'upload'">
+          <el-button @click="importDialog.visible = false">取消</el-button>
+          <el-button type="primary" :loading="importDialog.validating" @click="doValidate">
+            上传校验
+          </el-button>
+        </template>
+        <!-- 校验报告步 -->
+        <template v-else-if="importDialog.step === 'report'">
+          <el-button
+            v-if="importDialog.report!.failed > 0"
+            :disabled="!importDialog.failedBlob"
+            @click="doExportFailedRows"
+          >导出失败行</el-button>
+          <el-button @click="importDialog.step = 'upload'">重新选择文件</el-button>
+          <el-button
+            type="primary"
+            :loading="importDialog.committing"
+            :disabled="importDialog.report!.passed === 0"
+            @click="doCommit"
+          >确认提交</el-button>
+        </template>
+        <!-- 完成步 -->
+        <template v-else>
+          <el-button
+            v-if="importDialog.result!.failedRows.length"
+            :disabled="!importDialog.failedBlob"
+            @click="doExportFailedRows"
+          >导出失败行</el-button>
+          <el-button type="primary" @click="importDialog.visible = false">完成</el-button>
+        </template>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -964,6 +1233,31 @@ function money(v: number | null | undefined) {
         letter-spacing: 1px;
         flex: 1;
       }
+    }
+  }
+
+  .import-actions {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+
+  .import-scope {
+    margin-bottom: 10px;
+  }
+
+  .import-error {
+    color: #f56c6c;
+    font-size: 12px;
+  }
+
+  .import-progress {
+    margin-bottom: 12px;
+
+    .import-progress-text {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #909399;
     }
   }
 }

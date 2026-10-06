@@ -69,6 +69,14 @@ public class GoodsExcelController {
         return ApiResponse.ok(goodsExcelService.commit(open(file), SecurityUtils.getLoginUser().username()));
     }
 
+    /** 失败行导出：重新上传同一文件，返回仅含失败行的 xlsx（末列附失败原因，修正后可直接重传） */
+    @PostMapping("/import/failed-export")
+    @RequirePerm("sys:goods:import")
+    @OpLog(module = "商品管理", action = "导出导入失败行")
+    public ResponseEntity<byte[]> failedExport(@RequestParam("file") MultipartFile file) {
+        return xlsx(goodsExcelService.failedRowsExport(open(file)), "goods-import-failed.xlsx");
+    }
+
     /** 清单导出（FR-GOODS-12）：与列表同一筛选条件；fields 逗号分隔，空为全部字段 */
     @GetMapping("/export")
     @RequirePerm("sys:goods:export")

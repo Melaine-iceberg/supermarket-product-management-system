@@ -99,15 +99,36 @@ export const http = {
     })
     return res.data as Blob
   },
-  /** 上传文件（Excel 导入等，multipart/form-data） */
-  async upload<T>(url: string, file: File, field = 'file'): Promise<T> {
+  /** 上传文件（Excel 导入等，multipart/form-data）；onProgress 回调文件上传百分比 */
+  async upload<T>(
+    url: string,
+    file: File,
+    field = 'file',
+    onProgress?: (percent: number) => void,
+  ): Promise<T> {
     const form = new FormData()
     form.append(field, file)
     const res = await instance.post<ApiResponse<T>>(url, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) {
+          onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)))
+        }
+      },
     })
     return res.data.data
+  },
+  /** 上传文件并下载响应文件（Excel 导入失败行导出等，multipart → blob） */
+  async postDownload(url: string, file: File, field = 'file'): Promise<Blob> {
+    const form = new FormData()
+    form.append(field, file)
+    const res = await instance.post(url, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      responseType: 'blob',
+      timeout: 60000,
+    })
+    return res.data as Blob
   },
 }
 

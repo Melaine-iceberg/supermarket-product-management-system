@@ -1,3 +1,4 @@
+import { ElMessage } from 'element-plus'
 import { http } from './request'
 import type { PageResult } from './request'
 
@@ -273,4 +274,54 @@ export function updateGoods(id: number, data: GoodsUpdatePayload) {
 /** 店内码预览（FR-GOODS-07）：EAN-13 前缀20~29 + 序号 + 校验位，不落库 */
 export function nextBarcode() {
   return http.get<{ barcode: string }>('/goods/next-barcode')
+}
+
+// ---------- Excel 批量导入（FR-GOODS-11，校验—确认—部分提交） ----------
+
+/** 导入单行校验结果：行号、是否通过、失败原因与原始行数据（列名 → 单元格文本） */
+export interface GoodsImportRowVO {
+  /** Excel 行号（从 1 开始） */
+  rowNum: number
+  passed: boolean
+  errors: string[]
+  data: Record<string, string>
+}
+
+export interface GoodsImportReportVO {
+  total: number
+  passed: number
+  failed: number
+  rows: GoodsImportRowVO[]
+}
+
+export interface GoodsImportResultVO {
+  imported: number
+  failed: number
+  failedRows: GoodsImportRowVO[]
+}
+
+/** 下载导入模板 */
+export function downloadGoodsTemplate() {
+  return http.download('/goods/import/template')
+}
+
+/** 上传校验：全量校验生成报告，不写库（BR-GOODS-07） */
+export function validateGoodsImport(file: File, onProgress?: (percent: number) => void) {
+  return http.upload<GoodsImportReportVO>('/goods/import/validate', file, 'file', onProgress)
+}
+
+/** 确认提交：单事务内仅导入校验通过的行，失败行返回明细供修正重传 */
+export function commitGoodsImport(file: File, onProgress?: (percent: number) => void) {
+  return http.upload<GoodsImportResultVO>('/goods/import/commit', file, 'file', onProgress)
+}
+
+/** 失败行导出：重新上传同一文件，返回仅含失败行的 xlsx（末列附失败原因，修正后可直接重传） */
+export async function exportGoodsFailedRows(file: File) {
+  const blob = await http.postDownload('/goods/import/failed-export', file)
+  if (blob.type.includes('application/json')) {
+    const body = JSON.parse(await blob.text()) as { message?: string }
+    ElMessage.error(body.message || '失败行导出失败')
+    throw new Error(body.message || '失败行导出失败')
+  }
+  return blob
 }

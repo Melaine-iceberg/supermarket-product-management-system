@@ -54,7 +54,7 @@ import static org.mockito.Mockito.when;
 /**
  * 商品 Excel 导入导出单元测试（FR-GOODS-11/12、BR-GOODS-07）：
  * 模板、全量校验（必填/格式/条码重复/关联档案/价格/称重约束）、
- * 部分提交（仅写通过行）、按字段导出。
+ * 部分提交（仅写通过行）、失败行导出（修正后重传）、按字段导出。
  */
 @ExtendWith(MockitoExtension.class)
 class GoodsExcelServiceTest {
@@ -344,6 +344,52 @@ class GoodsExcelServiceTest {
         assertThat(result.failedRows().get(0).errors())
                 .anyMatch(e -> e.contains("不存在"));
         verify(goodsService, times(1)).create(any(), eq("admin"));
+    }
+
+    // ---------- 失败行导出（FR-GOODS-11：修正后重传） ----------
+
+    @Test
+    @DisplayName("失败行导出：仅含失败行与原因列，修正后可直接重传")
+    void failedExport_reuploadAfterFix() throws IOException {
+        stubLookups(List.of());
+        String[] bad = validRow("雪碧", "");
+        bad[3] = "不存在的分类";
+        byte[] file = xlsx(List.of(header(), validRow("可乐", "2000000000015"), bad));
+
+        byte[] exported = service.failedRowsExport(stream(file));
+
+        byte[] fixed;
+        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(exported))) {
+            Sheet sheet = wb.getSheetAt(0);
+            // 表头 = 模板 18 列 + 失败原因列；仅失败行 1 行数据
+            assertThat(sheet.getRow(0).getCell(18).getStringCellValue())
+                    .isEqualTo(GoodsExcelService.REASON_COLUMN);
+            assertThat(sheet.getLastRowNum()).isEqualTo(1);
+            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("雪碧");
+            assertThat(sheet.getRow(1).getCell(18).getStringCellValue()).contains("不存在");
+            // 修正分类后另存，作为重传文件
+            sheet.getRow(1).getCell(3).setCellValue("饮料");
+            try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                wb.write(out);
+                fixed = out.toByteArray();
+            }
+        }
+
+        // 重传：末列失败原因被自动忽略，全量通过
+        GoodsImportReportVO report = service.validate(stream(fixed));
+        assertThat(report.total()).isEqualTo(1);
+        assertThat(report.passed()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("失败行导出：全部通过时拒绝导出")
+    void failedExport_allPassedRejected() throws IOException {
+        stubLookups(List.of());
+        byte[] file = xlsx(List.of(header(), validRow("可乐", "2000000000015")));
+
+        assertThatThrownBy(() -> service.failedRowsExport(stream(file)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("没有失败行");
     }
 
     // ---------- 导出（FR-GOODS-12） ----------

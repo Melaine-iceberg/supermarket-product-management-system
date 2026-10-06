@@ -63,6 +63,9 @@ public class GoodsExcelService {
             "PLU码", "是否允许退货", "安全库存下限", "库存上限", "初始库存", "备注"
     };
 
+    /** 失败行导出文件的附加原因列（解析器按前 18 列取数，该列在重传时自动忽略） */
+    public static final String REASON_COLUMN = "失败原因（修正后重传将自动忽略本列）";
+
     private static final int MAX_IMPORT_ROWS = 5000;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -194,6 +197,54 @@ public class GoodsExcelService {
                 .map(c -> new GoodsImportRowVO(c.row().rowNum(), false, c.errors(), c.row().data()))
                 .toList();
         return new GoodsImportResultVO(pass.size(), failedRows.size(), failedRows);
+    }
+
+    // ==================== 失败行导出（FR-GOODS-11：修正后重传） ====================
+
+    /**
+     * 失败行导出：重新校验同一文件（无状态，与提交同口径），
+     * 输出模板列 + 末列失败原因，用户修正后可直接作为导入文件重传。
+     */
+    public byte[] failedRowsExport(InputStream in) {
+        List<CheckedRow> failed = parseAndCheck(in).stream()
+                .filter(c -> !c.errors().isEmpty())
+                .toList();
+        if (failed.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "全部行校验通过，没有失败行可导出");
+        }
+        try (XSSFWorkbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("失败行");
+            var headStyle = wb.createCellStyle();
+            var font = wb.createFont();
+            font.setBold(true);
+            headStyle.setFont(font);
+
+            Row head = sheet.createRow(0);
+            for (int i = 0; i < COLUMNS.length; i++) {
+                var cell = head.createCell(i);
+                cell.setCellValue(COLUMNS[i]);
+                cell.setCellStyle(headStyle);
+                sheet.setColumnWidth(i, 14 * 256);
+            }
+            var reasonHead = head.createCell(COLUMNS.length);
+            reasonHead.setCellValue(REASON_COLUMN);
+            reasonHead.setCellStyle(headStyle);
+            sheet.setColumnWidth(COLUMNS.length, 46 * 256);
+
+            int r = 1;
+            for (CheckedRow c : failed) {
+                Row row = sheet.createRow(r++);
+                for (int i = 0; i < COLUMNS.length; i++) {
+                    row.createCell(i).setCellValue(c.row().val(COLUMNS[i]));
+                }
+                row.createCell(COLUMNS.length).setCellValue(String.join("；", c.errors()));
+            }
+            wb.write(out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "失败行导出失败");
+        }
     }
 
     // ==================== 导出（FR-GOODS-12） ====================
