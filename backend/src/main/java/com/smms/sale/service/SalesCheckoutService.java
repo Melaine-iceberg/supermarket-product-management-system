@@ -572,8 +572,13 @@ public class SalesCheckoutService {
         order.setOrderDiscountRate(cmd.orderDiscountRate());
         order.setDiscountReason(cmd.discountReason() == null || cmd.discountReason().isBlank()
                 ? null : cmd.discountReason().trim());
-        order.setCostAmount(BigDecimal.ZERO);
-        order.setProfitAmount(BigDecimal.ZERO);
+        // 成本/毛利快照（BR-SALE-04/BR-RPT-01）：与明细行同公式汇总（行成本四舍五入到分后求和），
+        // 供销售日报/看板按头表聚合；毛利 = 应收 − 成本
+        BigDecimal costAmount = lines.lines().stream()
+                .map(l -> l.costPrice().multiply(l.quantity()).setScale(2, RoundingMode.HALF_UP))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        order.setCostAmount(costAmount);
+        order.setProfitAmount(lines.payable().subtract(costAmount));
         order.setReturnStatus("NONE");
         order.setAuthorizerName(authorizerName);
         order.setRemark(cmd.remark());

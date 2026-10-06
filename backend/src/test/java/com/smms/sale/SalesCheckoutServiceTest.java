@@ -241,6 +241,9 @@ class SalesCheckoutServiceTest {
         assertThat(order.getPayableAmount()).isEqualByComparingTo("47.75");
         assertThat(order.getPaidAmount()).isEqualByComparingTo("50.00");
         assertThat(order.getChangeAmount()).isEqualByComparingTo("2.25");
+        // 头表成本/毛利快照（BR-SALE-04/BR-RPT-01）：Σ行成本 12+9+6，毛利 = 应收 − 成本
+        assertThat(order.getCostAmount()).isEqualByComparingTo("27.00");
+        assertThat(order.getProfitAmount()).isEqualByComparingTo("20.75");
         assertThat(order.getReturnStatus()).isEqualTo("NONE");
         assertThat(order.getBusinessDate()).isEqualTo(LocalDate.now());
 
