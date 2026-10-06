@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 
 /**
  * 用户管理服务（FR-SYS-02）：增、改、停用/启用、重置密码、分配角色；
- * 用户不可物理删除（BR-SYS-06）；超级管理员不可停用（BR-SYS-03）。
+ * 用户不可物理删除（BR-SYS-06）；超级管理员账号唯一、不可停用、角色不可被剥夺（BR-SYS-03）。
  */
 @Service
 @RequiredArgsConstructor
@@ -69,6 +69,9 @@ public class SysUserService {
             throw new BusinessException(ErrorCode.USERNAME_EXISTS);
         }
         List<Long> roleIds = normalizeRoleIds(req.roleIds());
+        if (roleIds.contains(SysRole.SUPER_ADMIN_ROLE_ID)) {
+            throw new BusinessException(ErrorCode.SUPER_ADMIN_ROLE_PROTECTED);
+        }
         String initialPassword = randomPassword();
 
         SysUser user = new SysUser();
@@ -103,6 +106,9 @@ public class SysUserService {
             if (id == ADMIN_USER_ID && !roleIds.contains(SysRole.SUPER_ADMIN_ROLE_ID)) {
                 throw new BusinessException(ErrorCode.BUILTIN_PROTECTED,
                         "超级管理员账号必须保留超级管理员角色（BR-SYS-03）");
+            }
+            if (id != ADMIN_USER_ID && roleIds.contains(SysRole.SUPER_ADMIN_ROLE_ID)) {
+                throw new BusinessException(ErrorCode.SUPER_ADMIN_ROLE_PROTECTED);
             }
             userRoleMapper.delete(Wrappers.<SysUserRole>lambdaQuery().eq(SysUserRole::getUserId, id));
             saveRoles(id, roleIds);

@@ -301,8 +301,10 @@ onMounted(() => {
               :key="role.id"
               :label="role.roleName"
               :value="role.id"
+              :disabled="role.roleCode === 'SUPER_ADMIN' && editing?.id !== 1"
             />
           </el-select>
+          <div class="role-tip">超级管理员角色仅可授予初始账号（BR-SYS-03）</div>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" maxlength="200" />
@@ -348,6 +350,13 @@ onMounted(() => {
 
   .role-tag {
     margin: 2px 4px 2px 0;
+  }
+
+  .role-tip {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    line-height: 1.4;
   }
 
   .pager {

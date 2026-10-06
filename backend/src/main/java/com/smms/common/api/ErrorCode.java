@@ -36,6 +36,7 @@ public enum ErrorCode {
     WEAK_PASSWORD(1106, "密码强度不足"),
     OLD_PASSWORD_ERROR(1107, "原密码不正确"),
     BUILTIN_PROTECTED(1108, "内置对象受保护，不允许该操作"),
+    SUPER_ADMIN_ROLE_PROTECTED(1109, "超级管理员角色仅可授予初始账号（BR-SYS-03）"),
 
     // ---------- CAT 分类模块（1200 ~ 1299，FR-CAT-01 ~ 07） ----------
     CAT_NAME_EXISTS(1201, "同级下已存在同名分类"),
