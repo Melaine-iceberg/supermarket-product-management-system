@@ -51,4 +51,11 @@ public final class SecurityUtils {
         return user != null && user.roleCodes() != null
                 && user.roleCodes().stream().anyMatch(SUPPLIER_SENSITIVE_ROLES::contains);
     }
+
+    /** 当前登录用户是否超级管理员（FR-INV-11 库存修正等敏感操作的最终校验） */
+    public static boolean isSuperAdmin() {
+        LoginUser user = getLoginUserOrNull();
+        return user != null && user.roleCodes() != null
+                && user.roleCodes().contains("SUPER_ADMIN");
+    }
 }

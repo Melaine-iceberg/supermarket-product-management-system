@@ -386,3 +386,41 @@ export function pageAlerts(params: AlertQuery) {
 export function exportAlerts(params: Omit<AlertQuery, 'page' | 'size'>) {
   return http.download('/inventory/alerts/export', params)
 }
+
+// ---------- 库存体检（FR-INV-11，白盒校验 BR-INV-08） ----------
+
+/** 差异行：账面结存 vs 理论结存（Σ流水），差异 = 账面 − 理论 */
+export interface InventoryHealthRow {
+  goodsId: number
+  goodsCode: string
+  goodsName: string
+  categoryName: string
+  /** 账面结存（结存行缺失按 0 处理） */
+  bookQty: number
+  /** 理论结存 = 期初 + Σ流水数量（BR-INV-05/08） */
+  recordQty: number
+  /** 差异 = 账面 − 理论 */
+  diffQty: number
+  costPrice: number
+  lastChangeTime: string | null
+  /** 结存行缺失（修正时自动补行） */
+  rowMissing: boolean
+}
+
+export interface InventoryHealthVO {
+  rows: InventoryHealthRow[]
+  /** 差异商品总数（分页 total） */
+  total: number
+  /** 参与体检的商品数（口径：全部商品档案） */
+  checkedSkus: number
+}
+
+/** 库存体检（FR-INV-11）：按流水重算理论结存并比对，返回差异清单 */
+export function checkInventoryHealth(params: { page: number; size: number }) {
+  return http.get<InventoryHealthVO>('/inventory/health', params)
+}
+
+/** 一键按流水修正结存（FR-INV-11）：仅超级管理员，返回修正商品数 */
+export function fixInventoryHealth() {
+  return http.post<number>('/inventory/health/fix')
+}

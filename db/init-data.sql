@@ -85,6 +85,8 @@ INSERT INTO sys_permission (id, parent_id, name, perm_type, perm_code, route_pat
 (34, 3, '报损报溢', 'M', 'sys:loss:list',    '/inventory/loss',   'inventory/loss/index',   'Warning', 5, 1, 'system'),
 (341, 34, '报损/报溢登记','B', 'sys:loss:create',      NULL, NULL, NULL, 1, 1, 'system'),
 (342, 34, '报损报溢审核', 'B', 'sys:loss:audit',       NULL, NULL, NULL, 2, 1, 'system'),
+(35, 3, '库存体检', 'M', 'sys:inv:health',  '/inventory/health', 'inventory/health/index', 'FirstAidKit', 6, 1, 'system'),
+(351, 35, '一键按流水修正结存','B', 'sys:inv:health:fix', NULL, NULL, NULL, 1, 1, 'system'),
 
 -- 采购管理菜单
 (40, 4, '采购单',   'M', 'sys:pur:list',    '/purchase/order',    'purchase/order/index',    'Tickets', 1, 1, 'system'),
@@ -158,7 +160,8 @@ INSERT INTO sys_user_role (user_id, role_id) VALUES
 INSERT INTO sys_role_permission (role_id, perm_id)
 SELECT 1, id FROM sys_permission;
 
--- 店长：除"系统管理"目录外的全部权限（商品/库存/采购/销售/会员/报表）
+-- 店长：除"系统管理"目录外的全部权限（商品/库存/采购/销售/会员/报表）；
+-- 库存体检一键修正除外（FR-INV-11 仅超级管理员，白盒校验能力）
 INSERT INTO sys_role_permission (role_id, perm_id)
 SELECT 2, p.id
 FROM sys_permission p
@@ -166,7 +169,8 @@ WHERE NOT (
     p.id = 1
     OR p.parent_id = 1
     OR p.parent_id IN (SELECT id FROM (SELECT id FROM sys_permission WHERE parent_id = 1) t)
-);
+)
+AND (p.perm_code IS NULL OR p.perm_code <> 'sys:inv:health:fix');
 
 -- 采购员：供应商维护、采购单编制提交、采购退货、建议采购、入库跟踪；商品与库存仅查看
 INSERT INTO sys_role_permission (role_id, perm_id) VALUES
@@ -175,12 +179,12 @@ INSERT INTO sys_role_permission (role_id, perm_id) VALUES
 (3, 4), (3, 40), (3, 401), (3, 402), (3, 403), (3, 404), (3, 408),
 (3, 41), (3, 42), (3, 421), (3, 422), (3, 424), (3, 43);
 
--- 库管员：入库验收、盘点执行、报损报溢登记；商品与库存查看
+-- 库管员：入库验收、盘点执行、报损报溢登记、库存体检查看；商品与库存查看
 INSERT INTO sys_role_permission (role_id, perm_id) VALUES
 (4, 2), (4, 21),
 (4, 3), (4, 30), (4, 31), (4, 32),
 (4, 33), (4, 331), (4, 332), (4, 333), (4, 335),
-(4, 34), (4, 341),
+(4, 34), (4, 341), (4, 35),
 (4, 4), (4, 41), (4, 411), (4, 412);
 
 -- 收银员：收银台、退货办理、交班；会员查询与注册、储值充值（充值需店长授权）

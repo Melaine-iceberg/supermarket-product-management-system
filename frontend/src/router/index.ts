@@ -134,6 +134,12 @@ const router = createRouter({
           component: () => import('@/views/inventory/loss/index.vue'),
           meta: { perm: 'sys:loss:list', title: '报损报溢' },
         },
+        {
+          path: 'inventory/health',
+          name: 'inventory-health',
+          component: () => import('@/views/inventory/health/index.vue'),
+          meta: { perm: 'sys:inv:health', title: '库存体检' },
+        },
         // 销售管理（FR-SALE）
         {
           path: 'sale/cashier',

@@ -271,4 +271,63 @@
         WHERE goods_id = #{goodsId}
           AND store_id = #{storeId}
     </update>
+
+    <!-- ==================== 库存体检（FR-INV-11，BR-INV-08） ====================
+         口径说明：
+         - 账面结存 = inventory.quantity，结存行缺失按 0 处理（与实时库存列表口径一致）；
+         - 理论结存 = 期初 + Σ流水数量（BR-INV-05/08），即 Σ inventory_record.change_qty
+           （INIT 期初建账也是一笔流水，天然含在求和内）；
+         - 差异 = 账面 − 理论，两边同为 0（无结存行且无流水）不计入差异清单；
+         - rowMissing 标记结存行缺失（理论结存≠0 但 inventory 无行），修正时自动补行。 -->
+    <sql id="healthDiffSelect">
+        SELECT
+            g.id                        AS goodsId,
+            g.goods_code                AS goodsCode,
+            g.name                      AS goodsName,
+            c.name                      AS categoryName,
+            COALESCE(inv.quantity, 0)   AS bookQty,
+            COALESCE(rec.total_qty, 0)  AS recordQty,
+            COALESCE(inv.quantity, 0) - COALESCE(rec.total_qty, 0) AS diffQty,
+            COALESCE(inv.cost_price, 0) AS costPrice,
+            inv.last_change_time        AS lastChangeTime,
+            CASE WHEN inv.goods_id IS NULL THEN 1 ELSE 0 END AS rowMissing
+        FROM goods g
+        JOIN category c ON c.id = g.category_id
+        LEFT JOIN inventory inv ON inv.goods_id = g.id AND inv.store_id = #{storeId}
+        LEFT JOIN (
+            SELECT goods_id, SUM(change_qty) AS total_qty
+            FROM inventory_record
+            WHERE store_id = #{storeId}
+            GROUP BY goods_id
+        ) rec ON rec.goods_id = g.id
+    </sql>
+
+    <!-- 体检商品总数（FR-INV-11）：体检范围=全部商品档案 -->
+    <select id="countHealthChecked" resultType="long">
+        SELECT COUNT(*) FROM goods
+    </select>
+
+    <!-- 差异清单分页（FR-INV-11）：仅返回账面 ≠ 理论的行，按差异绝对值降序（问题最大的优先） -->
+    <select id="selectHealthDiffPage" resultType="com.smms.inv.dto.InventoryHealthRow">
+        <include refid="healthDiffSelect"/>
+        WHERE COALESCE(inv.quantity, 0) &lt;&gt; COALESCE(rec.total_qty, 0)
+        ORDER BY ABS(COALESCE(inv.quantity, 0) - COALESCE(rec.total_qty, 0)) DESC, g.id
+    </select>
+
+    <!-- 差异全量清单（一键修正用，不分页；逐商品覆盖结存=理论结存） -->
+    <select id="selectHealthDiffList" resultType="com.smms.inv.dto.InventoryHealthRow">
+        <include refid="healthDiffSelect"/>
+        WHERE COALESCE(inv.quantity, 0) &lt;&gt; COALESCE(rec.total_qty, 0)
+        ORDER BY g.id
+    </select>
+
+    <!-- 修正缺行兜底成本：该商品最近一笔流水的成本单价（无流水返回 NULL，服务层按 0 处理） -->
+    <select id="selectLatestRecordCost" resultType="java.math.BigDecimal">
+        SELECT ir.unit_cost
+        FROM inventory_record ir
+        WHERE ir.goods_id = #{goodsId}
+          AND ir.store_id = #{storeId}
+        ORDER BY ir.operate_time DESC, ir.id DESC
+        LIMIT 1
+    </select>
 </mapper>

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.inv.dto.AlertItemVO;
 import com.smms.inv.dto.AlertQuery;
 import com.smms.inv.dto.AlertSummaryVO;
+import com.smms.inv.dto.InventoryHealthRow;
 import com.smms.inv.dto.InventoryItemVO;
 import com.smms.inv.dto.InventoryQuery;
 import com.smms.inv.entity.Inventory;
@@ -68,4 +69,20 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
                               @Param("quantity") BigDecimal quantity,
                               @Param("costPrice") BigDecimal costPrice,
                               @Param("costAmount") BigDecimal costAmount);
+
+    // ==================== 库存体检（FR-INV-11，BR-INV-08） ====================
+
+    /** 参与体检的商品总数（口径：全部商品；无结存行/无流水若两边同为 0 不计差异） */
+    long countHealthChecked();
+
+    /** 差异清单分页：账面结存 vs Σ流水理论结存，按差异绝对值降序 */
+    IPage<InventoryHealthRow> selectHealthDiffPage(Page<InventoryHealthRow> page,
+                                                   @Param("storeId") Long storeId);
+
+    /** 差异全量清单（一键修正用，不分页） */
+    List<InventoryHealthRow> selectHealthDiffList(@Param("storeId") Long storeId);
+
+    /** 修正缺行兜底成本：该商品最近一笔流水的成本单价（无流水返回 NULL） */
+    BigDecimal selectLatestRecordCost(@Param("goodsId") Long goodsId,
+                                      @Param("storeId") Long storeId);
 }
