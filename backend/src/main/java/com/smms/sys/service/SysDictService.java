@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -52,6 +53,23 @@ public class SysDictService {
                         .eq(SysDictItem::getStatus, 1)
                         .orderByAsc(SysDictItem::getSortNo))
                 .stream().map(this::toItemVO).toList();
+    }
+
+    /**
+     * 启用中的字典项值集合（FR-SYS-07）：供业务侧校验枚举合法性（停用项不可被新单据使用）；
+     * 字典缺失或整体停用时返回空集，由调用方以内置枚举兜底，避免字典误配置阻断业务。
+     */
+    public Set<String> enabledValues(String dictType) {
+        SysDict dict = dictMapper.selectOne(Wrappers.<SysDict>lambdaQuery()
+                .eq(SysDict::getDictType, dictType)
+                .eq(SysDict::getStatus, 1));
+        if (dict == null) {
+            return Set.of();
+        }
+        return itemMapper.selectList(Wrappers.<SysDictItem>lambdaQuery()
+                        .eq(SysDictItem::getDictId, dict.getId())
+                        .eq(SysDictItem::getStatus, 1))
+                .stream().map(SysDictItem::getValue).collect(Collectors.toSet());
     }
 
     /** 新增字典项：同一字典下 value 唯一 */

@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { getCategoryTree, pageGoods, type CategoryNode } from '@/api/goods'
-import { getBusinessParams } from '@/api/system'
+import { getBusinessParams, getDictItems } from '@/api/system'
 import {
   checkout,
   createHold,
@@ -18,7 +18,6 @@ import {
   type CheckoutVO,
   type HoldVO,
   type MemberSearchVO,
-  type PayType,
 } from '@/api/sale'
 import { printSalesReceipt } from '@/utils/receipt'
 import { openPrintWindow } from '@/utils/print'
@@ -355,6 +354,23 @@ async function loadBizParams() {
   }
 }
 
+// ---------- 收款方式（FR-SYS-07：选项来自数据字典 pay_type 启用项，停用项不可选） ----------
+/** 收款方式选项：字典读取失败/为空时回退内置展示 */
+const payTypeOptions = ref<{ label: string; value: string }[]>(
+  Object.entries(PAY_TYPE_MAP).map(([value, label]) => ({ label, value })),
+)
+
+async function loadPayTypes() {
+  try {
+    const items = await getDictItems('pay_type')
+    if (items.length) {
+      payTypeOptions.value = items.map((i) => ({ label: i.label, value: i.value }))
+    }
+  } catch {
+    // 回退内置选项，后端结算时仍会校验
+  }
+}
+
 const orderRateInput = ref<number | null>(null)
 /** 整单折扣原因（已生效值，FR-SALE-07 必填） */
 const discountReasonApplied = ref('')
@@ -494,7 +510,7 @@ const payDialog = reactive({
   visible: false,
   submitting: false,
   requestToken: '',
-  lines: [] as { payType: PayType; amount: number | null }[],
+  lines: [] as { payType: string; amount: number | null }[],
 })
 
 const paidTotal = computed(() =>
@@ -814,6 +830,7 @@ function focusInput() {
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   loadBizParams()
+  loadPayTypes()
   refreshHoldCount()
   focusInput()
 })
@@ -1320,11 +1337,11 @@ onUnmounted(() => {
       <div v-for="(line, idx) in payDialog.lines" :key="idx" class="pay-line">
         <el-select v-model="line.payType" style="width: 120px">
           <el-option
-            v-for="(label, type) in PAY_TYPE_MAP"
-            :key="type"
-            :label="label"
-            :value="type"
-            :disabled="type === 'BALANCE' && (!member || member.status !== 1)"
+            v-for="opt in payTypeOptions"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+            :disabled="opt.value === 'BALANCE' && (!member || member.status !== 1)"
           />
         </el-select>
         <el-input-number

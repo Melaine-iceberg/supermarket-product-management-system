@@ -3,9 +3,7 @@ import type { PageResult } from './request'
 
 // ---------- 收银结算（FR-SALE-06） ----------
 
-/** 收款方式：CASH现金 / BANK银行卡 / MOBILE移动支付 / BALANCE会员储值（仅会员单，FR-MEM-08） */
-export type PayType = 'CASH' | 'BANK' | 'MOBILE' | 'BALANCE'
-
+/** 收款方式内置展示（数据字典 pay_type，FR-SYS-07；字典新增取值时按原值显示） */
 export const PAY_TYPE_MAP: Record<string, string> = {
   CASH: '现金',
   BANK: '银行卡',
@@ -13,9 +11,7 @@ export const PAY_TYPE_MAP: Record<string, string> = {
   BALANCE: '储值',
 }
 
-/** 退货原因（字典 return_reason）：QUALITY质量问题 / WRONG_ITEM错拿 / MISTAKE误操作 / OTHER其他 */
-export type ReturnReason = 'QUALITY' | 'WRONG_ITEM' | 'MISTAKE' | 'OTHER'
-
+/** 退货原因内置展示（数据字典 return_reason，FR-SYS-07；字典新增取值时按原值显示） */
 export const RETURN_REASON_MAP: Record<string, string> = {
   QUALITY: '质量问题',
   WRONG_ITEM: '错拿商品',
@@ -64,8 +60,8 @@ export interface CheckoutPayload {
     /** 改价原因（改价时必填） */
     priceReason?: string
   }[]
-  /** 一单多方式组合收款（FR-SALE-06） */
-  payments: { payType: PayType; amount: number }[]
+  /** 一单多方式组合收款（FR-SALE-06）；payType 取值来自数据字典 pay_type 启用项（FR-SYS-07） */
+  payments: { payType: string; amount: number }[]
 }
 
 /** 结算结果（FR-SALE-06）：单号与找零回显，供小票预览 */
@@ -80,7 +76,7 @@ export interface CheckoutVO {
   payableAmount: number
   paidAmount: number
   changeAmount: number
-  payments: { payType: PayType; amount: number }[]
+  payments: { payType: string; amount: number }[]
   /** 本次结算触发的升级等级名（未升级为 null，FR-MEM-06 收银台提示） */
   memberLevelUpgraded: string | null
   saleTime: string
@@ -309,8 +305,10 @@ export interface ReturnOrderDetailVO {
 /** 办理退货请求（FR-SALE-10）：按原销售明细行退，退款由后端按原成交单价计算（BR-SALE-06） */
 export interface ReturnCreatePayload {
   salesOrderId: number
-  refundType: PayType
-  returnReason: ReturnReason
+  /** 退款方式：数据字典 pay_type 启用项（FR-SYS-07） */
+  refundType: string
+  /** 退货原因：数据字典 return_reason 启用项（FR-SYS-07） */
+  returnReason: string
   reasonRemark?: string
   /** 店长授权账号（退款超阈值/误操作/超期特批时填写，FR-SALE-11：店长账号+密码授权） */
   authorizerUsername?: string

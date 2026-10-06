@@ -32,6 +32,7 @@ import com.smms.sale.service.SalesCheckoutService;
 import com.smms.security.LoginUser;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
+import com.smms.sys.service.SysDictService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -100,6 +101,7 @@ class SalesCheckoutServiceTest {
     @Mock private SysConfigService configService;
     @Mock private MemberBusinessService memberBusinessService;
     @Mock private SensitiveAuthService sensitiveAuthService;
+    @Mock private SysDictService dictService;
 
     private SalesCheckoutService service;
 
@@ -110,7 +112,8 @@ class SalesCheckoutServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Member.class);
         service = new SalesCheckoutService(salesOrderMapper, salesOrderItemMapper, paymentRecordMapper,
                 goodsMapper, promotionMapper, inventoryMapper, memberMapper, memberLevelMapper,
-                shiftMapper, inventoryService, configService, memberBusinessService, sensitiveAuthService);
+                shiftMapper, inventoryService, configService, memberBusinessService, sensitiveAuthService,
+                dictService);
     }
 
     // ---------- 造数 ----------
@@ -415,6 +418,26 @@ class SalesCheckoutServiceTest {
                 .hasMessageContaining("收款方式不合法");
 
         verify(salesOrderMapper, never()).insert(any(SalesOrder.class));
+    }
+
+    @Test
+    @DisplayName("收款方式以数据字典启用项为准：停用项拒绝、字典新增取值可用（FR-SYS-07）")
+    void checkout_payTypeDictDriven() {
+        mockGoodsAndPromoAndStock();
+        mockOrderInsertSuccess();
+
+        // 字典停用 CASH：内置枚举中的取值也不可用
+        when(dictService.enabledValues("pay_type")).thenReturn(Set.of("BANK", "MOBILE", "BALANCE"));
+        assertThatThrownBy(() -> service.checkout(command(null, null, null, List.of(pay("CASH", "47.75"))), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("收款方式不合法");
+        verify(salesOrderMapper, never()).insert(any(SalesOrder.class));
+
+        // 字典新增取值：无需改代码即可结算收款
+        when(dictService.enabledValues("pay_type")).thenReturn(Set.of("ALIPAY"));
+        CheckoutVO vo = service.checkout(command(null, null, null, List.of(pay("ALIPAY", "47.75"))), CASHIER);
+        assertThat(vo.paidAmount()).isEqualByComparingTo("47.75");
+        assertThat(vo.changeAmount()).isEqualByComparingTo("0.00");
     }
 
     @Test

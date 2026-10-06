@@ -27,6 +27,7 @@ import com.smms.sale.service.SalesReturnService;
 import com.smms.security.LoginUser;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
+import com.smms.sys.service.SysDictService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -94,6 +95,7 @@ class SalesReturnServiceTest {
     @Mock private SysConfigService configService;
     @Mock private MemberBusinessService memberBusinessService;
     @Mock private SensitiveAuthService sensitiveAuthService;
+    @Mock private SysDictService dictService;
 
     private SalesReturnService service;
     private final List<ReturnOrder> insertedReturns = new ArrayList<>();
@@ -105,7 +107,7 @@ class SalesReturnServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReturnOrderItem.class);
         service = new SalesReturnService(returnOrderMapper, returnOrderItemMapper, salesOrderMapper,
                 salesOrderItemMapper, goodsMapper, memberMapper, shiftMapper, inventoryService,
-                configService, memberBusinessService, sensitiveAuthService);
+                configService, memberBusinessService, sensitiveAuthService, dictService);
 
         doAnswer(inv -> {
             ReturnOrder ro = inv.getArgument(0);
@@ -420,6 +422,34 @@ class SalesReturnServiceTest {
                 .hasMessageContaining("退货原因");
 
         verify(returnOrderMapper, never()).insert(any(ReturnOrder.class));
+    }
+
+    // ---------- 字典驱动枚举（FR-SYS-07） ----------
+
+    @Test
+    @DisplayName("退款方式/退货原因以数据字典启用项为准：停用项拒绝、字典新增取值可用（FR-SYS-07）")
+    void createReturn_dictDriven() {
+        mockStandard(null, "30.00", "3", "0");
+        when(dictService.enabledValues("pay_type")).thenReturn(Set.of("CASH", "BANK"));
+        when(dictService.enabledValues("return_reason")).thenReturn(Set.of("QUALITY", "OTHER"));
+
+        // 字典停用 MOBILE / WRONG_ITEM：即使内置枚举包含也拒绝
+        assertThatThrownBy(() -> service.createReturn(request("MOBILE", "QUALITY", null, "1"), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("退款方式");
+        assertThatThrownBy(() -> service.createReturn(request("CASH", "WRONG_ITEM", null, "1"), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("退货原因");
+        verify(returnOrderMapper, never()).insert(any(ReturnOrder.class));
+
+        service.createReturn(request("CASH", "OTHER", null, "1"), CASHIER);
+        assertThat(insertedReturns).hasSize(1);
+
+        // 字典新增取值：无需改代码即可办理
+        when(dictService.enabledValues("pay_type")).thenReturn(Set.of("ALIPAY"));
+        service.createReturn(request("ALIPAY", "OTHER", null, "1"), CASHIER);
+        assertThat(insertedReturns).hasSize(2);
+        assertThat(insertedReturns.get(1).getRefundType()).isEqualTo("ALIPAY");
     }
 
     // ---------- 单号（BR-SALE-02） ----------

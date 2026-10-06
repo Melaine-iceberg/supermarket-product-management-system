@@ -15,7 +15,7 @@ import {
   type ReturnOrderVO,
   type SalesOrderDetailVO,
 } from '@/api/sale'
-import { getBusinessParams } from '@/api/system'
+import { getBusinessParams, getDictItems } from '@/api/system'
 import { printReturnVoucher } from '@/utils/receipt'
 import { newRequestToken } from '@/utils/token'
 
@@ -91,6 +91,7 @@ function resetQuery() {
 onMounted(() => {
   load()
   loadBizParams()
+  loadDictOptions()
 })
 
 // ---------- 退货单详情 ----------
@@ -115,6 +116,29 @@ async function loadBizParams() {
     Object.assign(bizParams, await getBusinessParams())
   } catch {
     // 读取失败按默认值展示，后端办理时仍会校验
+  }
+}
+
+// ---------- 退款方式 / 退货原因（FR-SYS-07：选项来自数据字典启用项，停用项不可选） ----------
+/** 退款方式选项：字典读取失败/为空时回退内置展示 */
+const refundTypeOptions = ref<{ label: string; value: string }[]>(
+  Object.entries(PAY_TYPE_MAP).map(([value, label]) => ({ label, value })),
+)
+/** 退货原因选项：字典读取失败/为空时回退内置展示 */
+const reasonOptions = ref<{ label: string; value: string }[]>(
+  Object.entries(RETURN_REASON_MAP).map(([value, label]) => ({ label, value })),
+)
+
+async function loadDictOptions() {
+  const [pays, reasons] = await Promise.allSettled([
+    getDictItems('pay_type'),
+    getDictItems('return_reason'),
+  ])
+  if (pays.status === 'fulfilled' && pays.value.length) {
+    refundTypeOptions.value = pays.value.map((i) => ({ label: i.label, value: i.value }))
+  }
+  if (reasons.status === 'fulfilled' && reasons.value.length) {
+    reasonOptions.value = reasons.value.map((i) => ({ label: i.label, value: i.value }))
   }
 }
 
@@ -282,8 +306,8 @@ async function submitReturn() {
     const hasAuthorizer = needAuth.value || (expired.value && !!createDialog.authorizerUsername.trim())
     const result = await createReturn({
       salesOrderId: createDialog.order!.id,
-      refundType: createDialog.refundType as 'CASH' | 'BANK' | 'MOBILE' | 'BALANCE',
-      returnReason: createDialog.returnReason as 'QUALITY' | 'WRONG_ITEM' | 'MISTAKE' | 'OTHER',
+      refundType: createDialog.refundType,
+      returnReason: createDialog.returnReason,
       reasonRemark: createDialog.reasonRemark.trim() || undefined,
       authorizerUsername: hasAuthorizer ? createDialog.authorizerUsername.trim() : undefined,
       authorizerPassword: hasAuthorizer ? createDialog.authorizerPassword : undefined,
@@ -525,22 +549,21 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
           <el-form label-width="90px" inline>
             <el-form-item label="退款方式">
               <el-select v-model="createDialog.refundType" style="width: 120px">
-                <el-option label="现金" value="CASH" />
-                <el-option label="银行卡" value="BANK" />
-                <el-option label="移动支付" value="MOBILE" />
                 <el-option
-                  label="退回储值"
-                  value="BALANCE"
-                  :disabled="!createDialog.order?.memberId"
+                  v-for="opt in refundTypeOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                  :disabled="opt.value === 'BALANCE' && !createDialog.order?.memberId"
                 />
               </el-select>
               <div v-if="createDialog.order?.memberId" class="form-tip">
-                会员单可选"退回储值"，退款直接回充会员余额（FR-MEM-08）
+                会员单可选储值退款，退款直接回充会员余额（FR-MEM-08）
               </div>
             </el-form-item>
             <el-form-item label="退货原因">
               <el-select v-model="createDialog.returnReason" placeholder="必选" style="width: 130px">
-                <el-option v-for="(label, k) in RETURN_REASON_MAP" :key="k" :label="label" :value="k" />
+                <el-option v-for="opt in reasonOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </el-form-item>
             <el-form-item v-if="needAuth || expired" label="授权账号" :required="needAuth">

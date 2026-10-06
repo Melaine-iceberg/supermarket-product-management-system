@@ -32,6 +32,7 @@ import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.security.LoginUser;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
+import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -67,7 +68,9 @@ public class SalesCheckoutService {
     private static final String CONFIG_MIN_DISCOUNT = "min_discount_rate";
     /** 营业日起始时刻（BR-RPT-02 跨零点归属） */
     private static final String CONFIG_BUSINESS_DAY_START = "business_day_start";
-    /** 收银台可用收款方式（BALANCE 储值支付仅限会员单，FR-MEM-08） */
+    /** 收款方式字典（FR-SYS-07）：停用项不可被新单据选择，字典缺失时回退内置枚举 */
+    private static final String DICT_PAY_TYPE = "pay_type";
+    /** 内置收款方式兜底（BALANCE 储值支付仅限会员单，FR-MEM-08） */
     private static final Set<String> PAY_TYPES = Set.of("CASH", "BANK", "MOBILE", "BALANCE");
     private static final DateTimeFormatter DATE_PART = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int MAX_RETRY = 3;
@@ -85,6 +88,7 @@ public class SalesCheckoutService {
     private final SysConfigService configService;
     private final MemberBusinessService memberBusinessService;
     private final SensitiveAuthService sensitiveAuthService;
+    private final SysDictService dictService;
 
     // ==================== 结算（FR-SALE-06） ====================
 
@@ -487,10 +491,13 @@ public class SalesCheckoutService {
                                                MemberContext member, BigDecimal payable) {
         BigDecimal paid = BigDecimal.ZERO;
         BigDecimal balancePaid = BigDecimal.ZERO;
+        // 收款方式取值以数据字典为准（FR-SYS-07：停用项不可选）；字典缺失/为空时按内置枚举兜底
+        Set<String> enabledPayTypes = dictService.enabledValues(DICT_PAY_TYPE);
+        Set<String> allowedPayTypes = enabledPayTypes.isEmpty() ? PAY_TYPES : enabledPayTypes;
         for (CheckoutCommand.CheckoutPayment pay : payments) {
-            if (!PAY_TYPES.contains(pay.payType())) {
+            if (!allowedPayTypes.contains(pay.payType())) {
                 throw new BusinessException(ErrorCode.SALE_PAY_TYPE_INVALID,
-                        "收款方式不合法：" + pay.payType() + "（当前支持 CASH/BANK/MOBILE/BALANCE）");
+                        "收款方式不合法：" + pay.payType() + "（须为数据字典 pay_type 中的启用项）");
             }
             if (pay.amount() == null || pay.amount().compareTo(BigDecimal.ZERO) <= 0) {
                 throw new BusinessException(ErrorCode.SALE_PAY_AMOUNT_INVALID);

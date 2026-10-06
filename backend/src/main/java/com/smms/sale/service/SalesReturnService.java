@@ -32,6 +32,7 @@ import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
+import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -69,7 +70,13 @@ public class SalesReturnService {
     private static final String CONFIG_RETURN_VALID_DAYS = "return_valid_days";
     /** 营业日起始时刻（BR-RPT-02） */
     private static final String CONFIG_BUSINESS_DAY_START = "business_day_start";
+    /** 收款方式字典（FR-SYS-07）：退款方式与之同域，停用项不可被新单据选择 */
+    private static final String DICT_PAY_TYPE = "pay_type";
+    /** 退货原因字典（FR-SYS-07） */
+    private static final String DICT_RETURN_REASON = "return_reason";
+    /** 内置退款方式兜底（字典缺失/为空时使用；退款方式与收款方式同域，FR-MEM-08） */
     private static final Set<String> REFUND_TYPES = Set.of("CASH", "BANK", "MOBILE", "BALANCE");
+    /** 内置退货原因兜底（字典缺失/为空时使用） */
     private static final Set<String> RETURN_REASONS = Set.of("QUALITY", "WRONG_ITEM", "MISTAKE", "OTHER");
     private static final DateTimeFormatter DATE_PART = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int MAX_RETRY = 3;
@@ -85,6 +92,7 @@ public class SalesReturnService {
     private final SysConfigService configService;
     private final MemberBusinessService memberBusinessService;
     private final SensitiveAuthService sensitiveAuthService;
+    private final SysDictService dictService;
 
     // ==================== 办理退货（FR-SALE-10） ====================
 
@@ -123,15 +131,20 @@ public class SalesReturnService {
             }
         }
 
-        // 2. 基础项校验：退款方式（BALANCE 仅限会员单退回储值，FR-MEM-08）/ 退货原因
+        // 2. 基础项校验：退款方式（BALANCE 仅限会员单退回储值，FR-MEM-08）/ 退货原因；
+        //    取值以数据字典为准（FR-SYS-07：停用项不可选），字典缺失/为空时按内置枚举兜底
         if ("BALANCE".equals(req.refundType()) && order.getMemberId() == null) {
             throw new BusinessException(ErrorCode.SALE_BALANCE_UNAVAILABLE,
                     "储值退款仅限会员单（退款将退回会员储值余额）");
         }
-        if (!REFUND_TYPES.contains(req.refundType())) {
+        Set<String> enabledRefundTypes = dictService.enabledValues(DICT_PAY_TYPE);
+        Set<String> allowedRefundTypes = enabledRefundTypes.isEmpty() ? REFUND_TYPES : enabledRefundTypes;
+        if (!allowedRefundTypes.contains(req.refundType())) {
             throw new BusinessException(ErrorCode.SALE_REFUND_TYPE_INVALID, "退款方式不合法：" + req.refundType());
         }
-        if (!RETURN_REASONS.contains(req.returnReason())) {
+        Set<String> enabledReasons = dictService.enabledValues(DICT_RETURN_REASON);
+        Set<String> allowedReasons = enabledReasons.isEmpty() ? RETURN_REASONS : enabledReasons;
+        if (!allowedReasons.contains(req.returnReason())) {
             throw new BusinessException(ErrorCode.SALE_RETURN_REASON_INVALID, "退货原因不合法：" + req.returnReason());
         }
 
