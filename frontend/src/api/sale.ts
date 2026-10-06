@@ -38,10 +38,12 @@ export interface CheckoutPayload {
   memberId?: number
   /** 店长整单折扣率 0.7~1（BR-SALE-10） */
   orderDiscountRate?: number
-  /** 店长授权账号（整单折扣时必填，FR-SALE-07：店长现场输入账号密码授权） */
+  /** 店长授权账号（整单折扣/单品改价时必填，FR-SALE-07：店长现场输入账号密码授权） */
   authorizerUsername?: string
   /** 店长授权密码（与授权账号一并校验） */
   authorizerPassword?: string
+  /** 整单折扣原因（整单折扣时必填，FR-SALE-07） */
+  discountReason?: string
   remark?: string
   /** 请求令牌（NFR-REL-02 防重复提交；同令牌重放返回既有单据） */
   requestToken?: string
@@ -57,6 +59,10 @@ export interface CheckoutPayload {
     /** 净重（称重商品必填） */
     netWeight?: number
     remark?: string
+    /** 店长改价单价（仅档案商品，FR-SALE-07） */
+    overridePrice?: number
+    /** 改价原因（改价时必填） */
+    priceReason?: string
   }[]
   /** 一单多方式组合收款（FR-SALE-06） */
   payments: { payType: PayType; amount: number }[]
@@ -172,6 +178,8 @@ export interface SalesOrderItemVO {
   goodsName: string
   barcode: string | null
   unitPrice: number
+  /** 改价前按取价规则解析的单价（未改价 null，FR-SALE-07） */
+  originalUnitPrice: number | null
   quantity: number
   isWeighed: number
   netWeight: number | null
@@ -185,6 +193,8 @@ export interface SalesOrderItemVO {
   returnedQty: number
   lineType: string
   remark: string | null
+  /** 改价原因（未改价 null，FR-SALE-07） */
+  priceReason: string | null
 }
 
 export interface SalesOrderDetailVO {
@@ -206,6 +216,8 @@ export interface SalesOrderDetailVO {
   paidAmount: number
   changeAmount: number
   orderDiscountRate: number | null
+  /** 整单折扣原因（FR-SALE-07） */
+  discountReason: string | null
   costAmount: number
   profitAmount: number
   returnStatus: string

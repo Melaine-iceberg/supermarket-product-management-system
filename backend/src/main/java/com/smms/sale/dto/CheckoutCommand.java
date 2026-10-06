@@ -17,7 +17,7 @@ import java.util.List;
  * 收银结算命令（FR-SALE-06）：事务内完成销售单落库、库存条件扣减、
  * 流水写入、收款记录、会员消费统计。
  * 收银员不可改价（FR-SALE-03），单价由系统按取价规则解析（BR-GOODS-04）；
- * 整单折扣需店长授权（FR-SALE-07）。
+ * 整单折扣与单品改价均需店长授权并填写原因（FR-SALE-07）。
  */
 public record CheckoutCommand(
 
@@ -35,11 +35,14 @@ public record CheckoutCommand(
         @DecimalMax(value = "1", message = "整单折扣率不合法")
         BigDecimal orderDiscountRate,
 
-        /** 店长授权账号（整单折扣时必填，FR-SALE-07：店长现场输入账号密码授权） */
+        /** 店长授权账号（整单折扣/单品改价时必填，FR-SALE-07：店长现场输入账号密码授权） */
         String authorizerUsername,
 
         /** 店长授权密码（与授权账号一并校验） */
         String authorizerPassword,
+
+        /** 整单折扣原因（整单折扣时必填，FR-SALE-07；≤200 字符） */
+        String discountReason,
 
         /** 备注 */
         String remark,
@@ -80,12 +83,18 @@ public record CheckoutCommand(
             BigDecimal netWeight,
 
             /** 行备注 */
-            String remark
+            String remark,
+
+            /** 店长改价单价（未改价为空；仅档案商品，FR-SALE-07） */
+            BigDecimal overridePrice,
+
+            /** 改价原因（改价时必填，≤200 字符，FR-SALE-07） */
+            String priceReason
     ) {
 
         /** 档案商品明细便捷构造 */
         public CheckoutItem(Long goodsId, BigDecimal quantity, BigDecimal netWeight, String remark) {
-            this(goodsId, null, null, quantity, netWeight, remark);
+            this(goodsId, null, null, quantity, netWeight, remark, null, null);
         }
     }
 

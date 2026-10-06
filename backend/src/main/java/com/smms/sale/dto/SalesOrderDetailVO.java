@@ -28,6 +28,7 @@ public record SalesOrderDetailVO(
         BigDecimal paidAmount,
         BigDecimal changeAmount,
         BigDecimal orderDiscountRate,
+        String discountReason,
         BigDecimal costAmount,
         BigDecimal profitAmount,
         String returnStatus,
@@ -45,6 +46,7 @@ public record SalesOrderDetailVO(
             String goodsName,
             String barcode,
             BigDecimal unitPrice,
+            BigDecimal originalUnitPrice,
             BigDecimal quantity,
             Integer isWeighed,
             BigDecimal netWeight,
@@ -57,7 +59,8 @@ public record SalesOrderDetailVO(
             BigDecimal profitAmount,
             BigDecimal returnedQty,
             String lineType,
-            String remark
+            String remark,
+            String priceReason
     ) {
     }
 

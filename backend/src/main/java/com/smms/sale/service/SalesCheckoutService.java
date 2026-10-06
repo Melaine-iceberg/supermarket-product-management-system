@@ -112,9 +112,11 @@ public class SalesCheckoutService {
         // 3. 会员识别与等级折扣（FR-SALE-05；散客不享受会员价与折扣）
         MemberContext member = resolveMember(cmd.memberId());
 
-        // 4. 整单折扣授权校验（FR-SALE-07）：打过折须店长账号+密码现场授权
+        // 4. 整单折扣/单品改价授权校验（FR-SALE-07）：打折或改价须店长账号+密码现场授权并填写原因
         BigDecimal orderRate = resolveOrderRate(cmd);
-        String authorizerName = resolveOrderAuthorizer(cmd, cashier, orderRate);
+        resolveDiscountReason(cmd, orderRate);
+        boolean hasOverride = cmd.items().stream().anyMatch(i -> i.overridePrice() != null);
+        String authorizerName = resolveOrderAuthorizer(cmd, cashier, orderRate, hasOverride);
 
         // 5. 逐行取价与金额计算（BR-GOODS-04 取价 → BR-SALE-03 分摊，尾差入最后一行）
         BigDecimal memberRate = member.discountRate();
@@ -232,6 +234,10 @@ public class SalesCheckoutService {
                 if (item.tempAmount().scale() > 2) {
                     throw new BusinessException(ErrorCode.SALE_TEMP_LINE_INVALID, "无码商品金额最多 2 位小数");
                 }
+                if (item.overridePrice() != null) {
+                    throw new BusinessException(ErrorCode.SALE_OVERRIDE_INVALID,
+                            "无码商品以录入金额成交，不支持改价（FR-SALE-07）");
+                }
                 continue;
             }
             if (!goodsIds.add(item.goodsId())) {
@@ -242,6 +248,27 @@ public class SalesCheckoutService {
             if (qty.scale() > 3) {
                 throw new BusinessException(ErrorCode.PARAM_INVALID, "数量最多 3 位小数");
             }
+            validatePriceOverride(item);
+        }
+    }
+
+    /** 单品改价校验（FR-SALE-07）：仅档案商品；单价 > 0 且 ≤2 位小数；原因必填 ≤200 字符 */
+    private void validatePriceOverride(CheckoutCommand.CheckoutItem item) {
+        if (item.overridePrice() == null) {
+            return;
+        }
+        BigDecimal price = item.overridePrice();
+        if (price.compareTo(BigDecimal.ZERO) <= 0 || price.scale() > 2) {
+            throw new BusinessException(ErrorCode.SALE_OVERRIDE_INVALID,
+                    "商品【" + goodsName(item.goodsId()) + "】改价单价须大于 0 且最多 2 位小数");
+        }
+        String reason = item.priceReason();
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(ErrorCode.SALE_OVERRIDE_REASON_REQUIRED,
+                    "商品【" + goodsName(item.goodsId()) + "】改价须填写原因");
+        }
+        if (reason.trim().length() > 200) {
+            throw new BusinessException(ErrorCode.SALE_OVERRIDE_INVALID, "改价原因过长（最多 200 字符）");
         }
     }
 
@@ -300,7 +327,7 @@ public class SalesCheckoutService {
         return new MemberContext(member, rate);
     }
 
-    /** 整单折扣率校验（FR-SALE-07/BR-SALE-05/10）：不低于系统下限；打折须店长授权 */
+    /** 整单折扣率校验（FR-SALE-07/BR-SALE-05/10）：不低于系统下限 */
     private BigDecimal resolveOrderRate(CheckoutCommand cmd) {
         if (cmd.orderDiscountRate() == null) {
             return BigDecimal.ONE;
@@ -311,20 +338,36 @@ public class SalesCheckoutService {
             throw new BusinessException(ErrorCode.SALE_DISCOUNT_BELOW_MIN,
                     "整单折扣率不得低于 " + min.stripTrailingZeros().toPlainString());
         }
-        if (rate.compareTo(BigDecimal.ONE) < 0
-                && (cmd.authorizerUsername() == null || cmd.authorizerUsername().isBlank())) {
-            throw new BusinessException(ErrorCode.SALE_DISCOUNT_AUTH_REQUIRED);
-        }
         return rate;
     }
 
-    /**
-     * 整单折扣授权身份核验（FR-SALE-07）：店长现场输入账号+密码授权，
-     * 授权人须为店长及以上账号且不得为当前收银员；未打折则不记录授权人。
-     */
-    private String resolveOrderAuthorizer(CheckoutCommand cmd, LoginUser cashier, BigDecimal orderRate) {
+    /** 整单折扣原因校验（FR-SALE-07）：打折须填写原因（≤200 字符） */
+    private void resolveDiscountReason(CheckoutCommand cmd, BigDecimal orderRate) {
         if (orderRate.compareTo(BigDecimal.ONE) >= 0) {
+            return;
+        }
+        String reason = cmd.discountReason();
+        if (reason == null || reason.isBlank()) {
+            throw new BusinessException(ErrorCode.SALE_DISCOUNT_REASON_REQUIRED);
+        }
+        if (reason.trim().length() > 200) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "整单折扣原因过长（最多 200 字符）");
+        }
+    }
+
+    /**
+     * 折扣/改价授权身份核验（FR-SALE-07）：店长现场输入账号+密码授权，
+     * 授权人须为店长及以上账号且不得为当前收银员；未打折且无改价则不记录授权人。
+     */
+    private String resolveOrderAuthorizer(CheckoutCommand cmd, LoginUser cashier,
+                                          BigDecimal orderRate, boolean hasOverride) {
+        boolean discount = orderRate.compareTo(BigDecimal.ONE) < 0;
+        if (!discount && !hasOverride) {
             return null;
+        }
+        if (cmd.authorizerUsername() == null || cmd.authorizerUsername().isBlank()) {
+            throw new BusinessException(discount
+                    ? ErrorCode.SALE_DISCOUNT_AUTH_REQUIRED : ErrorCode.SALE_OVERRIDE_AUTH_REQUIRED);
         }
         SensitiveAuthService.Authorizer authorizer = sensitiveAuthService.authorize(
                 cmd.authorizerUsername(), cmd.authorizerPassword());
@@ -357,7 +400,7 @@ public class SalesCheckoutService {
                 BigDecimal tempAmount = item.tempAmount().setScale(2, RoundingMode.HALF_UP);
                 lines.add(new CalculatedLine(
                         null, item.tempName().trim(), null, tempAmount, BigDecimal.ONE, tempAmount,
-                        null, BigDecimal.ZERO, null, null, null, null, item.remark()));
+                        null, BigDecimal.ZERO, null, null, null, null, item.remark(), null, null));
                 continue;
             }
             Goods goods = goodsMap.get(item.goodsId());
@@ -373,8 +416,15 @@ public class SalesCheckoutService {
                 throw new BusinessException(ErrorCode.SALE_QTY_INVALID,
                         "商品【" + goods.getName() + "】数量必须为正整数");
             }
-            // 取价：生效促销价 > 会员价（仅会员单）> 零售价（BR-GOODS-04）
-            BigDecimal unitPrice = resolvePrice(goods, promoMap.get(goods.getId()), hasMember);
+            // 取价：生效促销价 > 会员价（仅会员单）> 零售价（BR-GOODS-04）；
+            // 店长改价行以改价单价成交，原取价单价快照留存（FR-SALE-07）
+            BigDecimal policyPrice = resolvePrice(goods, promoMap.get(goods.getId()), hasMember);
+            BigDecimal unitPrice = policyPrice;
+            BigDecimal originalUnitPrice = null;
+            if (item.overridePrice() != null) {
+                unitPrice = item.overridePrice().setScale(2, RoundingMode.HALF_UP);
+                originalUnitPrice = policyPrice;
+            }
             BigDecimal amount = unitPrice.multiply(qty).setScale(2, RoundingMode.HALF_UP);
             BigDecimal costPrice = inventoryMap.containsKey(goods.getId())
                     ? inventoryMap.get(goods.getId()).getCostPrice() : BigDecimal.ZERO;
@@ -383,7 +433,9 @@ public class SalesCheckoutService {
             }
             lines.add(new CalculatedLine(
                     goods.getId(), goods.getName(), goods.getBarcode(), unitPrice, qty, amount,
-                    weighed ? qty : null, costPrice, null, null, null, null, item.remark()));
+                    weighed ? qty : null, costPrice, null, null, null, null, item.remark(),
+                    originalUnitPrice,
+                    item.overridePrice() == null ? null : item.priceReason().trim()));
         }
 
         // 整单优惠分摊（BR-SALE-03）
@@ -511,6 +563,8 @@ public class SalesCheckoutService {
         order.setPaidAmount(paid);
         order.setChangeAmount(change);
         order.setOrderDiscountRate(cmd.orderDiscountRate());
+        order.setDiscountReason(cmd.discountReason() == null || cmd.discountReason().isBlank()
+                ? null : cmd.discountReason().trim());
         order.setCostAmount(BigDecimal.ZERO);
         order.setProfitAmount(BigDecimal.ZERO);
         order.setReturnStatus("NONE");
@@ -581,6 +635,7 @@ public class SalesCheckoutService {
             entity.setGoodsName(line.goodsName());
             entity.setBarcode(line.barcode());
             entity.setUnitPrice(line.unitPrice());
+            entity.setOriginalUnitPrice(line.originalUnitPrice());
             entity.setQuantity(line.quantity());
             entity.setIsWeighed(line.netWeight() != null ? 1 : 0);
             entity.setNetWeight(line.netWeight());
@@ -597,6 +652,7 @@ public class SalesCheckoutService {
             entity.setReturnedQty(BigDecimal.ZERO);
             entity.setLineType(line.goodsId() == null ? "TEMP" : "NORMAL");
             entity.setRemark(line.remark());
+            entity.setPriceReason(line.priceReason());
             result.add(entity);
         }
         return result;
@@ -631,16 +687,17 @@ public class SalesCheckoutService {
         }
     }
 
-    /** 单行计算结果（不可变，withDiscount 用于回填分摊优惠） */
+    /** 单行计算结果（不可变，withDiscount 用于回填分摊优惠；改价行携带原价与原因，FR-SALE-07） */
     private record CalculatedLine(Long goodsId, String goodsName, String barcode,
                                   BigDecimal unitPrice, BigDecimal quantity, BigDecimal amount,
                                   BigDecimal netWeight, BigDecimal costPrice, BigDecimal discount,
                                   BigDecimal paidAmount, BigDecimal costAmount, BigDecimal profitAmount,
-                                  String remark) {
+                                  String remark, BigDecimal originalUnitPrice, String priceReason) {
 
         CalculatedLine withDiscount(BigDecimal discount) {
             return new CalculatedLine(goodsId, goodsName, barcode, unitPrice, quantity, amount,
-                    netWeight, costPrice, discount, amount.subtract(discount), costAmount, profitAmount, remark);
+                    netWeight, costPrice, discount, amount.subtract(discount), costAmount, profitAmount,
+                    remark, originalUnitPrice, priceReason);
         }
     }
 

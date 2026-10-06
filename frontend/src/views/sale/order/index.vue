@@ -268,6 +268,9 @@ async function openDetail(row: SalesOrderVO) {
               {{ drawer.detail.orderDiscountRate != null ? Number(drawer.detail.orderDiscountRate).toFixed(2) + ' 折' : '—' }}
             </el-descriptions-item>
             <el-descriptions-item label="折扣授权人">{{ drawer.detail.authorizerName ?? '—' }}</el-descriptions-item>
+            <el-descriptions-item label="折扣原因" :span="3">
+              {{ drawer.detail.discountReason ?? '—' }}
+            </el-descriptions-item>
             <el-descriptions-item label="商品总额">{{ money(drawer.detail.goodsAmount) }}</el-descriptions-item>
             <el-descriptions-item label="会员优惠">-{{ money(drawer.detail.memberDiscountAmount) }}</el-descriptions-item>
             <el-descriptions-item label="整单优惠">-{{ money(drawer.detail.orderDiscountAmount) }}</el-descriptions-item>
@@ -313,8 +316,17 @@ async function openDetail(row: SalesOrderVO) {
                 >（{{ row.barcode }}）</span>
               </template>
             </el-table-column>
-            <el-table-column label="成交单价" width="90" align="right">
-              <template #default="{ row }">{{ money(row.unitPrice) }}</template>
+            <el-table-column label="成交单价" width="118" align="right">
+              <template #default="{ row }">
+                {{ money(row.unitPrice) }}
+                <el-tooltip
+                  v-if="row.priceReason"
+                  :content="`原价 ￥${money(row.originalUnitPrice)}｜原因：${row.priceReason}`"
+                  placement="top"
+                >
+                  <el-tag size="small" type="danger">改价</el-tag>
+                </el-tooltip>
+              </template>
             </el-table-column>
             <el-table-column label="数量" width="90" align="right">
               <template #default="{ row }">

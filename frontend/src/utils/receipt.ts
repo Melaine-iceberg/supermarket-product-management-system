@@ -25,7 +25,7 @@ export function printSalesReceipt(d: SalesOrderDetailVO, win?: Window | null) {
         `会员：${d.memberName ?? '散客'}`,
       ],
       columns: [
-        { label: '商品', value: (r) => r.goodsName },
+        { label: '商品', value: (r) => (r.priceReason ? `${r.goodsName}（改价）` : r.goodsName) },
         { label: '数量', value: (r) => pQty(r.quantity), align: 'right' },
         { label: '单价', value: (r) => pMoney(r.unitPrice), align: 'right' },
         { label: '金额', value: (r) => pMoney(r.amount), align: 'right' },

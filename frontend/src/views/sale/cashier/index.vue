@@ -39,6 +39,10 @@ interface CartLine {
   isWeighed: number
   quantity: number
   remark: string
+  /** 店长改价单价（null = 未改价，FR-SALE-07） */
+  overridePrice: number | null
+  /** 改价原因（改价时必填，FR-SALE-07） */
+  priceReason: string
 }
 
 const cart = ref<CartLine[]>([])
@@ -47,9 +51,9 @@ const itemCount = computed(() =>
   cart.value.reduce((s, l) => s + (l.isWeighed ? 1 : l.quantity), 0),
 )
 
-/** 预估商品总额（零售价口径；促销价/会员价以后端结算为准） */
+/** 预估商品总额（改价行按改价单价，其余按零售价；促销价/会员价以后端结算为准） */
 const estGoodsAmount = computed(() =>
-  cart.value.reduce((s, l) => s + l.retailPrice * l.quantity, 0),
+  cart.value.reduce((s, l) => s + (l.overridePrice ?? l.retailPrice) * l.quantity, 0),
 )
 
 /** 预估应收 = 零售总额 × 会员折扣率 × 整单折扣率（BR-MEM-04 口径的近似，实际以后端结算为准） */
@@ -158,6 +162,8 @@ function doAdd(goods: CashierGoodsVO, quantity: number) {
       isWeighed: goods.isWeighed,
       quantity,
       remark: '',
+      overridePrice: null,
+      priceReason: '',
     })
   }
 }
@@ -249,6 +255,8 @@ function confirmTempItem() {
     isWeighed: 0,
     quantity: 1,
     remark: '',
+    overridePrice: null,
+    priceReason: '',
   })
   tempDialog.visible = false
   focusInput()
@@ -281,8 +289,12 @@ function resetOrder() {
   cart.value = []
   member.value = null
   orderRateInput.value = null
+  discountReasonApplied.value = ''
+  orderAuth.username = ''
+  orderAuth.password = ''
   orderRateDialog.authorizerUsername = ''
   orderRateDialog.authorizerPassword = ''
+  overrideDialog.visible = false
   remark.value = ''
 }
 
@@ -325,18 +337,26 @@ function clearMember() {
   member.value = null
 }
 
-// ---------- 整单折扣（FR-SALE-07，店长授权） ----------
+// ---------- 整单折扣与单品改价（FR-SALE-07，店长现场授权） ----------
 const orderRateInput = ref<number | null>(null)
+/** 整单折扣原因（已生效值，FR-SALE-07 必填） */
+const discountReasonApplied = ref('')
+
+/** 本单店长授权信息（整单折扣/单品改价共用，结算时提交核验；密码不落挂单、不持久化） */
+const orderAuth = reactive({ username: '', password: '' })
+
 const orderRateDialog = reactive({
   visible: false,
   rate: null as number | null,
+  discountReason: '',
   authorizerUsername: '',
   authorizerPassword: '',
-  saving: false,
 })
 
 function openOrderRateDialog() {
   orderRateDialog.rate = orderRateInput.value
+  orderRateDialog.discountReason = discountReasonApplied.value
+  orderRateDialog.authorizerUsername = orderAuth.username
   orderRateDialog.authorizerPassword = ''
   orderRateDialog.visible = true
 }
@@ -348,18 +368,27 @@ function confirmOrderRate() {
     return
   }
   if (rate < 1) {
+    if (!orderRateDialog.discountReason.trim()) {
+      ElMessage.warning('整单折扣须填写原因（FR-SALE-07）')
+      return
+    }
     if (!orderRateDialog.authorizerUsername.trim()) {
       ElMessage.warning('整单折扣须店长授权，请填写授权店长账号（FR-SALE-07）')
       return
     }
     if (orderRateDialog.authorizerUsername.trim() === auth.user?.username) {
-      ElMessage.warning('整单折扣授权人不得为当前收银员本人（FR-SALE-07）')
+      ElMessage.warning('折扣授权人不得为当前收银员本人（FR-SALE-07）')
       return
     }
     if (!orderRateDialog.authorizerPassword) {
       ElMessage.warning('请填写授权店长密码以完成授权（FR-SALE-07）')
       return
     }
+    orderAuth.username = orderRateDialog.authorizerUsername.trim()
+    orderAuth.password = orderRateDialog.authorizerPassword
+    discountReasonApplied.value = orderRateDialog.discountReason.trim()
+  } else {
+    discountReasonApplied.value = ''
   }
   orderRateInput.value = rate
   orderRateDialog.visible = false
@@ -367,19 +396,81 @@ function confirmOrderRate() {
 
 function clearOrderRate() {
   orderRateInput.value = null
+  discountReasonApplied.value = ''
 }
 
-const orderAuthUsername = computed(() =>
-  orderRateInput.value != null && orderRateInput.value < 1
-    ? orderRateDialog.authorizerUsername.trim()
-    : undefined,
-)
-const orderAuthPassword = computed(() =>
-  orderRateInput.value != null && orderRateInput.value < 1 ? orderRateDialog.authorizerPassword : undefined,
-)
+/** 单品改价（FR-SALE-07）：店长现场输入账号密码授权 + 改价原因，仅档案商品 */
+const overrideDialog = reactive({
+  visible: false,
+  line: null as CartLine | null,
+  price: null as number | null,
+  reason: '',
+  authorizerUsername: '',
+  authorizerPassword: '',
+})
+
+function openOverrideDialog(line: CartLine) {
+  overrideDialog.line = line
+  overrideDialog.price = line.overridePrice
+  overrideDialog.reason = line.priceReason
+  overrideDialog.authorizerUsername = orderAuth.username
+  overrideDialog.authorizerPassword = ''
+  overrideDialog.visible = true
+}
+
+function confirmOverride() {
+  const price = overrideDialog.price
+  if (price == null || price <= 0) {
+    ElMessage.warning('改价单价必须大于 0（FR-SALE-07）')
+    return
+  }
+  const reason = overrideDialog.reason.trim()
+  if (!reason) {
+    ElMessage.warning('单品改价须填写原因（FR-SALE-07）')
+    return
+  }
+  if (reason.length > 200) {
+    ElMessage.warning('改价原因最多 200 字符')
+    return
+  }
+  if (!overrideDialog.authorizerUsername.trim()) {
+    ElMessage.warning('单品改价须店长授权，请填写授权店长账号（FR-SALE-07）')
+    return
+  }
+  if (overrideDialog.authorizerUsername.trim() === auth.user?.username) {
+    ElMessage.warning('改价授权人不得为当前收银员本人（FR-SALE-07）')
+    return
+  }
+  if (!overrideDialog.authorizerPassword) {
+    ElMessage.warning('请填写授权店长密码以完成授权（FR-SALE-07）')
+    return
+  }
+  const line = overrideDialog.line!
+  line.overridePrice = Math.round(price * 100) / 100
+  line.priceReason = reason
+  orderAuth.username = overrideDialog.authorizerUsername.trim()
+  orderAuth.password = overrideDialog.authorizerPassword
+  overrideDialog.visible = false
+}
+
+/** 取消已生效的改价（恢复按取价规则成交） */
+function cancelOverride() {
+  if (overrideDialog.line) {
+    overrideDialog.line.overridePrice = null
+    overrideDialog.line.priceReason = ''
+  }
+  overrideDialog.visible = false
+}
+
 const orderRate = computed(() =>
   orderRateInput.value != null && orderRateInput.value < 1 ? orderRateInput.value : undefined,
 )
+
+/** 本单是否存在改价行 */
+const hasOverride = computed(() => cart.value.some((l) => l.overridePrice != null))
+
+/** 本单是否需要店长授权（打折或改价任一即需要） */
+const needsAuthorizer = computed(() => orderRate.value != null || hasOverride.value)
 
 // ---------- 结算（FR-SALE-06，F2） ----------
 const payDialog = reactive({
@@ -482,19 +573,24 @@ async function submitCheckout() {
   }
   payDialog.submitting = true
   try {
-    // 整单折扣已配置但授权密码缺失（如取单后未重新录入），退回折扣对话框补充授权
-    if (orderRate.value != null && !orderAuthPassword.value) {
-      orderRateDialog.rate = orderRateInput.value
-      orderRateDialog.visible = true
-      ElMessage.warning('整单折扣需重新填写授权密码（FR-SALE-07）')
+    // 折扣/改价已配置但授权密码缺失（如取单后未重新录入），退回对应对话框补充授权
+    if (needsAuthorizer.value && !orderAuth.password) {
+      if (orderRateInput.value != null) {
+        openOrderRateDialog()
+      } else {
+        const line = cart.value.find((l) => l.overridePrice != null)
+        if (line) openOverrideDialog(line)
+      }
+      ElMessage.warning('折扣/改价需店长授权，请重新填写授权密码（FR-SALE-07）')
       return
     }
     const result = await checkout({
       counterNo: counterNo.value,
       memberId: member.value?.id,
       orderDiscountRate: orderRate.value,
-      authorizerUsername: orderAuthUsername.value,
-      authorizerPassword: orderAuthPassword.value,
+      authorizerUsername: needsAuthorizer.value ? orderAuth.username : undefined,
+      authorizerPassword: needsAuthorizer.value ? orderAuth.password : undefined,
+      discountReason: orderRate.value != null ? discountReasonApplied.value || undefined : undefined,
       remark: remark.value || undefined,
       items: cart.value.map((l) =>
         l.lineType === 'TEMP'
@@ -509,6 +605,8 @@ async function submitCheckout() {
               quantity: l.quantity,
               netWeight: l.isWeighed === 1 ? l.quantity : undefined,
               remark: l.remark || undefined,
+              overridePrice: l.overridePrice ?? undefined,
+              priceReason: l.overridePrice != null ? l.priceReason || undefined : undefined,
             },
       ),
       payments: pays.map((l) => ({ payType: l.payType, amount: l.amount! })),
@@ -552,6 +650,7 @@ interface HoldOrder {
   itemCount: number
   amount: number
   orderRate: number | null
+  discountReason: string
   authorizerUsername: string
   remark: string
 }
@@ -597,7 +696,8 @@ function holdOrder() {
     itemCount: itemCount.value,
     amount: estGoodsAmount.value,
     orderRate: orderRateInput.value,
-    authorizerUsername: orderRateDialog.authorizerUsername,
+    discountReason: discountReasonApplied.value,
+    authorizerUsername: orderAuth.username,
     remark: remark.value,
   })
   saveHolds(holds)
@@ -617,7 +717,12 @@ function resumeHold(hold: HoldOrder) {
     ElMessage.warning('当前已有明细，请先结算或清空再取单')
     return
   }
-  cart.value = hold.items
+  // 兼容旧挂单：补齐改价字段
+  cart.value = hold.items.map((l) => ({
+    ...l,
+    overridePrice: l.overridePrice ?? null,
+    priceReason: l.priceReason ?? '',
+  }))
   if (hold.memberId) {
     member.value = {
       id: hold.memberId,
@@ -637,9 +742,10 @@ function resumeHold(hold: HoldOrder) {
     })
   }
   orderRateInput.value = hold.orderRate
+  discountReasonApplied.value = hold.discountReason ?? ''
   // 挂单不落密码（安全），取单后结算时须重新录入授权密码
-  orderRateDialog.authorizerUsername = hold.authorizerUsername ?? ''
-  orderRateDialog.authorizerPassword = ''
+  orderAuth.username = hold.authorizerUsername ?? ''
+  orderAuth.password = ''
   remark.value = hold.remark
   removeHold(hold)
   holdDialog.visible = false
@@ -760,7 +866,7 @@ onUnmounted(() => {
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="单价" width="100" align="right">
+          <el-table-column label="单价" width="118" align="right">
             <template #default="{ row }">
               <el-input-number
                 v-if="row.lineType === 'TEMP'"
@@ -771,7 +877,19 @@ onUnmounted(() => {
                 size="small"
                 style="width: 86px"
               />
-              <template v-else>￥{{ money(row.retailPrice) }}<span class="unit">/{{ row.unitName }}</span></template>
+              <template v-else>
+                <span :class="{ 'override-price': row.overridePrice != null }">
+                  ￥{{ money(row.overridePrice ?? row.retailPrice) }}
+                </span>
+                <el-tooltip
+                  v-if="row.overridePrice != null"
+                  :content="`原价 ￥${money(row.retailPrice)}｜改价原因：${row.priceReason}`"
+                  placement="top"
+                >
+                  <el-tag size="small" type="danger" class="override-tag">改价</el-tag>
+                </el-tooltip>
+                <span class="unit">/{{ row.unitName }}</span>
+              </template>
             </template>
           </el-table-column>
           <el-table-column label="数量" width="170" align="center">
@@ -794,10 +912,20 @@ onUnmounted(() => {
             </template>
           </el-table-column>
           <el-table-column label="小计（预估）" width="120" align="right">
-            <template #default="{ row }">￥{{ money(row.retailPrice * row.quantity) }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="70" align="center">
             <template #default="{ row }">
+              ￥{{ money((row.overridePrice ?? row.retailPrice) * row.quantity) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="110" align="center">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.lineType !== 'TEMP'"
+                link
+                type="primary"
+                @click="openOverrideDialog(row as CartLine)"
+              >
+                改价
+              </el-button>
               <el-button link type="danger" @click="removeLine(row as CartLine)">删除</el-button>
             </template>
           </el-table-column>
@@ -845,6 +973,7 @@ onUnmounted(() => {
               <el-button v-if="orderRateInput != null && orderRateInput < 1" link size="small" @click="clearOrderRate">清除</el-button>
             </b>
           </div>
+          <div v-if="discountReasonApplied" class="amount-note">折扣原因：{{ discountReasonApplied }}</div>
           <div class="amount-row payable">
             <span>应收（预估）</span>
             <b>￥{{ money(estPayable) }}</b>
@@ -1059,6 +1188,13 @@ onUnmounted(() => {
           />
           <div class="form-tip">范围 0.7~1（BR-SALE-10），1 为不打折</div>
         </el-form-item>
+        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="折扣原因" required>
+          <el-input
+            v-model="orderRateDialog.discountReason"
+            maxlength="200"
+            placeholder="必填，如：店庆促销 / 批量采购"
+          />
+        </el-form-item>
         <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="授权账号">
           <el-input v-model="orderRateDialog.authorizerUsername" placeholder="店长登录账号（≠ 当前收银员）" />
         </el-form-item>
@@ -1075,6 +1211,64 @@ onUnmounted(() => {
       <template #footer>
         <el-button @click="orderRateDialog.visible = false">取消</el-button>
         <el-button type="primary" @click="confirmOrderRate">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 单品改价（FR-SALE-07 店长授权） -->
+    <el-dialog
+      v-model="overrideDialog.visible"
+      :title="`单品改价：${overrideDialog.line?.name ?? ''}`"
+      width="430px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="收银员不可改价：改价须店长现场输入账号密码授权并填写原因（FR-SALE-03/07）"
+        class="dialog-alert"
+      />
+      <el-form label-width="90px" @submit.prevent>
+        <el-form-item label="原单价">
+          ￥{{ money(overrideDialog.line?.retailPrice ?? 0) }} / {{ overrideDialog.line?.unitName ?? '' }}
+        </el-form-item>
+        <el-form-item label="改价单价" required>
+          <el-input-number
+            v-model="overrideDialog.price"
+            :min="0.01"
+            :precision="2"
+            :controls="false"
+            placeholder="按新单价成交"
+            style="width: 100%"
+            @keyup.enter="confirmOverride"
+          />
+        </el-form-item>
+        <el-form-item label="改价原因" required>
+          <el-input
+            v-model="overrideDialog.reason"
+            maxlength="200"
+            placeholder="必填，如：临期折让 / 生鲜品相"
+            @keyup.enter="confirmOverride"
+          />
+        </el-form-item>
+        <el-form-item label="授权账号" required>
+          <el-input v-model="overrideDialog.authorizerUsername" placeholder="店长登录账号（≠ 当前收银员）" />
+        </el-form-item>
+        <el-form-item label="授权密码" required>
+          <el-input
+            v-model="overrideDialog.authorizerPassword"
+            type="password"
+            show-password
+            maxlength="50"
+            placeholder="店长账号密码（身份校验，FR-SALE-07）"
+            @keyup.enter="confirmOverride"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button v-if="overrideDialog.line?.overridePrice != null" @click="cancelOverride">取消改价</el-button>
+        <el-button @click="overrideDialog.visible = false">关闭</el-button>
+        <el-button type="primary" @click="confirmOverride">确认改价</el-button>
       </template>
     </el-dialog>
 
@@ -1325,6 +1519,16 @@ onUnmounted(() => {
       .unit {
         font-size: 12px;
         color: #909399;
+      }
+
+      .override-price {
+        color: #f56c6c;
+        font-weight: 600;
+      }
+
+      .override-tag {
+        margin-left: 4px;
+        transform: scale(0.9);
       }
     }
 

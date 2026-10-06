@@ -71,7 +71,7 @@ import static org.mockito.Mockito.when;
  * 收银结算核心单元测试：覆盖 BR-SALE-01（一行一商品/数量精度）、BR-SALE-02（单号）、
  * BR-SALE-03（金额分摊与尾差）、BR-SALE-04（快照）、BR-GOODS-04（取价优先级）、
  * FR-SALE-05（会员折扣/停用拒绝）、FR-SALE-06（收款校验/原子扣减/会员统计）、
- * FR-SALE-07（整单折扣授权）。
+ * FR-SALE-07（整单折扣/单品改价授权与原因留痕）。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -179,7 +179,9 @@ class SalesCheckoutServiceTest {
     private CheckoutCommand command(Long memberId, BigDecimal orderRate, String authorizer,
                                     List<CheckoutCommand.CheckoutPayment> payments) {
         return new CheckoutCommand(1, memberId, orderRate, authorizer,
-                authorizer == null ? null : "pwd", null,
+                authorizer == null ? null : "pwd",
+                orderRate != null && orderRate.compareTo(BigDecimal.ONE) < 0 ? "店长授权整单折扣" : null,
+                null,
                 List.of(item(GOODS_A, "2"), item(GOODS_B, "1"), item(GOODS_C, "1.5")),
                 payments, null);
     }
@@ -296,6 +298,7 @@ class SalesCheckoutServiceTest {
         assertThat(order.getPayableAmount()).isEqualByComparingTo("40.35");
         assertThat(order.getAuthorizerName()).isEqualTo("王店长");
         assertThat(order.getOrderDiscountRate()).isEqualByComparingTo("0.9");
+        assertThat(order.getDiscountReason()).isEqualTo("店长授权整单折扣"); // FR-SALE-07 折扣原因留痕
 
         // 分摊：A 18×0.118=2.12；B 15×0.118=1.77；C 尾差 5.40-2.12-1.77=1.51
         List<SalesOrderItem> items = capturedItems();
@@ -336,7 +339,7 @@ class SalesCheckoutServiceTest {
         when(memberMapper.selectById(MEMBER_ID)).thenReturn(member("0", 0, 1));
         when(memberLevelMapper.selectById(1L)).thenReturn(level("1"));
 
-        service.checkout(new CheckoutCommand(1, MEMBER_ID, null, null, null, null,
+        service.checkout(new CheckoutCommand(1, MEMBER_ID, null, null, null, null, null,
                 List.of(item(GOODS_A, "1"), item(GOODS_B, "1")),
                 List.of(pay("CASH", "30")), null), CASHIER);
 
@@ -350,7 +353,7 @@ class SalesCheckoutServiceTest {
     @Test
     @DisplayName("同一商品重复成行拒绝（BR-SALE-01）")
     void checkout_duplicateGoods_rejected() {
-        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null,
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null, null,
                 List.of(item(GOODS_A, "1"), item(GOODS_A, "2")), List.of(pay("CASH", "30")), null);
 
         assertThatThrownBy(() -> service.checkout(cmd, CASHIER))
@@ -364,13 +367,13 @@ class SalesCheckoutServiceTest {
     void checkout_quantityRules() {
         mockGoodsAndPromoAndStock();
 
-        CheckoutCommand decimalQty = new CheckoutCommand(1, null, null, null, null, null,
+        CheckoutCommand decimalQty = new CheckoutCommand(1, null, null, null, null, null, null,
                 List.of(item(GOODS_A, "1.5")), List.of(pay("CASH", "15")), null);
         assertThatThrownBy(() -> service.checkout(decimalQty, CASHIER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("正整数");
 
-        CheckoutCommand tooFine = new CheckoutCommand(1, null, null, null, null, null,
+        CheckoutCommand tooFine = new CheckoutCommand(1, null, null, null, null, null, null,
                 List.of(item(GOODS_C, "1.2345")), List.of(pay("CASH", "15")), null);
         assertThatThrownBy(() -> service.checkout(tooFine, CASHIER))
                 .isInstanceOf(BusinessException.class)
@@ -384,7 +387,7 @@ class SalesCheckoutServiceTest {
         disabled.setStatus(0);
         when(goodsMapper.selectBatchIds(anyCollection())).thenReturn(List.of(disabled));
 
-        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null,
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null, null,
                 List.of(item(GOODS_A, "1")), List.of(pay("CASH", "10")), null);
         assertThatThrownBy(() -> service.checkout(cmd, CASHIER))
                 .isInstanceOf(BusinessException.class)
@@ -500,6 +503,97 @@ class SalesCheckoutServiceTest {
         verify(salesOrderMapper, never()).insert(any(SalesOrder.class));
     }
 
+    @Test
+    @DisplayName("整单折扣未填原因拒绝（FR-SALE-07）")
+    void checkout_orderDiscountReason_required() {
+        mockGoodsAndPromoAndStock();
+        when(configService.getStr(KEY_MIN_DISCOUNT, "0.7")).thenReturn("0.7");
+
+        CheckoutCommand cmd = new CheckoutCommand(1, null, new BigDecimal("0.9"), "manager1", "pwd", null, null,
+                List.of(item(GOODS_A, "2"), item(GOODS_B, "1"), item(GOODS_C, "1.5")),
+                List.of(pay("CASH", "32")), null);
+        assertThatThrownBy(() -> service.checkout(cmd, CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(ErrorCode.SALE_DISCOUNT_REASON_REQUIRED.getCode());
+        verify(salesOrderMapper, never()).insert(any(SalesOrder.class));
+    }
+
+    // ---------- 单品改价（FR-SALE-07） ----------
+
+    @Test
+    @DisplayName("单品改价：改价单价成交、原取价单价快照、授权人与改价原因落库（FR-SALE-07）")
+    void checkout_priceOverride_success() {
+        mockGoodsAndPromoAndStock();
+        mockOrderInsertSuccess();
+        when(sensitiveAuthService.authorize("manager1", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(9L, "manager1", "王店长"));
+
+        // B 改价 12.00（原促销价 15.00）
+        CheckoutCommand.CheckoutItem override = new CheckoutCommand.CheckoutItem(
+                GOODS_B, null, null, BigDecimal.ONE, null, null, new BigDecimal("12.00"), "临期折让");
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, "manager1", "pwd", null, null,
+                List.of(item(GOODS_A, "2"), override, item(GOODS_C, "1.5")),
+                List.of(pay("CASH", "50")), null);
+        CheckoutVO vo = service.checkout(cmd, CASHIER);
+
+        // 商品总额 = 10×2 + 12（改价） + 8.5×1.5 = 44.75
+        SalesOrder order = capturedOrder();
+        assertThat(order.getGoodsAmount()).isEqualByComparingTo("44.75");
+        assertThat(order.getPayableAmount()).isEqualByComparingTo("44.75");
+        assertThat(order.getAuthorizerName()).isEqualTo("王店长");
+        assertThat(vo.payableAmount()).isEqualByComparingTo("44.75");
+
+        List<SalesOrderItem> items = capturedItems();
+        SalesOrderItem b = items.get(1);
+        assertThat(b.getUnitPrice()).isEqualByComparingTo("12.00");           // 改价成交
+        assertThat(b.getOriginalUnitPrice()).isEqualByComparingTo("15.00");   // 原取价快照（促销价）
+        assertThat(b.getAmount()).isEqualByComparingTo("12.00");
+        assertThat(b.getPriceReason()).isEqualTo("临期折让");
+        SalesOrderItem a = items.get(0);
+        assertThat(a.getOriginalUnitPrice()).isNull();                        // 未改价行无原价快照
+        assertThat(a.getPriceReason()).isNull();
+    }
+
+    @Test
+    @DisplayName("单品改价未填授权/原因/非法单价拒绝（FR-SALE-07）")
+    void checkout_priceOverride_validation() {
+        mockGoodsAndPromoAndStock();
+        when(configService.getStr(KEY_MIN_DISCOUNT, "0.7")).thenReturn("0.7");
+
+        // 未填授权账号
+        CheckoutCommand noAuth = new CheckoutCommand(1, null, null, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(GOODS_A, null, null, BigDecimal.ONE, null,
+                        null, new BigDecimal("8.00"), "促销折让")),
+                List.of(pay("CASH", "10")), null);
+        assertThatThrownBy(() -> service.checkout(noAuth, CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(ErrorCode.SALE_OVERRIDE_AUTH_REQUIRED.getCode());
+
+        // 未填改价原因
+        CheckoutCommand noReason = new CheckoutCommand(1, null, null, "manager1", "pwd", null, null,
+                List.of(new CheckoutCommand.CheckoutItem(GOODS_A, null, null, BigDecimal.ONE, null,
+                        null, new BigDecimal("8.00"), "  ")),
+                List.of(pay("CASH", "10")), null);
+        assertThatThrownBy(() -> service.checkout(noReason, CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(ErrorCode.SALE_OVERRIDE_REASON_REQUIRED.getCode());
+
+        // 非法单价（≤0）
+        CheckoutCommand zeroPrice = new CheckoutCommand(1, null, null, "manager1", "pwd", null, null,
+                List.of(new CheckoutCommand.CheckoutItem(GOODS_A, null, null, BigDecimal.ONE, null,
+                        null, BigDecimal.ZERO, "误操作")),
+                List.of(pay("CASH", "10")), null);
+        assertThatThrownBy(() -> service.checkout(zeroPrice, CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(ErrorCode.SALE_OVERRIDE_INVALID.getCode());
+
+        verify(salesOrderMapper, never()).insert(any(SalesOrder.class));
+    }
+
     // ---------- 会员校验（FR-SALE-05，BR-MEM-03） ----------
 
     @Test
@@ -586,7 +680,7 @@ class SalesCheckoutServiceTest {
         cash.setAmount(new BigDecimal("50.00"));
         when(paymentRecordMapper.selectList(any())).thenReturn(List.of(cash));
 
-        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null,
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null, null,
                 List.of(item(GOODS_A, "2")), List.of(pay("CASH", "50.00")), "token-so-1");
         CheckoutVO vo = service.checkout(cmd, CASHIER);
 
@@ -621,7 +715,7 @@ class SalesCheckoutServiceTest {
                 .thenThrow(new DuplicateKeyException("Duplicate entry 'token-so-2' for key 'uk_so_token'"));
         when(paymentRecordMapper.selectList(any())).thenReturn(List.of());
 
-        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null,
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null, null,
                 List.of(item(GOODS_A, "2")), List.of(pay("CASH", "20")), "token-so-2");
         CheckoutVO vo = service.checkout(cmd, CASHIER);
 
@@ -660,8 +754,8 @@ class SalesCheckoutServiceTest {
         mockOrderInsertSuccess();
 
         CheckoutCommand.CheckoutItem temp = new CheckoutCommand.CheckoutItem(
-                null, "手工蛋糕", new BigDecimal("12.50"), BigDecimal.ONE, null, null);
-        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null,
+                null, "手工蛋糕", new BigDecimal("12.50"), BigDecimal.ONE, null, null, null, null);
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null, null,
                 List.of(item(GOODS_A, "1"), temp), List.of(pay("CASH", "22.50")), null);
 
         CheckoutVO vo = service.checkout(cmd, CASHIER);
@@ -695,8 +789,8 @@ class SalesCheckoutServiceTest {
     void checkout_tempOnly_success() {
         mockOrderInsertSuccess();
 
-        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null,
-                List.of(new CheckoutCommand.CheckoutItem(null, "散装点心", new BigDecimal("8.00"), BigDecimal.ONE, null, null)),
+        CheckoutCommand cmd = new CheckoutCommand(1, null, null, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "散装点心", new BigDecimal("8.00"), BigDecimal.ONE, null, null, null, null)),
                 List.of(pay("MOBILE", "8.00")), null);
 
         CheckoutVO vo = service.checkout(cmd, CASHIER);
@@ -719,9 +813,9 @@ class SalesCheckoutServiceTest {
         when(memberMapper.selectById(MEMBER_ID)).thenReturn(member("100.00", 3, 1));
         when(memberLevelMapper.selectById(1L)).thenReturn(level("0.9"));
 
-        CheckoutCommand cmd = new CheckoutCommand(1, MEMBER_ID, null, null, null, null,
+        CheckoutCommand cmd = new CheckoutCommand(1, MEMBER_ID, null, null, null, null, null,
                 List.of(item(GOODS_A, "1"),
-                        new CheckoutCommand.CheckoutItem(null, "代售报刊", new BigDecimal("10.00"), BigDecimal.ONE, null, null)),
+                        new CheckoutCommand.CheckoutItem(null, "代售报刊", new BigDecimal("10.00"), BigDecimal.ONE, null, null, null, null)),
                 List.of(pay("CASH", "18")), null);
 
         service.checkout(cmd, CASHIER);
@@ -740,22 +834,22 @@ class SalesCheckoutServiceTest {
     @Test
     @DisplayName("无码商品：名称缺失/金额非法拒绝结算（FR-SALE-13）")
     void checkout_tempLine_validation() {
-        CheckoutCommand blankName = new CheckoutCommand(1, null, null, null, null, null,
-                List.of(new CheckoutCommand.CheckoutItem(null, "  ", new BigDecimal("5"), BigDecimal.ONE, null, null)),
+        CheckoutCommand blankName = new CheckoutCommand(1, null, null, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "  ", new BigDecimal("5"), BigDecimal.ONE, null, null, null, null)),
                 List.of(pay("CASH", "5")), null);
         assertThatThrownBy(() -> service.checkout(blankName, CASHIER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("名称不能为空");
 
-        CheckoutCommand zeroAmount = new CheckoutCommand(1, null, null, null, null, null,
-                List.of(new CheckoutCommand.CheckoutItem(null, "散装糖果", new BigDecimal("0"), BigDecimal.ONE, null, null)),
+        CheckoutCommand zeroAmount = new CheckoutCommand(1, null, null, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "散装糖果", new BigDecimal("0"), BigDecimal.ONE, null, null, null, null)),
                 List.of(pay("CASH", "5")), null);
         assertThatThrownBy(() -> service.checkout(zeroAmount, CASHIER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("金额必须大于 0");
 
-        CheckoutCommand fineScale = new CheckoutCommand(1, null, null, null, null, null,
-                List.of(new CheckoutCommand.CheckoutItem(null, "散装糖果", new BigDecimal("1.234"), BigDecimal.ONE, null, null)),
+        CheckoutCommand fineScale = new CheckoutCommand(1, null, null, null, null, null, null,
+                List.of(new CheckoutCommand.CheckoutItem(null, "散装糖果", new BigDecimal("1.234"), BigDecimal.ONE, null, null, null, null)),
                 List.of(pay("CASH", "5")), null);
         assertThatThrownBy(() -> service.checkout(fineScale, CASHIER))
                 .isInstanceOf(BusinessException.class)

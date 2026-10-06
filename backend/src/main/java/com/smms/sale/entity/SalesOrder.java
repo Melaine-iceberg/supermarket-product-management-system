@@ -72,6 +72,9 @@ public class SalesOrder {
     /** 店长整单折扣率（≥最低折扣率参数） */
     private BigDecimal orderDiscountRate;
 
+    /** 整单折扣原因（FR-SALE-07） */
+    private String discountReason;
+
     /** 成本合计（快照） */
     private BigDecimal costAmount;
 

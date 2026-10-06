@@ -29,8 +29,11 @@ public class SalesOrderItem {
     /** 条码快照 */
     private String barcode;
 
-    /** 成交取价（促销价/会员价/零售价，BR-GOODS-04） */
+    /** 成交取价（促销价/会员价/零售价；改价行为店长改价单价，BR-GOODS-04） */
     private BigDecimal unitPrice;
+
+    /** 改价前按取价规则解析的单价（未改价为空，FR-SALE-07） */
+    private BigDecimal originalUnitPrice;
 
     /** 数量（普通正整数/称重3位小数） */
     private BigDecimal quantity;
@@ -69,4 +72,7 @@ public class SalesOrderItem {
     private String lineType;
 
     private String remark;
+
+    /** 改价原因（FR-SALE-07） */
+    private String priceReason;
 }

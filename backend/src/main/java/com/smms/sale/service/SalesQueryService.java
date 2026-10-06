@@ -89,8 +89,9 @@ public class SalesQueryService {
                 order.getSaleTime(), order.getBusinessDate(), order.getItemCount(),
                 order.getGoodsAmount(), order.getMemberDiscountAmount(), order.getOrderDiscountAmount(),
                 order.getDiscountAmount(), order.getPayableAmount(), order.getPaidAmount(),
-                order.getChangeAmount(), order.getOrderDiscountRate(), order.getCostAmount(),
-                order.getProfitAmount(), order.getReturnStatus(), order.getAuthorizerName(), order.getRemark(),
+                order.getChangeAmount(), order.getOrderDiscountRate(), order.getDiscountReason(),
+                order.getCostAmount(), order.getProfitAmount(), order.getReturnStatus(),
+                order.getAuthorizerName(), order.getRemark(),
                 items.stream().map(SalesQueryService::toItemVO).toList(),
                 payments.stream().map(p -> new SalesOrderDetailVO.PaymentVO(
                         p.getPayType(), p.getAmount(), p.getPayTime(), p.getOperatorName())).toList(),
@@ -127,9 +128,10 @@ public class SalesQueryService {
     private static SalesOrderDetailVO.ItemVO toItemVO(SalesOrderItem item) {
         return new SalesOrderDetailVO.ItemVO(
                 item.getId(), item.getGoodsId(), item.getGoodsName(), item.getBarcode(),
-                item.getUnitPrice(), item.getQuantity(), item.getIsWeighed(), item.getNetWeight(),
+                item.getUnitPrice(), item.getOriginalUnitPrice(), item.getQuantity(),
+                item.getIsWeighed(), item.getNetWeight(),
                 item.getAmount(), item.getDiscountRate(), item.getDiscountAmount(), item.getPaidAmount(),
                 item.getCostPrice(), item.getCostAmount(), item.getProfitAmount(),
-                item.getReturnedQty(), item.getLineType(), item.getRemark());
+                item.getReturnedQty(), item.getLineType(), item.getRemark(), item.getPriceReason());
     }
 }
