@@ -44,4 +44,7 @@ public class ReceiptOrder {
     private BigDecimal totalAmount;
 
     private String remark;
+
+    /** 请求令牌（提交防重，NFR-REL-02；uk_ro_token 唯一键兜底并发重放） */
+    private String requestToken;
 }

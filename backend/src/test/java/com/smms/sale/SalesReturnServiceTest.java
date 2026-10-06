@@ -180,7 +180,8 @@ class SalesReturnServiceTest {
                                         String returnQty) {
         return new ReturnCreateRequest(ORDER_ID, refundType, reason, null, authorizer,
                 authorizer == null ? null : "pwd",
-                List.of(new ReturnCreateRequest.ReturnItemRequest(ITEM_ID, new BigDecimal(returnQty), null)));
+                List.of(new ReturnCreateRequest.ReturnItemRequest(ITEM_ID, new BigDecimal(returnQty), null)),
+                null);
     }
 
     /** 标准场景：原单 1 行（数量 3、实付 30、成本 5），退货数量由请求决定 */
@@ -304,6 +305,38 @@ class SalesReturnServiceTest {
         assertThatThrownBy(() -> service.createReturn(request("CASH", "MISTAKE", null, "1"), CASHIER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("授权");
+    }
+
+    // ---------- 请求令牌防重（NFR-REL-02） ----------
+
+    @Test
+    @DisplayName("请求令牌重放：同令牌退货直接返回既有退货单，不重复退款/回补库存（NFR-REL-02）")
+    void createReturn_requestToken_replay() {
+        ReturnOrder existing = new ReturnOrder();
+        existing.setId(RETURN_ID);
+        existing.setOrderNo("XT20261006010001");
+        existing.setSalesOrderId(ORDER_ID);
+        existing.setReturnReason("QUALITY");
+        existing.setRefundAmount(new BigDecimal("10.00"));
+        existing.setRefundType("CASH");
+        existing.setCashierName("陈收银");
+        existing.setReturnTime(LocalDateTime.now());
+        existing.setBusinessDate(LocalDate.now());
+        when(returnOrderMapper.selectOne(any())).thenReturn(existing);
+        when(returnOrderMapper.selectById(RETURN_ID)).thenReturn(existing);
+        when(salesOrderMapper.selectById(ORDER_ID)).thenReturn(order(null, "NONE", LocalDateTime.now()));
+        when(returnOrderItemMapper.selectList(any())).thenReturn(List.of());
+
+        ReturnCreateRequest req = new ReturnCreateRequest(ORDER_ID, "CASH", "QUALITY", null, null, null,
+                List.of(new ReturnCreateRequest.ReturnItemRequest(ITEM_ID, BigDecimal.ONE, null)), "token-rt-1");
+        ReturnOrderDetailVO vo = service.createReturn(req, CASHIER);
+
+        assertThat(vo.orderNo()).isEqualTo("XT20261006010001");
+        assertThat(vo.refundAmount()).isEqualByComparingTo("10.00");
+        verify(returnOrderMapper, never()).insert(any(ReturnOrder.class));
+        verify(inventoryService, never()).stockIn(any(StockChange.class));
+        verify(memberBusinessService, never()).returnEffects(any(), any(), any(), any(),
+                any(), any(), any(), any());
     }
 
     // ---------- 有效期与数据范围（BR-SALE-05/09） ----------

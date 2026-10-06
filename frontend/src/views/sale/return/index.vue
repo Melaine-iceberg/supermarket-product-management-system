@@ -16,6 +16,7 @@ import {
   type SalesOrderDetailVO,
 } from '@/api/sale'
 import { printReturnVoucher } from '@/utils/receipt'
+import { newRequestToken } from '@/utils/token'
 
 const auth = useAuthStore()
 
@@ -134,6 +135,7 @@ const createDialog = reactive({
   reasonRemark: '',
   authorizerUsername: '',
   authorizerPassword: '',
+  requestToken: '',
 })
 
 const canCreate = computed(() => auth.hasPerm('sys:ret:create'))
@@ -150,6 +152,8 @@ function openCreateDialog() {
     reasonRemark: '',
     authorizerUsername: '',
     authorizerPassword: '',
+    // 每次发起退货生成请求令牌（NFR-REL-02）：失败重试复用同令牌，防重复退款
+    requestToken: newRequestToken(),
   })
 }
 
@@ -276,6 +280,7 @@ async function submitReturn() {
         returnQty: l.returnQty!,
         remark: l.remark.trim() || undefined,
       })),
+      requestToken: createDialog.requestToken || undefined,
     })
     createDialog.visible = false
     createDialog.authorizerPassword = ''

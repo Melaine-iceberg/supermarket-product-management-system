@@ -40,7 +40,11 @@ public record ReturnCreateRequest(
 
         @NotEmpty(message = "退货明细不能为空")
         @Valid
-        List<ReturnItemRequest> items
+        List<ReturnItemRequest> items,
+
+        /** 请求令牌（前端每次提交生成，NFR-REL-02 防重复提交；同令牌重放返回既有单据） */
+        @Size(max = 64, message = "请求令牌长度不合法")
+        String requestToken
 ) {
 
     public record ReturnItemRequest(

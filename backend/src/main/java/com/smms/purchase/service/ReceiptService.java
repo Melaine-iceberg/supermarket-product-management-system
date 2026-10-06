@@ -156,6 +156,16 @@ public class ReceiptService {
     /** 入库验收主流程：校验（容差/价差/职责分离）→ 单事务落库与库存联动 */
     @Transactional
     public ReceiptOrderVO create(ReceiptCreateRequest req, LoginUser operator) {
+        // 0. 请求令牌防重（NFR-REL-02）：同令牌重放（网络重发/重复点击）直接返回既有入库单，
+        //    不重复验收、不重复入库
+        String requestToken = normalizeToken(req.getRequestToken());
+        if (requestToken != null) {
+            ReceiptOrder replayed = findReceiptByToken(requestToken);
+            if (replayed != null) {
+                return detail(replayed.getId());
+            }
+        }
+
         PurchaseOrder order = purchaseOrderService.requireOrder(req.getPurchaseOrderId());
         requireReceivable(order);
         Map<Long, PurchaseOrderItem> itemMap = loadItems(order.getId());
@@ -210,8 +220,14 @@ public class ReceiptService {
         // 职责分离（BR-SYS-01）：验收人 ≠ 采购单创建人
         checkDutySeparation(order, operator);
 
-        // 1. 入库单落库（RK 单号，BR-PUR-01）
-        ReceiptOrder receipt = insertWithOrderNo(req, order, operator, lines, authorizerName);
+        // 1. 入库单落库（RK 单号，BR-PUR-01；uk_ro_no 唯一键兜底并发冲突，
+        //    uk_ro_token 兜底并发同令牌重放，NFR-REL-02）
+        ReceiptOrder receipt;
+        try {
+            receipt = insertWithOrderNo(req, order, operator, lines, authorizerName, requestToken);
+        } catch (ReceiptReplaySignal signal) {
+            return detail(signal.receipt.getId());
+        }
 
         // 2. 明细落库 + 采购明细已入库数量回写
         for (Line line : lines) {
@@ -391,7 +407,8 @@ public class ReceiptService {
 
     /** RK 单号生成（BR-PUR-01）：RK+yyyyMMdd+4位流水，行锁取号 + 唯一键兜底重试 */
     private ReceiptOrder insertWithOrderNo(ReceiptCreateRequest req, PurchaseOrder order,
-                                           LoginUser operator, List<Line> lines, String authorizerName) {
+                                           LoginUser operator, List<Line> lines, String authorizerName,
+                                           String requestToken) {
         BigDecimal total = lines.stream().map(Line::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
         ReceiptOrder receipt = new ReceiptOrder();
@@ -404,6 +421,7 @@ public class ReceiptService {
         receipt.setDeliveryOrderNo(req.getDeliveryOrderNo());
         receipt.setTotalAmount(total);
         receipt.setRemark(req.getRemark());
+        receipt.setRequestToken(requestToken);
 
         DuplicateKeyException conflict = null;
         for (int attempt = 0; attempt < MAX_RETRY; attempt++) {
@@ -412,10 +430,37 @@ public class ReceiptService {
                 receiptMapper.insert(receipt);
                 return receipt;
             } catch (DuplicateKeyException e) {
+                // 并发同令牌：另一请求已成功入库 → 回查后按重放返回（NFR-REL-02）
+                if (requestToken != null) {
+                    ReceiptOrder existing = findReceiptByToken(requestToken);
+                    if (existing != null) {
+                        throw new ReceiptReplaySignal(existing);
+                    }
+                }
                 conflict = e;
             }
         }
         throw new BusinessException(ErrorCode.PUR_NO_EXCEED, "入库单号生成冲突，请重试（" + conflict + "）");
+    }
+
+    /** 请求令牌去空白并归一：空串视为未携带（历史客户端兼容） */
+    private String normalizeToken(String token) {
+        return token == null || token.isBlank() ? null : token.trim();
+    }
+
+    private ReceiptOrder findReceiptByToken(String requestToken) {
+        return receiptMapper.selectOne(
+                Wrappers.<ReceiptOrder>lambdaQuery().eq(ReceiptOrder::getRequestToken, requestToken));
+    }
+
+    /** 并发同令牌重放信号：携带另一请求已落库的入库单，由 create 捕获并按重放返回 */
+    private static class ReceiptReplaySignal extends RuntimeException {
+
+        private final transient ReceiptOrder receipt;
+
+        ReceiptReplaySignal(ReceiptOrder receipt) {
+            this.receipt = receipt;
+        }
     }
 
     private String nextOrderNo() {

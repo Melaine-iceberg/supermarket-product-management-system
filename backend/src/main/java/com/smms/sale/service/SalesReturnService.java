@@ -92,6 +92,16 @@ public class SalesReturnService {
     public ReturnOrderDetailVO createReturn(ReturnCreateRequest req, LoginUser operator) {
         LocalDateTime now = LocalDateTime.now();
 
+        // 0. 请求令牌防重（NFR-REL-02）：同令牌重放（网络重发/重复点击）直接返回既有退货单，
+        //    不重复退款、不重复回补库存
+        String requestToken = normalizeToken(req.requestToken());
+        if (requestToken != null) {
+            ReturnOrder replayed = findReturnByToken(requestToken);
+            if (replayed != null) {
+                return detail(replayed.getId());
+            }
+        }
+
         // 1. 原单校验：存在 + 本人单据或店长权限（BR-SALE-09）+ 未全部退货
         SalesOrder order = salesOrderMapper.selectById(req.salesOrderId());
         if (order == null) {
@@ -163,8 +173,14 @@ public class SalesReturnService {
                     : operator.realName(); // 超期店长特批：经办店长即授权人
         }
 
-        // 6. 退货单落库（XT 单号，BR-SALE-02；uk_rt_no 唯一键兜底并发冲突）
-        ReturnOrder returnOrder = insertReturnOrder(req, order, operator, now, totalRefund, authorizer);
+        // 6. 退货单落库（XT 单号，BR-SALE-02；uk_rt_no 唯一键兜底并发冲突，
+        //    uk_rt_token 兜底并发同令牌重放，NFR-REL-02）
+        ReturnOrder returnOrder;
+        try {
+            returnOrder = insertReturnOrder(req, order, operator, now, totalRefund, authorizer, requestToken);
+        } catch (ReturnReplaySignal signal) {
+            return detail(signal.returnOrder.getId());
+        }
 
         // 7. 明细落库 + 原单已退数量回写
         for (CalculatedReturn line : lines) {
@@ -350,7 +366,8 @@ public class SalesReturnService {
     }
 
     private ReturnOrder insertReturnOrder(ReturnCreateRequest req, SalesOrder order, LoginUser operator,
-                                          LocalDateTime now, BigDecimal totalRefund, String authorizer) {
+                                          LocalDateTime now, BigDecimal totalRefund, String authorizer,
+                                          String requestToken) {
         ReturnOrder returnOrder = new ReturnOrder();
         returnOrder.setStoreId(1L);
         returnOrder.setSalesOrderId(order.getId());
@@ -362,6 +379,7 @@ public class SalesReturnService {
         returnOrder.setCashierName(operator.realName());
         returnOrder.setReturnTime(now);
         returnOrder.setBusinessDate(businessDate(now));
+        returnOrder.setRequestToken(requestToken);
         if (authorizer != null && !authorizer.isBlank()) {
             returnOrder.setAuthorizerName(authorizer);
             returnOrder.setAuthorizeTime(now);
@@ -374,11 +392,38 @@ public class SalesReturnService {
                 returnOrderMapper.insert(returnOrder);
                 return returnOrder;
             } catch (DuplicateKeyException e) {
+                // 并发同令牌：另一请求已成功退单 → 回查后按重放返回（NFR-REL-02）
+                if (requestToken != null) {
+                    ReturnOrder existing = findReturnByToken(requestToken);
+                    if (existing != null) {
+                        throw new ReturnReplaySignal(existing);
+                    }
+                }
                 conflict = e;
             }
         }
         throw new BusinessException(ErrorCode.SALE_ORDER_NO_RETRY,
                 "退货单号生成冲突，请重试（" + (conflict == null ? "" : conflict.getMessage()) + "）");
+    }
+
+    /** 请求令牌去空白并归一：空串视为未携带（历史客户端兼容） */
+    private String normalizeToken(String token) {
+        return token == null || token.isBlank() ? null : token.trim();
+    }
+
+    private ReturnOrder findReturnByToken(String requestToken) {
+        return returnOrderMapper.selectOne(
+                Wrappers.<ReturnOrder>lambdaQuery().eq(ReturnOrder::getRequestToken, requestToken));
+    }
+
+    /** 并发同令牌重放信号：携带另一请求已落库的退货单，由 createReturn 捕获并按重放返回 */
+    private static class ReturnReplaySignal extends RuntimeException {
+
+        private final transient ReturnOrder returnOrder;
+
+        ReturnReplaySignal(ReturnOrder returnOrder) {
+            this.returnOrder = returnOrder;
+        }
     }
 
     /** 营业日（BR-RPT-02）：退货时刻早于营业日起始时刻则归属前一日 */

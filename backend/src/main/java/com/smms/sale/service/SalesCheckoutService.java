@@ -91,6 +91,16 @@ public class SalesCheckoutService {
     public CheckoutVO checkout(CheckoutCommand cmd, LoginUser cashier) {
         LocalDateTime now = LocalDateTime.now();
 
+        // 0. 请求令牌防重（NFR-REL-02）：同令牌重放（网络重发/重复点击）直接返回既有单据，
+        //    不重复开单、不重复扣库存
+        String requestToken = normalizeToken(cmd.requestToken());
+        if (requestToken != null) {
+            SalesOrder replayed = findOrderByToken(requestToken);
+            if (replayed != null) {
+                return replayVO(replayed);
+            }
+        }
+
         // 1. 明细基础校验（BR-SALE-01：同商品一行、数量精度）
         validateItems(cmd.items());
 
@@ -119,8 +129,14 @@ public class SalesCheckoutService {
         }
         BigDecimal change = paid.subtract(lines.payable());
 
-        // 7. 单号生成（BR-SALE-02）+ 销售单落库（uk_so_no 唯一键兜底并发冲突）
-        SalesOrder order = insertOrder(cmd, cashier, now, lines, paid, change, authorizerName);
+        // 7. 单号生成（BR-SALE-02）+ 销售单落库（uk_so_no 唯一键兜底并发冲突；
+        //    uk_so_token 兜底并发同令牌重放，NFR-REL-02）
+        SalesOrder order;
+        try {
+            order = insertOrder(cmd, cashier, now, lines, paid, change, authorizerName, requestToken);
+        } catch (OrderReplaySignal signal) {
+            return replayVO(signal.order);
+        }
 
         // 8. 明细落库（快照，BR-SALE-04）
         for (SalesOrderItem item : buildItems(order.getId(), lines)) {
@@ -460,7 +476,7 @@ public class SalesCheckoutService {
     /** 销售单落库：唯一键冲突（并发出单）自动换单号重试（BR-SALE-02 全局唯一） */
     private SalesOrder insertOrder(CheckoutCommand cmd, LoginUser cashier, LocalDateTime now,
                                    CalculatedLines lines, BigDecimal paid, BigDecimal change,
-                                   String authorizerName) {
+                                   String authorizerName, String requestToken) {
         // 件数按落库行计算（无码商品恒为 1 件，FR-SALE-13）
         int itemCount = lines.lines().stream()
                 .mapToInt(l -> l.quantity().stripTrailingZeros().scale() <= 0
@@ -491,6 +507,7 @@ public class SalesCheckoutService {
         order.setReturnStatus("NONE");
         order.setAuthorizerName(authorizerName);
         order.setRemark(cmd.remark());
+        order.setRequestToken(requestToken);
 
         DuplicateKeyException conflict = null;
         for (int attempt = 0; attempt < MAX_RETRY; attempt++) {
@@ -499,11 +516,50 @@ public class SalesCheckoutService {
                 salesOrderMapper.insert(order);
                 return order;
             } catch (DuplicateKeyException e) {
+                // 并发同令牌：另一请求已成功落单 → 回查后按重放返回（NFR-REL-02）
+                if (requestToken != null) {
+                    SalesOrder existing = findOrderByToken(requestToken);
+                    if (existing != null) {
+                        throw new OrderReplaySignal(existing);
+                    }
+                }
                 conflict = e;
             }
         }
         throw new BusinessException(ErrorCode.SALE_ORDER_NO_RETRY,
                 "单号生成冲突，请重试结算（" + (conflict == null ? "" : conflict.getMessage()) + "）");
+    }
+
+    /** 请求令牌去空白并归一：空串视为未携带（历史客户端兼容） */
+    private String normalizeToken(String token) {
+        return token == null || token.isBlank() ? null : token.trim();
+    }
+
+    private SalesOrder findOrderByToken(String requestToken) {
+        return salesOrderMapper.selectOne(
+                Wrappers.<SalesOrder>lambdaQuery().eq(SalesOrder::getRequestToken, requestToken));
+    }
+
+    /** 重放结果装配（NFR-REL-02）：由已落库单据与收款记录还原结算回执，不产生任何库存/会员副作用 */
+    private CheckoutVO replayVO(SalesOrder order) {
+        List<CheckoutVO.PaymentLineVO> paymentLines = paymentRecordMapper.selectList(
+                        Wrappers.<PaymentRecord>lambdaQuery().eq(PaymentRecord::getOrderId, order.getId()))
+                .stream().map(p -> new CheckoutVO.PaymentLineVO(p.getPayType(), p.getAmount())).toList();
+        return new CheckoutVO(order.getId(), order.getOrderNo(), order.getItemCount(),
+                order.getPayableAmount().add(order.getDiscountAmount()),
+                order.getMemberDiscountAmount(), order.getOrderDiscountAmount(),
+                order.getDiscountAmount(), order.getPayableAmount(), order.getPaidAmount(),
+                order.getChangeAmount(), paymentLines, null, order.getSaleTime());
+    }
+
+    /** 并发同令牌重放信号：携带另一请求已落库的销售单，由 checkout 捕获并按重放返回 */
+    private static class OrderReplaySignal extends RuntimeException {
+
+        private final transient SalesOrder order;
+
+        OrderReplaySignal(SalesOrder order) {
+            this.order = order;
+        }
     }
 
     /** 明细实体（全部快照字段，BR-SALE-04）：行实付 = 行金额 − 行优惠；成本额/毛利额快照 */

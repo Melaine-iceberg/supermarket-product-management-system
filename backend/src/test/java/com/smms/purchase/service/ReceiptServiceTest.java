@@ -221,6 +221,45 @@ class ReceiptServiceTest {
         verify(orderMapper).updateReceiptState(eq(100L), any(), any(), eq("李采购"), eq(0));
     }
 
+    // ==================== 请求令牌防重（NFR-REL-02） ====================
+
+    @Test
+    @DisplayName("请求令牌重放：同令牌入库直接返回既有入库单，不重复验收/入库（NFR-REL-02）")
+    void createRequestTokenReplay() {
+        ReceiptOrder existing = new ReceiptOrder();
+        existing.setId(300L);
+        existing.setOrderNo("RK" + TODAY + "0002");
+        existing.setPurchaseOrderId(100L);
+        existing.setSupplierId(1L);
+        existing.setReceiptTime(java.time.LocalDateTime.now());
+        existing.setOperatorName("验收员");
+        existing.setTotalAmount(new BigDecimal("98.00"));
+        when(receiptMapper.selectOne(any(Wrapper.class))).thenReturn(existing);
+        when(receiptMapper.selectById(300L)).thenReturn(existing);
+        when(orderMapper.selectById(100L)).thenReturn(order(PurchaseOrder.STATUS_APPROVED));
+        when(supplierMapper.selectById(1L)).thenReturn(supplier());
+        ReceiptOrderItem det = new ReceiptOrderItem();
+        det.setId(400L);
+        det.setReceiptId(300L);
+        det.setPurchaseItemId(200L);
+        det.setGoodsId(101L);
+        det.setReceivedQty(new BigDecimal("10"));
+        det.setReceivedPrice(new BigDecimal("9.80"));
+        det.setAmount(new BigDecimal("98.00"));
+        when(receiptItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(det));
+        when(goodsMapper.selectBatchIds(any())).thenReturn(List.of(goods()));
+        when(unitMapper.selectBatchIds(any())).thenReturn(List.of(unit()));
+
+        ReceiptCreateRequest req = request("10", "9.80", null);
+        req.setRequestToken("token-rk-1");
+        ReceiptOrderVO vo = service.create(req, operator("验收员"));
+
+        assertThat(vo.orderNo()).isEqualTo("RK" + TODAY + "0002");
+        verify(receiptMapper, never()).insert(any(ReceiptOrder.class));
+        verify(inventoryService, never()).stockIn(any());
+        verify(orderMapper, never()).updateReceiptState(any(), any(), any(), anyString(), any());
+    }
+
     // ==================== 入库预检（FR-PUR-06 前置） ====================
 
     @Test

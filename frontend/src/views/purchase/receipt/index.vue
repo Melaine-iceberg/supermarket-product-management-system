@@ -19,6 +19,7 @@ import {
 import { pagePurchaseOrders, type PurchaseOrderVO } from '@/api/purchase'
 import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
 import { pMoney, pQty, printSheet } from '@/utils/print'
+import { newRequestToken } from '@/utils/token'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -180,6 +181,7 @@ const receiveDialog = reactive({
   remark: '',
   authorizerUsername: '',
   authorizerPassword: '',
+  requestToken: '',
   items: [] as ReceiveItem[],
   precheck: null as ReceiptPreCheckVO | null,
 })
@@ -194,6 +196,8 @@ async function openReceive(row: PurchaseOrderVO) {
   receiveDialog.remark = ''
   receiveDialog.authorizerUsername = ''
   receiveDialog.authorizerPassword = ''
+  // 每次进入验收生成请求令牌（NFR-REL-02）：失败重试复用同令牌，防重复入库
+  receiveDialog.requestToken = newRequestToken()
   receiveDialog.precheck = null
   receiveDialog.items = detail.items.map((i: PurchaseOrderItemVO) => ({
     purchaseItemId: i.id,
@@ -222,6 +226,7 @@ function buildPayload() {
     remark: receiveDialog.remark.trim() || undefined,
     authorizerUsername: receiveDialog.authorizerUsername.trim() || undefined,
     authorizerPassword: receiveDialog.authorizerPassword || undefined,
+    requestToken: receiveDialog.requestToken || undefined,
     items: filledItems.value.map((i) => ({
       purchaseItemId: i.purchaseItemId,
       receivedQty: Number(i.receivedQty),

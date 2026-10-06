@@ -245,6 +245,8 @@ export interface ReceiptCreatePayload {
   deliveryOrderNo?: string
   remark?: string
   items: ReceiptItemPayload[]
+  /** 请求令牌（NFR-REL-02 防重复提交；同令牌重放返回既有单据） */
+  requestToken?: string
 }
 
 export interface ReceiptPageQuery {

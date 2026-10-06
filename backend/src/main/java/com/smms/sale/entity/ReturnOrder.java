@@ -56,4 +56,7 @@ public class ReturnOrder {
 
     /** 营业日（BR-RPT-02） */
     private LocalDate businessDate;
+
+    /** 请求令牌（提交防重，NFR-REL-02；uk_rt_token 唯一键兜底并发重放） */
+    private String requestToken;
 }

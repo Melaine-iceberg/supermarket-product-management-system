@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -33,6 +34,10 @@ public class ReceiptCreateRequest {
     @NotEmpty(message = "入库明细不能为空")
     @Valid
     private List<ItemRequest> items;
+
+    /** 请求令牌（前端每次提交生成，NFR-REL-02 防重复提交；同令牌重放返回既有单据） */
+    @Size(max = 64, message = "请求令牌长度不合法")
+    private String requestToken;
 
     @Data
     public static class ItemRequest {

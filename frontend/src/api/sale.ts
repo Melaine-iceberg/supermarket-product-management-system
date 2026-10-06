@@ -43,6 +43,8 @@ export interface CheckoutPayload {
   /** 店长授权密码（与授权账号一并校验） */
   authorizerPassword?: string
   remark?: string
+  /** 请求令牌（NFR-REL-02 防重复提交；同令牌重放返回既有单据） */
+  requestToken?: string
   items: {
     /** 商品ID（无码商品为空，FR-SALE-13） */
     goodsId?: number
@@ -288,6 +290,8 @@ export interface ReturnCreatePayload {
     returnQty: number
     remark?: string
   }[]
+  /** 请求令牌（NFR-REL-02 防重复提交；同令牌重放返回既有单据） */
+  requestToken?: string
 }
 
 export function createReturn(data: ReturnCreatePayload) {

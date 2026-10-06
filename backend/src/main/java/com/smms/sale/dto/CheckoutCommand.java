@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -51,7 +52,11 @@ public record CheckoutCommand(
         /** 收款记录（一单多方式组合，FR-SALE-06） */
         @NotEmpty(message = "收款信息不能为空")
         @Valid
-        List<CheckoutPayment> payments
+        List<CheckoutPayment> payments,
+
+        /** 请求令牌（前端每次结算生成，NFR-REL-02 防重复提交；同令牌重放返回既有单据） */
+        @Size(max = 64, message = "请求令牌长度不合法")
+        String requestToken
 ) {
 
     /** 单条销售明细录入（档案商品传 goodsId；无码商品传 tempName/tempAmount，FR-SALE-13） */

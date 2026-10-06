@@ -14,6 +14,7 @@ import {
 } from '@/api/sale'
 import { printSalesReceipt } from '@/utils/receipt'
 import { openPrintWindow } from '@/utils/print'
+import { newRequestToken } from '@/utils/token'
 
 const auth = useAuthStore()
 
@@ -334,6 +335,7 @@ const orderRate = computed(() =>
 const payDialog = reactive({
   visible: false,
   submitting: false,
+  requestToken: '',
   lines: [] as { payType: PayType; amount: number | null }[],
 })
 
@@ -361,6 +363,8 @@ function openPayDialog() {
     return
   }
   payDialog.lines = [{ payType: 'CASH', amount: null }]
+  // 每次进入结算生成请求令牌（NFR-REL-02 防重）：失败重试复用同令牌，成功后再开新单换新令牌
+  payDialog.requestToken = newRequestToken()
   payDialog.visible = true
 }
 
@@ -458,6 +462,7 @@ async function submitCheckout() {
             },
       ),
       payments: pays.map((l) => ({ payType: l.payType, amount: l.amount! })),
+      requestToken: payDialog.requestToken || undefined,
     })
     payDialog.visible = false
     doneDialog.result = result
