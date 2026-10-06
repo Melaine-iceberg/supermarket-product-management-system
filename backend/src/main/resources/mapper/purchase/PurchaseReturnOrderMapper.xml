@@ -29,7 +29,9 @@
                pr.audit_by           AS auditBy,
                pr.audit_time         AS auditTime,
                pr.audit_remark       AS auditRemark,
-               pr.remark             AS remark
+               pr.remark             AS remark,
+               <!-- 列表行不装载明细（详情接口提供），占位以满足记录构造器参数数量 -->
+               NULL                  AS items
         FROM purchase_return_order pr
         JOIN purchase_order po ON po.id = pr.purchase_order_id
         JOIN supplier s ON s.id = pr.supplier_id

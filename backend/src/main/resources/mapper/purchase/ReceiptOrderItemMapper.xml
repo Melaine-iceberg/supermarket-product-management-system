@@ -37,7 +37,9 @@
                ro.authorizer_name    AS authorizerName,
                ro.delivery_order_no  AS deliveryOrderNo,
                ro.total_amount       AS totalAmount,
-               ro.remark             AS remark
+               ro.remark             AS remark,
+               <!-- 列表行不装载明细（详情接口提供），占位以满足记录构造器参数数量 -->
+               NULL                  AS items
         FROM receipt_order ro
         JOIN purchase_order po ON po.id = ro.purchase_order_id
         JOIN supplier s ON s.id = ro.supplier_id
