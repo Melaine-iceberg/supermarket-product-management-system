@@ -21,7 +21,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import tools.jackson.databind.ObjectMapper;
 
@@ -74,11 +74,25 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim).filter(s -> !s.isEmpty()).toList());
         // 经 Nginx 反代的容器化部署中，浏览器同源请求同样携带 Origin，
-        // 且部署端口可配置——放行本机任意端口来源，非本机来源仍须显式配置（SMMS_CORS_ORIGINS）
-        config.setAllowedOriginPatterns(List.of("http://localhost:[*]", "http://127.0.0.1:[*]"));
+        // 且部署端口可配置——放行本机任意端口来源，非本机来源须显式配置（SMMS_CORS_ORIGINS）。
+        // SMMS_CORS_ORIGINS 中允许使用 "*" 表示放行任意来源（多设备/多网络/多域名免维护场景，
+        // 因 allowCredentials=true，"*" 只能经 allowedOriginPatterns 表达，Spring 会回显请求 Origin）。
+        List<String> patterns = new ArrayList<>(List.of("http://localhost:[*]", "http://127.0.0.1:[*]"));
+        List<String> origins = new ArrayList<>();
+        for (String item : allowedOrigins.split(",")) {
+            String origin = item.trim();
+            if (origin.isEmpty()) {
+                continue;
+            }
+            if ("*".equals(origin)) {
+                patterns.add("*");
+            } else {
+                origins.add(origin);
+            }
+        }
+        config.setAllowedOrigins(origins);
+        config.setAllowedOriginPatterns(patterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
