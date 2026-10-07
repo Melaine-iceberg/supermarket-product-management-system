@@ -1,16 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-
-declare module 'vue-router' {
-  interface RouteMeta {
-    /** 公开页面（无须登录） */
-    public?: boolean
-    /** 页面菜单权限（列表权限） */
-    perm?: string
-    /** 页面标题 */
-    title?: string
-  }
-}
+import { resolveNavigation } from './guard'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -264,37 +254,8 @@ const router = createRouter({
   ],
 })
 
-/** 路由守卫：登录态、强制改密、菜单权限（FR-SYS-01/03/05） */
-router.beforeEach(async (to) => {
-  const auth = useAuthStore()
-  if (to.meta.public) {
-    // 已登录访问登录页 → 回首页
-    if (to.name === 'login' && auth.isLogged) return '/home'
-    return true
-  }
-  if (!auth.isLogged) {
-    return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } }
-  }
-  // 刷新后恢复用户信息与菜单
-  if (!auth.user) {
-    try {
-      await auth.refreshMe()
-    } catch {
-      auth.clear()
-      return { name: 'login' }
-    }
-  }
-  // 重置密码后强制修改（BR-SYS-02）
-  if (auth.mustChangePwd && to.name !== 'change-password') {
-    return { name: 'change-password' }
-  }
-  // 菜单权限校验（后端仍会独立校验，BR-SYS-05）
-  const perm = to.meta.perm
-  if (perm && !auth.hasPerm(perm)) {
-    return '/403'
-  }
-  return true
-})
+/** 路由守卫：登录态、强制改密、菜单权限（FR-SYS-01/03/05）；判定逻辑见 ./guard.ts */
+router.beforeEach((to) => resolveNavigation(useAuthStore(), to))
 
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined
