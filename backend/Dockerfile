@@ -26,7 +26,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Shanghai \
-    JAVA_OPTS="-XX:MaxRAMPercentage=75 -Dfile.encoding=UTF-8"
+    JAVA_OPTS="-XX:MaxRAMPercentage=75 -Dfile.encoding=UTF-8" \
+    SMMS_TASK_FILE_DIR=/app/task-files
+
+# 异步任务结果目录（导出/导入，保留期默认 24h；容器重建会丢失，任务记录仍在库中）
+RUN mkdir -p /app/task-files
 
 COPY --from=build /app/app.jar app.jar
 

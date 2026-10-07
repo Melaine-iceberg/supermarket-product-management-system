@@ -6,6 +6,9 @@ import com.smms.common.api.ApiResponse;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.task.AsyncTaskService;
+import com.smms.common.task.AsyncTaskVO;
+import com.smms.common.task.TaskParams;
 import com.smms.rpt.dto.DrillOrderQuery;
 import com.smms.rpt.dto.DrillOrderRow;
 import com.smms.rpt.dto.GoodsRankRow;
@@ -13,20 +16,16 @@ import com.smms.rpt.dto.ReportRange;
 import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.GoodsReportService;
 import com.smms.rpt.service.ReportExcelService;
+import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,8 +45,8 @@ import static com.smms.rpt.service.ReportExcelService.text;
 @RequiredArgsConstructor
 public class GoodsReportController {
 
-    private static final MediaType XLSX =
-            new MediaType("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    private static final String BIZ_EXPORT = "GOODS_REPORT_EXPORT";
+
 
     private static final String[] RANK_COLUMNS = {
             "商品编码", "商品名称", "分类", "品牌", "单数", "销量", "销售额", "优惠额",
@@ -62,6 +61,7 @@ public class GoodsReportController {
     private final GoodsReportService goodsReportService;
     private final DrillDownService drillDownService;
     private final ReportExcelService excelService;
+    private final AsyncTaskService taskService;
 
     /** 商品销售排行（①）：orderBy=qty|salesAmount|profitAmount|netSalesAmount */
     @GetMapping("/ranking")
@@ -137,79 +137,75 @@ public class GoodsReportController {
     @GetMapping("/export")
     @RequirePerm("sys:rpt:goods")
     @OpLog(module = "统计报表", action = "导出商品分析", target = "#view")
-    public ResponseEntity<byte[]> export(
+    public ApiResponse<AsyncTaskVO> export(
             @RequestParam(defaultValue = "ranking") String view,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "salesAmount") String orderBy,
             @RequestParam(required = false) BigDecimal threshold,
             @RequestParam(required = false) Long categoryId) {
-        ReportRange range = new ReportRange(beginDate, endDate);
-        int limit = excelService.maxRows() + 1;
-        List<String[]> rows = new ArrayList<>();
-        String sheet;
-        String[] columns;
-        switch (view) {
-            case "ranking" -> {
-                sheet = "商品销售排行";
-                columns = RANK_COLUMNS;
-                List<GoodsRankRow> list = goodsReportService.rankingForExport(
-                        range, orderBy, categoryId, limit, SecurityUtils.getLoginUser());
-                excelService.checkLimit(list.size());
-                list.forEach(r -> rows.add(new String[]{
-                        text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()), text(r.brandName()),
-                        String.valueOf(r.orderCount()), qty(r.qty()), amount(r.salesAmount()),
-                        amount(r.discountAmount()), amount(r.netSalesAmount()), amount(r.refundAmount()),
-                        amount(r.costAmount()), amount(r.profitAmount()), percent(r.profitRate()),
-                        percent(r.shareRate()), qty(r.stockQty()), amount(r.retailPrice())}));
+        return ApiResponse.ok(taskService.submitExport(BIZ_EXPORT, "商品报表导出",
+                TaskParams.of("view", view, "beginDate", beginDate, "endDate", endDate, "orderBy", orderBy, "threshold", threshold, "categoryId", categoryId),
+                ctx -> {
+            ReportRange range = new ReportRange(beginDate, endDate);
+            int limit = excelService.maxRows() + 1;
+            List<String[]> rows = new ArrayList<>();
+            String sheet;
+            String[] columns;
+            switch (view) {
+                case "ranking" -> {
+                    sheet = "商品销售排行";
+                    columns = RANK_COLUMNS;
+                    List<GoodsRankRow> list = goodsReportService.rankingForExport(
+                            range, orderBy, categoryId, limit, ctx.user());
+                    excelService.checkLimit(list.size());
+                    list.forEach(r -> rows.add(new String[]{
+                            text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()), text(r.brandName()),
+                            String.valueOf(r.orderCount()), qty(r.qty()), amount(r.salesAmount()),
+                            amount(r.discountAmount()), amount(r.netSalesAmount()), amount(r.refundAmount()),
+                            amount(r.costAmount()), amount(r.profitAmount()), percent(r.profitRate()),
+                            percent(r.shareRate()), qty(r.stockQty()), amount(r.retailPrice())}));
+                }
+                case "category-structure" -> {
+                    sheet = "品类销售结构";
+                    columns = RANK_COLUMNS;
+                    List<GoodsRankRow> list = goodsReportService.categoryStructure(range, ctx.user());
+                    excelService.checkLimit(list.size());
+                    list.forEach(r -> rows.add(new String[]{
+                            "", text(r.categoryName()), "", "", String.valueOf(r.orderCount()),
+                            qty(r.qty()), amount(r.salesAmount()), amount(r.discountAmount()),
+                            amount(r.netSalesAmount()), amount(r.refundAmount()), amount(r.costAmount()),
+                            amount(r.profitAmount()), percent(r.profitRate()), percent(r.shareRate()),
+                            "", ""}));
+                }
+                case "slow-moving" -> {
+                    sheet = "滞销商品清单";
+                    columns = SLOW_COLUMNS;
+                    List<GoodsRankRow> list = goodsReportService.slowMovingForExport(
+                            range, threshold, categoryId, limit, ctx.user());
+                    excelService.checkLimit(list.size());
+                    list.forEach(r -> rows.add(new String[]{
+                            text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()), text(r.brandName()),
+                            qty(r.qty()), amount(r.salesAmount()), amount(r.netSalesAmount()),
+                            qty(r.stockQty()), amount(r.costPrice()), amount(r.occupiedAmount()),
+                            amount(r.retailPrice())}));
+                }
+                case "brand-sales" -> {
+                    sheet = "品牌销售分析";
+                    columns = RANK_COLUMNS;
+                    List<GoodsRankRow> list = goodsReportService.brandSales(range, ctx.user());
+                    excelService.checkLimit(list.size());
+                    list.forEach(r -> rows.add(new String[]{
+                            "", "", "", text(r.brandName()), String.valueOf(r.orderCount()),
+                            qty(r.qty()), amount(r.salesAmount()), amount(r.discountAmount()),
+                            amount(r.netSalesAmount()), amount(r.refundAmount()), amount(r.costAmount()),
+                            amount(r.profitAmount()), percent(r.profitRate()), "",
+                            qty(r.stockQty()), amount(r.retailPrice())}));
+                }
+                default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "导出视图不合法");
             }
-            case "category-structure" -> {
-                sheet = "品类销售结构";
-                columns = RANK_COLUMNS;
-                List<GoodsRankRow> list = goodsReportService.categoryStructure(range, SecurityUtils.getLoginUser());
-                excelService.checkLimit(list.size());
-                list.forEach(r -> rows.add(new String[]{
-                        "", text(r.categoryName()), "", "", String.valueOf(r.orderCount()),
-                        qty(r.qty()), amount(r.salesAmount()), amount(r.discountAmount()),
-                        amount(r.netSalesAmount()), amount(r.refundAmount()), amount(r.costAmount()),
-                        amount(r.profitAmount()), percent(r.profitRate()), percent(r.shareRate()),
-                        "", ""}));
-            }
-            case "slow-moving" -> {
-                sheet = "滞销商品清单";
-                columns = SLOW_COLUMNS;
-                List<GoodsRankRow> list = goodsReportService.slowMovingForExport(
-                        range, threshold, categoryId, limit, SecurityUtils.getLoginUser());
-                excelService.checkLimit(list.size());
-                list.forEach(r -> rows.add(new String[]{
-                        text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()), text(r.brandName()),
-                        qty(r.qty()), amount(r.salesAmount()), amount(r.netSalesAmount()),
-                        qty(r.stockQty()), amount(r.costPrice()), amount(r.occupiedAmount()),
-                        amount(r.retailPrice())}));
-            }
-            case "brand-sales" -> {
-                sheet = "品牌销售分析";
-                columns = RANK_COLUMNS;
-                List<GoodsRankRow> list = goodsReportService.brandSales(range, SecurityUtils.getLoginUser());
-                excelService.checkLimit(list.size());
-                list.forEach(r -> rows.add(new String[]{
-                        "", "", "", text(r.brandName()), String.valueOf(r.orderCount()),
-                        qty(r.qty()), amount(r.salesAmount()), amount(r.discountAmount()),
-                        amount(r.netSalesAmount()), amount(r.refundAmount()), amount(r.costAmount()),
-                        amount(r.profitAmount()), percent(r.profitRate()), "",
-                        qty(r.stockQty()), amount(r.retailPrice())}));
-            }
-            default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "导出视图不合法");
-        }
-        return xlsx(excelService.build(new ReportExcelService.Table(sheet, columns, rows)),
-                "goods-" + view + ".xlsx");
-    }
-
-    private ResponseEntity<byte[]> xlsx(byte[] body, String filename) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(XLSX);
-        headers.setContentDisposition(ContentDisposition.attachment()
-                .filename(filename, StandardCharsets.UTF_8).build());
-        return ResponseEntity.ok().headers(headers).body(body);
+            ctx.fileName("goods-" + view + ".xlsx");
+            return excelService.build(new ReportExcelService.Table(sheet, columns, rows));
+                }));
     }
 }

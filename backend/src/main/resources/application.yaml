@@ -38,6 +38,15 @@ smms:
   cors:
     # 前端开发服务器地址
     allowed-origins: ${SMMS_CORS_ORIGINS:http://localhost:5173}
+  # 异步任务（重导出/导入提交后台执行，规避反向代理源站超时）
+  task:
+    # 结果文件目录（容器内；也可用环境变量 SMMS_TASK_FILE_DIR 覆盖）
+    file-dir: ${SMMS_TASK_FILE_DIR:${java.io.tmpdir}/smms-task-files}
+    # 结果保留时长（小时），过期后任务与文件被清理
+    retain-hours: ${SMMS_TASK_RETAIN_HOURS:24}
+    core-pool-size: ${SMMS_TASK_CORE_POOL:2}
+    max-pool-size: ${SMMS_TASK_MAX_POOL:4}
+    queue-capacity: ${SMMS_TASK_QUEUE_CAPACITY:50}
 
 management:
   endpoints:

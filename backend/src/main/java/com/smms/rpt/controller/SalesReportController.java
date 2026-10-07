@@ -6,6 +6,9 @@ import com.smms.common.api.ApiResponse;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.task.AsyncTaskService;
+import com.smms.common.task.AsyncTaskVO;
+import com.smms.common.task.TaskParams;
 import com.smms.rpt.dto.DrillOrderQuery;
 import com.smms.rpt.dto.DrillOrderRow;
 import com.smms.rpt.dto.ReportRange;
@@ -14,19 +17,15 @@ import com.smms.rpt.dto.SalesReportVO;
 import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.ReportExcelService;
 import com.smms.rpt.service.SalesReportService;
+import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,8 +44,7 @@ import static com.smms.rpt.service.ReportExcelService.text;
 @RequiredArgsConstructor
 public class SalesReportController {
 
-    private static final MediaType XLSX =
-            new MediaType("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    private static final String BIZ_EXPORT = "SALES_REPORT_EXPORT";
 
     private static final String[] COLUMNS = {
             "日期/分组", "单数", "件数", "销售额", "优惠额", "净销售额", "退货额", "退货单数",
@@ -56,6 +54,7 @@ public class SalesReportController {
     private final SalesReportService salesReportService;
     private final DrillDownService drillDownService;
     private final ReportExcelService excelService;
+    private final AsyncTaskService taskService;
 
     /** 销售日报/月报（①） */
     @GetMapping("/daily")
@@ -139,62 +138,66 @@ public class SalesReportController {
         return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }
 
-    /** 销售报表导出（FR-RPT-08）：view=daily|pay-method|hour|cashier|counter|member-ratio */
+    /** 销售报表导出（FR-RPT-08）：view=daily|pay-method|hour|cashier|counter|member-ratio。后台异步生成 */
     @GetMapping("/export")
     @RequirePerm("sys:rpt:sales")
     @OpLog(module = "统计报表", action = "导出销售报表", target = "#view")
-    public ResponseEntity<byte[]> export(
+    public ApiResponse<AsyncTaskVO> export(
             @RequestParam(defaultValue = "daily") String view,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "false") boolean monthly) {
-        ReportRange range = new ReportRange(beginDate, endDate);
-        String sheet = "销售报表";
-        List<String[]> rows = new ArrayList<>();
-        if ("daily".equals(view)) {
-            sheet = monthly ? "销售月报" : "销售日报";
-            SalesReportVO vo = salesReportService.daily(range, monthly, SecurityUtils.getLoginUser());
-            for (SalesReportRow r : vo.rows()) {
-                rows.add(line(monthly ? r.groupKey() : text(r.bizDate()), r));
-            }
-            if (vo.total() != null) {
-                rows.add(line("合计", vo.total()));
-            }
-        } else {
-            List<SalesReportRow> list = switch (view) {
-                case "pay-method" -> {
-                    sheet = "收款方式汇总";
-                    yield salesReportService.byPayMethod(range, SecurityUtils.getLoginUser());
-                }
-                case "hour" -> {
-                    sheet = "时段分布";
-                    yield salesReportService.byHour(range, SecurityUtils.getLoginUser());
-                }
-                case "cashier" -> {
-                    sheet = "收银员业绩";
-                    yield salesReportService.byCashier(range, SecurityUtils.getLoginUser());
-                }
-                case "counter" -> {
-                    sheet = "收银台业绩";
-                    yield salesReportService.byCounter(range, SecurityUtils.getLoginUser());
-                }
-                case "member-ratio" -> {
-                    sheet = "会员单占比";
-                    yield salesReportService.memberRatio(range, SecurityUtils.getLoginUser());
-                }
-                default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "导出视图不合法");
-            };
-            for (SalesReportRow r : list) {
-                rows.add(line(r.groupKey(), r));
-            }
-        }
-        excelService.checkLimit(rows.size());
-        return xlsx(excelService.build(new ReportExcelService.Table(sheet, COLUMNS, rows)),
-                "sales-" + view + ".xlsx");
+        return ApiResponse.ok(taskService.submitExport(BIZ_EXPORT, "销售报表导出",
+                TaskParams.of("view", view, "beginDate", beginDate, "endDate", endDate, "monthly", monthly),
+                ctx -> {
+                    LoginUser user = ctx.user();
+                    ReportRange range = new ReportRange(beginDate, endDate);
+                    String sheet = "销售报表";
+                    List<String[]> rows = new ArrayList<>();
+                    if ("daily".equals(view)) {
+                        sheet = monthly ? "销售月报" : "销售日报";
+                        SalesReportVO vo = salesReportService.daily(range, monthly, user);
+                        for (SalesReportRow r : vo.rows()) {
+                            rows.add(line(monthly ? r.groupKey() : text(r.bizDate()), r));
+                        }
+                        if (vo.total() != null) {
+                            rows.add(line("合计", vo.total()));
+                        }
+                    } else {
+                        List<SalesReportRow> list = switch (view) {
+                            case "pay-method" -> {
+                                sheet = "收款方式汇总";
+                                yield salesReportService.byPayMethod(range, user);
+                            }
+                            case "hour" -> {
+                                sheet = "时段分布";
+                                yield salesReportService.byHour(range, user);
+                            }
+                            case "cashier" -> {
+                                sheet = "收银员业绩";
+                                yield salesReportService.byCashier(range, user);
+                            }
+                            case "counter" -> {
+                                sheet = "收银台业绩";
+                                yield salesReportService.byCounter(range, user);
+                            }
+                            case "member-ratio" -> {
+                                sheet = "会员单占比";
+                                yield salesReportService.memberRatio(range, user);
+                            }
+                            default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "导出视图不合法");
+                        };
+                        for (SalesReportRow r : list) {
+                            rows.add(line(r.groupKey(), r));
+                        }
+                    }
+                    excelService.checkLimit(rows.size());
+                    ctx.fileName("sales-" + view + ".xlsx");
+                    return excelService.build(new ReportExcelService.Table(sheet, COLUMNS, rows));
+                }));
     }
 
-    private String[] line(String group, SalesReportRow r) {
-        return new String[]{
+    private String[] line(String group, SalesReportRow r) {        return new String[]{
                 group,
                 String.valueOf(r.orderCount()),
                 text(r.itemCount()),
@@ -210,13 +213,5 @@ public class SalesReportController {
                 amount(r.avgOrderAmount()),
                 percent(r.shareRate())
         };
-    }
-
-    private ResponseEntity<byte[]> xlsx(byte[] body, String filename) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(XLSX);
-        headers.setContentDisposition(ContentDisposition.attachment()
-                .filename(filename, StandardCharsets.UTF_8).build());
-        return ResponseEntity.ok().headers(headers).body(body);
     }
 }

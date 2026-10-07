@@ -1,5 +1,6 @@
 import { ElMessage } from 'element-plus'
 import { http } from './request'
+import { runExportTask, runImportTask } from './task'
 import type { PageResult } from './request'
 
 // ---------- 分类管理（FR-CAT-01~06） ----------
@@ -180,7 +181,8 @@ export function deleteGoods(id: number) {
 
 /** 清单导出（FR-GOODS-12）：与列表同一筛选条件，返回 xlsx blob */
 export function exportGoods(params: Omit<GoodsListQuery, 'page' | 'size'>) {
-  return http.download('/goods/export', params)
+  // 异步任务：提交后轮询进度，完成后返回结果文件（FR-GOODS-12）
+  return runExportTask('/goods/export', params)
 }
 
 /** 商品档案完整记录（详情接口内嵌，含列表没有的 remark/image 等） */
@@ -434,7 +436,8 @@ export function validateGoodsImport(file: File, onProgress?: (percent: number) =
 
 /** 确认提交：单事务内仅导入校验通过的行，失败行返回明细供修正重传 */
 export function commitGoodsImport(file: File, onProgress?: (percent: number) => void) {
-  return http.upload<GoodsImportResultVO>('/goods/import/commit', file, 'file', onProgress)
+  // 异步任务：上传后后台单事务导入，轮询完成后返回导入结果
+  return runImportTask<GoodsImportResultVO>('/goods/import/commit', file, onProgress)
 }
 
 /** 失败行导出：重新上传同一文件，返回仅含失败行的 xlsx（末列附失败原因，修正后可直接重传） */

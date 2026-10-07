@@ -150,7 +150,15 @@ public enum ErrorCode {
     PUR_RETURN_LINE_INVALID(1821, "退货明细不合法：超出可退数量或不属于原采购单（FR-PUR-08）"),
     PUR_RETURN_REASON_REQUIRED(1822, "退货原因不能为空（FR-PUR-08）"),
     PUR_RETURN_STATUS_INVALID(1823, "采购退货单当前状态不允许该操作"),
-    PUR_SUGGEST_NO_SUPPLIER(1831, "所选商品缺少默认供应商，无法生成采购单（FR-PUR-02）");
+    PUR_SUGGEST_NO_SUPPLIER(1831, "所选商品缺少默认供应商，无法生成采购单（FR-PUR-02）"),
+
+    // ---------- TASK 异步任务（1900 ~ 1999，2026-10 新增：重导出/导入后台执行） ----------
+    TASK_NOT_FOUND(1901, "任务不存在或已过期"),
+    TASK_NOT_OWNER(1902, "仅任务提交人可查看或下载结果"),
+    TASK_NOT_FINISHED(1903, "任务尚未完成，请稍后重试"),
+    TASK_QUEUE_FULL(1904, "当前后台任务较多，请稍后重试"),
+    TASK_FILE_MISSING(1905, "任务结果已过期或被清理，请重新提交"),
+    TASK_UPLOAD_MISSING(1906, "导入文件缺失或为空，请重新上传");
 
     private final int code;
     private final String message;

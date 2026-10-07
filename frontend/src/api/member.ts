@@ -1,4 +1,5 @@
 import { http } from './request'
+import { runImportTask } from './task'
 import type { PageResult } from './request'
 
 // ---------- 会员档案（FR-MEM-01~04，07/08） ----------
@@ -245,5 +246,6 @@ export function validateMemberImport(file: File) {
 
 /** 确认提交：单事务内仅导入通过行，失败行返回明细供修正重传 */
 export function commitMemberImport(file: File) {
-  return http.upload<MemberImportResultVO>('/members/import/commit', file)
+  // 异步任务：上传后后台单事务导入，轮询完成后返回导入结果
+  return runImportTask<MemberImportResultVO>('/members/import/commit', file)
 }

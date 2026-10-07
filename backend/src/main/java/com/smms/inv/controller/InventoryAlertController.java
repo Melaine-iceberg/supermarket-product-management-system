@@ -3,23 +3,23 @@ package com.smms.inv.controller;
 import com.smms.common.annotation.OpLog;
 import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
+import com.smms.common.task.AsyncTaskService;
+import com.smms.common.task.AsyncTaskVO;
+import com.smms.common.task.TaskParams;
 import com.smms.inv.dto.AlertPageVO;
 import com.smms.inv.dto.AlertQuery;
 import com.smms.inv.dto.AlertSummaryVO;
 import com.smms.inv.service.InventoryAlertExcelService;
 import com.smms.inv.service.InventoryService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -32,10 +32,8 @@ import java.time.format.DateTimeFormatter;
 @RequiredArgsConstructor
 public class InventoryAlertController {
 
-    private static final MediaType XLSX =
-            new MediaType("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-
     private final InventoryService inventoryService;
+    private final AsyncTaskService taskService;
     private final InventoryAlertExcelService alertExcelService;
 
     /** 预警分页（FR-INV-05）：默认每页 20 条，默认按缺口量降序（最紧急优先） */
@@ -70,23 +68,21 @@ public class InventoryAlertController {
     @GetMapping("/export")
     @RequirePerm("sys:inv-warning:export")
     @OpLog(module = "库存管理", action = "导出预警清单")
-    public ResponseEntity<byte[]> export(
+    public ApiResponse<AsyncTaskVO> export(
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String goodsCode,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) String alertType,
             @RequestParam(required = false) String sortBy,
             @RequestParam(required = false) String sortDir) {
-        AlertQuery query = new AlertQuery(name, goodsCode, categoryId, alertType, 1, 20, sortBy, sortDir);
-        String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        return xlsx(alertExcelService.export(query), "inventory-alert-" + ts + ".xlsx");
-    }
-
-    private ResponseEntity<byte[]> xlsx(byte[] body, String filename) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(XLSX);
-        headers.setContentDisposition(ContentDisposition.attachment()
-                .filename(filename, StandardCharsets.UTF_8).build());
-        return ResponseEntity.ok().headers(headers).body(body);
+        Map<String, Object> params = TaskParams.of("name", name, "goodsCode", goodsCode,
+                "categoryId", categoryId, "alertType", alertType, "sortBy", sortBy, "sortDir", sortDir);
+        return ApiResponse.ok(taskService.submitExport("INVENTORY_ALERT_EXPORT", "库存预警清单", params,
+                ctx -> {
+                    AlertQuery query = new AlertQuery(name, goodsCode, categoryId, alertType, 1, 20, sortBy, sortDir);
+                    ctx.progress(50, "正在生成库存预警清单");
+                    ctx.fileName("inventory-alert-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx");
+                    return alertExcelService.export(query);
+                }));
     }
 }

@@ -1,4 +1,5 @@
 import { http } from './request'
+import { runExportTask } from './task'
 import type { PageResult } from './request'
 
 // ---------- 盘点管理（FR-INV-07~09，§2.2.4 状态机） ----------
@@ -384,7 +385,8 @@ export function pageAlerts(params: AlertQuery) {
 
 /** 预警清单导出（FR-INV-05）：与列表同一筛选条件，返回 xlsx blob */
 export function exportAlerts(params: Omit<AlertQuery, 'page' | 'size'>) {
-  return http.download('/inventory/alerts/export', params)
+  // 异步任务：提交后轮询进度，完成后返回结果文件（FR-INV-05）
+  return runExportTask('/inventory/alerts/export', params)
 }
 
 // ---------- 库存体检（FR-INV-11，白盒校验 BR-INV-08） ----------

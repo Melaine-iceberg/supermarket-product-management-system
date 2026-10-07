@@ -4,6 +4,9 @@ import com.smms.common.annotation.OpLog;
 import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
 import com.smms.common.api.PageVO;
+import com.smms.common.task.AsyncTaskService;
+import com.smms.common.task.AsyncTaskVO;
+import com.smms.common.task.TaskParams;
 import com.smms.sys.entity.OperationLog;
 import com.smms.sys.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 操作日志接口（FR-SYS-08）：查询与导出；日志只增不改不删。
@@ -30,6 +34,7 @@ import java.util.List;
 public class OperationLogController {
 
     private final OperationLogService operationLogService;
+    private final AsyncTaskService taskService;
 
     @GetMapping
     @RequirePerm("sys:oplog:list")
@@ -56,17 +61,20 @@ public class OperationLogController {
     @GetMapping("/export")
     @RequirePerm("sys:oplog:export")
     @OpLog(module = "系统管理", action = "导出操作日志")
-    public ResponseEntity<byte[]> export(
+    public ApiResponse<AsyncTaskVO> export(
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String module,
             @RequestParam(required = false) Integer result,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        String csv = operationLogService.exportCsv(username, module, result, beginDate, endDate);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(new MediaType("text", "csv", StandardCharsets.UTF_8));
-        headers.setContentDisposition(ContentDisposition.attachment()
-                .filename("operation-logs.csv", StandardCharsets.UTF_8).build());
-        return ResponseEntity.ok().headers(headers).body(csv.getBytes(StandardCharsets.UTF_8));
+        Map<String, Object> params = TaskParams.of("username", username, "module", module, "result", result,
+                "beginDate", beginDate, "endDate", endDate);
+        return ApiResponse.ok(taskService.submitExport("OPERATION_LOG_EXPORT", "操作日志", params,
+                ctx -> {
+                    ctx.progress(50, "正在导出操作日志");
+                    ctx.fileName("operation-logs.csv");
+                    return operationLogService.exportCsv(username, module, result, beginDate, endDate)
+                            .getBytes(StandardCharsets.UTF_8);
+                }));
     }
 }

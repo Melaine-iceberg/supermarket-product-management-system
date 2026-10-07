@@ -1,4 +1,5 @@
-import { http, saveBlob } from './request'
+import { http } from './request'
+import { runExportTask } from './task'
 import type { PageResult } from './request'
 
 // =====================================================================
@@ -124,9 +125,9 @@ export function fetchSalesMemberRatio(range: ReportRange) {
 
 /** 销售报表导出（FR-RPT-08）：view=daily|pay-method|hour|cashier|counter|member-ratio */
 export function exportSalesReport(view: string, range: ReportRange, monthly = false) {
-  return http
-    .download('/report/sales/export', { view, ...range, monthly })
-    .then((blob) => saveBlob(blob, `sales-${view}.xlsx`))
+  return runExportTask('/report/sales/export', { view, ...range, monthly }, {
+    autoSave: `sales-${view}.xlsx`,
+  }).then(() => undefined)
 }
 
 // =====================================================================
@@ -212,9 +213,9 @@ export function exportGoodsReport(
   range: ReportRange,
   extra?: { orderBy?: string; threshold?: number; categoryId?: number },
 ) {
-  return http
-    .download('/report/goods/export', { view, ...range, ...extra })
-    .then((blob) => saveBlob(blob, `goods-${view}.xlsx`))
+  return runExportTask('/report/goods/export', { view, ...range, ...extra }, {
+    autoSave: `goods-${view}.xlsx`,
+  }).then(() => undefined)
 }
 
 // =====================================================================
@@ -353,9 +354,9 @@ export function exportInventoryReport(
   range: ReportRange,
   extra?: { alertType?: string; categoryId?: number },
 ) {
-  return http
-    .download('/report/inventory/export', { view, ...range, ...extra })
-    .then((blob) => saveBlob(blob, `inventory-${view}.xlsx`))
+  return runExportTask('/report/inventory/export', { view, ...range, ...extra }, {
+    autoSave: `inventory-${view}.xlsx`,
+  }).then(() => undefined)
 }
 
 // =====================================================================
@@ -405,9 +406,9 @@ export function fetchNegativeProfit(range: ReportRange) {
 
 /** 毛利分析导出（FR-RPT-08） */
 export function exportProfitReport(view: string, range: ReportRange, extra?: { categoryId?: number }) {
-  return http
-    .download('/report/profit/export', { view, ...range, ...extra })
-    .then((blob) => saveBlob(blob, `profit-${view}.xlsx`))
+  return runExportTask('/report/profit/export', { view, ...range, ...extra }, {
+    autoSave: `profit-${view}.xlsx`,
+  }).then(() => undefined)
 }
 
 // =====================================================================
@@ -480,9 +481,9 @@ export function exportPurchaseReport(
   range: ReportRange,
   extra?: { goodsId?: number },
 ) {
-  return http
-    .download('/report/purchase/export', { view, ...range, ...extra })
-    .then((blob) => saveBlob(blob, `purchase-${view}.xlsx`))
+  return runExportTask('/report/purchase/export', { view, ...range, ...extra }, {
+    autoSave: `purchase-${view}.xlsx`,
+  }).then(() => undefined)
 }
 
 // =====================================================================
@@ -555,9 +556,9 @@ export function exportMemberReport(
   range: ReportRange,
   extra?: { topN?: number; days?: number; scope?: string },
 ) {
-  return http
-    .download('/report/member/export', { view, ...range, ...extra })
-    .then((blob) => saveBlob(blob, `member-${view}.xlsx`))
+  return runExportTask('/report/member/export', { view, ...range, ...extra }, {
+    autoSave: `member-${view}.xlsx`,
+  }).then(() => undefined)
 }
 
 // =====================================================================

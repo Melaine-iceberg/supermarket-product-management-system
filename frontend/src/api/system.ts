@@ -1,4 +1,5 @@
 import { http, TOKEN_KEY } from './request'
+import { runExportTask } from './task'
 import type { PageResult } from './request'
 import type { MenuNode } from './auth'
 
@@ -233,7 +234,8 @@ export function exportOpLogs(params: {
   beginDate?: string
   endDate?: string
 }) {
-  return http.download('/oplogs/export', params)
+  // 异步任务：提交后轮询进度，完成后返回结果文件
+  return runExportTask('/oplogs/export', params)
 }
 
 // ---------- 登录日志（FR-SYS-01） ----------
