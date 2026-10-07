@@ -163,6 +163,11 @@
     </select>
 
     <!-- 按时段（小时）分布：排班分析用，按结算时间取小时 -->
+    <!-- 按小时汇总（FR-RPT-01③）
+         注：ORDER BY/GROUP BY 直接使用 SELECT 中的聚合表达式（而非 HOUR(so.sale_time)），
+         避免 MySQL 8 默认 sql_mode=only_full_group_by 下报
+         “Expression #1 of SELECT list is not in GROUP BY clause”。
+         同时显式补全 timeRangeLabel（SalesGroupRow 参数按列序映射）。 -->
     <select id="selectByHour" resultType="com.smms.rpt.dto.SalesGroupRow">
         SELECT CAST(HOUR(so.sale_time) AS CHAR) AS groupKey,
                NULL AS bizDate,
@@ -177,8 +182,8 @@
                NULL AS returnCount
         FROM sales_order so
         WHERE so.business_date BETWEEN #{begin} AND #{end}
-        GROUP BY HOUR(so.sale_time)
-        ORDER BY HOUR(so.sale_time)
+        GROUP BY CAST(HOUR(so.sale_time) AS CHAR)
+        ORDER BY CAST(HOUR(so.sale_time) AS CHAR)
     </select>
 
     <!-- 按收银员业绩汇总（销售侧） -->
@@ -271,10 +276,11 @@
                COALESCE(SUM(soi.amount), 0)     AS salesAmount,
                COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
                COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
-               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
-               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
                NULL AS refundAmount,
+               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
                NULL AS returnCostAmount,
+               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               NULL AS profitRate,
                NULL AS shareRate,
                NULL AS stockQty,
                NULL AS costPrice,
@@ -296,11 +302,11 @@
 
     <!-- 品类销售结构（各分类销售额与占比，饼图/矩形树图；毛利分析分类维度复用） -->
     <select id="selectCategoryStructure" resultType="com.smms.rpt.dto.GoodsRankRow">
-        SELECT c.id                            AS categoryId,
-               c.name                          AS categoryName,
-               NULL AS goodsId,
+        SELECT NULL AS goodsId,
                NULL AS goodsCode,
                NULL AS goodsName,
+               c.id                            AS categoryId,
+               c.name                          AS categoryName,
                NULL AS brandId,
                NULL AS brandName,
                COUNT(DISTINCT soi.order_id)     AS orderCount,
@@ -308,10 +314,11 @@
                COALESCE(SUM(soi.amount), 0)     AS salesAmount,
                COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
                COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
-               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
-               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
                NULL AS refundAmount,
+               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
                NULL AS returnCostAmount,
+               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               NULL AS profitRate,
                NULL AS shareRate,
                NULL AS stockQty,
                NULL AS costPrice,
@@ -328,22 +335,23 @@
 
     <!-- 品牌销售分析 -->
     <select id="selectBrandSales" resultType="com.smms.rpt.dto.GoodsRankRow">
-        SELECT b.id                            AS brandId,
-               b.name                          AS brandName,
-               NULL AS goodsId,
+        SELECT NULL AS goodsId,
                NULL AS goodsCode,
                NULL AS goodsName,
                NULL AS categoryId,
                NULL AS categoryName,
+               b.id                            AS brandId,
+               b.name                          AS brandName,
                COUNT(DISTINCT soi.order_id)     AS orderCount,
                COALESCE(SUM(soi.quantity), 0)  AS qty,
                COALESCE(SUM(soi.amount), 0)     AS salesAmount,
                COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
                COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
-               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
-               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
                NULL AS refundAmount,
+               COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
                NULL AS returnCostAmount,
+               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               NULL AS profitRate,
                NULL AS shareRate,
                NULL AS stockQty,
                NULL AS costPrice,
@@ -389,10 +397,11 @@
                NULL AS salesAmount,
                NULL AS discountAmount,
                NULL AS netSalesAmount,
-               NULL AS costAmount,
-               NULL AS profitAmount,
                NULL AS refundAmount,
+               NULL AS costAmount,
                NULL AS returnCostAmount,
+               NULL AS profitAmount,
+               NULL AS profitRate,
                NULL AS shareRate,
                i.quantity                      AS stockQty,
                i.cost_price                    AS costPrice,

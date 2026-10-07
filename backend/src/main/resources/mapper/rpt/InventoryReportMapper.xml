@@ -17,10 +17,11 @@
 
     <!-- 库存汇总表（商品维度）：结存/成本单价/库存成本金额/零售价值/库存状态（FR-INV-05 状态口径） -->
     <select id="selectGoodsSummary" resultType="com.smms.rpt.dto.InvSummaryRow">
-        SELECT g.id                            AS goodsId,
+        SELECT NULL                           AS categoryId,
+               c.name                          AS categoryName,
+               g.id                            AS goodsId,
                g.goods_code                    AS goodsCode,
                g.name                          AS goodsName,
-               c.name                          AS categoryName,
                0                               AS goodsCount,
                i.quantity                      AS stockQty,
                i.cost_price                    AS costPrice,
@@ -46,6 +47,9 @@
     <select id="selectCategorySummary" resultType="com.smms.rpt.dto.InvSummaryRow">
         SELECT c.id                            AS categoryId,
                c.name                          AS categoryName,
+               NULL                            AS goodsId,
+               NULL                            AS goodsCode,
+               NULL                            AS goodsName,
                COUNT(i.goods_id)               AS goodsCount,
                COALESCE(SUM(i.quantity), 0)    AS stockQty,
                NULL                            AS costPrice,
@@ -159,10 +163,24 @@
         ORDER BY ir.record_type
     </select>
 
-    <!-- 区间流水金额（期初 = 期末成本 − Σ(变动数量×单位成本)） -->
+    <!-- 区间流水金额（期初 = 期末成本 − Σ(变动数量×单位成本)）
+         注：MyBatis 对 record 采用“按列序”构造器映射，列数必须与 TurnoverRow 参数个数一致，
+         故未参与本查询的字段一律以 NULL 占位（TurnoverRow 紧凑构造器会把 null 归一为 0）。 -->
     <select id="selectFlowAmountByGoods" resultType="com.smms.rpt.dto.TurnoverRow">
         SELECT ir.goods_id AS goodsId,
-               COALESCE(SUM(ir.change_qty * ir.unit_cost), 0) AS flowAmount
+               NULL AS goodsCode,
+               NULL AS goodsName,
+               NULL AS categoryId,
+               NULL AS categoryName,
+               NULL AS stockQty,
+               NULL AS costAmount,
+               NULL AS beginAmount,
+               NULL AS avgAmount,
+               NULL AS saleCostAmount,
+               NULL AS returnCostAmount,
+               COALESCE(SUM(ir.change_qty * ir.unit_cost), 0) AS flowAmount,
+               NULL AS turnoverRate,
+               NULL AS turnoverDays
         FROM inventory_record ir
         WHERE ir.operate_time &gt;= #{beginTime} AND ir.operate_time &lt; #{endTime}
         GROUP BY ir.goods_id
@@ -171,7 +189,19 @@
     <!-- 区间销售成本（按商品） -->
     <select id="selectSaleCostByGoods" resultType="com.smms.rpt.dto.TurnoverRow">
         SELECT soi.goods_id AS goodsId,
-               COALESCE(SUM(soi.cost_amount), 0) AS saleCostAmount
+               NULL AS goodsCode,
+               NULL AS goodsName,
+               NULL AS categoryId,
+               NULL AS categoryName,
+               NULL AS stockQty,
+               NULL AS costAmount,
+               NULL AS beginAmount,
+               NULL AS avgAmount,
+               COALESCE(SUM(soi.cost_amount), 0) AS saleCostAmount,
+               NULL AS returnCostAmount,
+               NULL AS flowAmount,
+               NULL AS turnoverRate,
+               NULL AS turnoverDays
         FROM sales_order_item soi
         JOIN sales_order so ON so.id = soi.order_id
         WHERE so.business_date BETWEEN #{begin} AND #{end}
@@ -182,7 +212,19 @@
     <!-- 区间退货成本回冲（按商品） -->
     <select id="selectReturnCostByGoods" resultType="com.smms.rpt.dto.TurnoverRow">
         SELECT roi.goods_id AS goodsId,
-               COALESCE(SUM(roi.cost_amount), 0) AS returnCostAmount
+               NULL AS goodsCode,
+               NULL AS goodsName,
+               NULL AS categoryId,
+               NULL AS categoryName,
+               NULL AS stockQty,
+               NULL AS costAmount,
+               NULL AS beginAmount,
+               NULL AS avgAmount,
+               NULL AS saleCostAmount,
+               COALESCE(SUM(roi.cost_amount), 0) AS returnCostAmount,
+               NULL AS flowAmount,
+               NULL AS turnoverRate,
+               NULL AS turnoverDays
         FROM return_order_item roi
         JOIN return_order ro ON ro.id = roi.return_id
         WHERE ro.business_date BETWEEN #{begin} AND #{end}
@@ -190,7 +232,7 @@
         GROUP BY roi.goods_id
     </select>
 
-    <!-- 周转率商品维度分页：当前结存成本（期初/期末由此推算） -->
+    <!-- 周转率商品维度分页：当前结存成本（期初/期末、周转率与天数由服务层补齐） -->
     <select id="selectTurnoverPage" resultType="com.smms.rpt.dto.TurnoverRow">
         SELECT g.id         AS goodsId,
                g.goods_code AS goodsCode,
@@ -198,7 +240,14 @@
                g.category_id AS categoryId,
                c.name       AS categoryName,
                COALESCE(i.quantity, 0)      AS stockQty,
-               COALESCE(i.cost_amount, 0)   AS costAmount
+               COALESCE(i.cost_amount, 0)   AS costAmount,
+               NULL AS beginAmount,
+               NULL AS avgAmount,
+               NULL AS saleCostAmount,
+               NULL AS returnCostAmount,
+               NULL AS flowAmount,
+               NULL AS turnoverRate,
+               NULL AS turnoverDays
         FROM goods g
         JOIN inventory i ON i.goods_id = g.id
         LEFT JOIN category c ON c.id = g.category_id

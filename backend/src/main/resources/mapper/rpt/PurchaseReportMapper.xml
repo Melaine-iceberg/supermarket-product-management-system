@@ -21,7 +21,8 @@
                COALESCE(MAX(r.returnQty), 0)       AS returnQty,
                COALESCE(MAX(r.returnAmount), 0)    AS returnAmount,
                COALESCE(SUM(CASE WHEN po.settle_status = 'SETTLED' THEN poi.amount ELSE 0 END), 0) AS settledAmount,
-               COALESCE(SUM(CASE WHEN po.settle_status = 'PARTIAL' THEN poi.amount ELSE 0 END), 0) AS partialSettledAmount
+               COALESCE(SUM(CASE WHEN po.settle_status = 'PARTIAL' THEN poi.amount ELSE 0 END), 0) AS partialSettledAmount,
+               NULL                                AS shareRate
         FROM purchase_order po
         JOIN supplier s ON s.id = po.supplier_id
         JOIN purchase_order_item poi ON poi.order_id = po.id
@@ -53,7 +54,8 @@
                COALESCE(MAX(r.returnQty), 0)       AS returnQty,
                COALESCE(MAX(r.returnAmount), 0)    AS returnAmount,
                COALESCE(SUM(CASE WHEN po.settle_status = 'SETTLED' THEN poi.amount ELSE 0 END), 0) AS settledAmount,
-               COALESCE(SUM(CASE WHEN po.settle_status = 'PARTIAL' THEN poi.amount ELSE 0 END), 0) AS partialSettledAmount
+               COALESCE(SUM(CASE WHEN po.settle_status = 'PARTIAL' THEN poi.amount ELSE 0 END), 0) AS partialSettledAmount,
+               NULL                                AS shareRate
         FROM purchase_order po
         JOIN purchase_order_item poi ON poi.order_id = po.id
         JOIN goods g ON g.id = poi.goods_id
@@ -98,7 +100,8 @@
         SELECT po.supplier_id AS supplierId,
                s.name         AS supplierName,
                COUNT(*)       AS receiptCount,
-               COALESCE(SUM(CASE WHEN DATE(ro.receipt_time) &lt;= po.expect_date THEN 1 ELSE 0 END), 0) AS onTimeCount
+               COALESCE(SUM(CASE WHEN DATE(ro.receipt_time) &lt;= po.expect_date THEN 1 ELSE 0 END), 0) AS onTimeCount,
+               NULL           AS onTimeRate
         FROM receipt_order ro
         JOIN purchase_order po ON po.id = ro.purchase_order_id
         JOIN supplier s ON s.id = po.supplier_id

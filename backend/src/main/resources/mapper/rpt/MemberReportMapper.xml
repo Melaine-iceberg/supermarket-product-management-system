@@ -19,15 +19,32 @@
                NULL            AS bizDate,
                NULL            AS newCount,
                NULL            AS cumulativeCount,
-               NULL            AS memberCount
+               NULL            AS memberCount,
+               NULL            AS sleepingDays
         FROM member m
         JOIN member_level ml ON ml.id = m.level_id
     </sql>
 
-    <!-- 每日新增会员（增长趋势，FR-RPT-07①） -->
+    <!-- 每日新增会员（增长趋势，FR-RPT-07①）
+         注：MyBatis 对 record 采用“按列序”构造器映射，列数必须与 MemberRptRow 参数个数一致，
+         故未参与本查询的字段一律以 NULL 占位。 -->
     <select id="selectDailyNewMembers" resultType="com.smms.rpt.dto.MemberRptRow">
-        SELECT DATE(m.register_time)          AS bizDate,
-               COUNT(*)                       AS newCount
+        SELECT NULL                           AS id,
+               NULL                           AS memberNo,
+               NULL                           AS name,
+               NULL                           AS phone,
+               NULL                           AS levelName,
+               NULL                           AS points,
+               NULL                           AS totalConsume,
+               NULL                           AS consumeTimes,
+               NULL                           AS lastConsumeTime,
+               NULL                           AS registerTime,
+               NULL                           AS birthday,
+               DATE(m.register_time)          AS bizDate,
+               COUNT(*)                       AS newCount,
+               NULL                           AS cumulativeCount,
+               NULL                           AS memberCount,
+               NULL                           AS sleepingDays
         FROM member m
         WHERE m.register_time &gt;= #{beginTime} AND m.register_time &lt; #{endTime}
         GROUP BY DATE(m.register_time)
@@ -49,8 +66,21 @@
     <!-- 会员等级分布（FR-RPT-07③） -->
     <select id="selectLevelDistribution" resultType="com.smms.rpt.dto.MemberRptRow">
         SELECT ml.id   AS id,
+               NULL    AS memberNo,
+               NULL    AS name,
+               NULL    AS phone,
                ml.name AS levelName,
-               COUNT(m.id) AS memberCount
+               NULL    AS points,
+               NULL    AS totalConsume,
+               NULL    AS consumeTimes,
+               NULL    AS lastConsumeTime,
+               NULL    AS registerTime,
+               NULL    AS birthday,
+               NULL    AS bizDate,
+               NULL    AS newCount,
+               NULL    AS cumulativeCount,
+               COUNT(m.id) AS memberCount,
+               NULL    AS sleepingDays
         FROM member_level ml
         LEFT JOIN member m ON m.level_id = ml.id AND m.status = 1
         WHERE ml.status = 1
