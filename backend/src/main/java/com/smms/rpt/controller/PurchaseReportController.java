@@ -99,7 +99,7 @@ public class PurchaseReportController {
     @GetMapping("/price-trend")
     @RequirePerm("sys:rpt:purchase")
     public ApiResponse<List<PriceTrendRow>> priceTrend(
-            @RequestParam Long goodsId,
+            @RequestParam(required = false) Long goodsId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ApiResponse.ok(purchaseReportService.priceTrend(

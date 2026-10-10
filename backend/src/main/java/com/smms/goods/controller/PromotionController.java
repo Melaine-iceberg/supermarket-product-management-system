@@ -49,10 +49,13 @@ public class PromotionController {
         return ApiResponse.ok();
     }
 
-    /** 按商品查询促销记录（开始时间倒序） */
+    /** 按商品查询促销记录（开始时间倒序）；未传 goodsId 时返回空列表，避免空参 500 */
     @GetMapping
     @RequirePerm("sys:goods:list")
-    public ApiResponse<List<Promotion>> listByGoods(@RequestParam Long goodsId) {
+    public ApiResponse<List<Promotion>> listByGoods(@RequestParam(required = false) Long goodsId) {
+        if (goodsId == null) {
+            return ApiResponse.ok(List.of());
+        }
         return ApiResponse.ok(promotionService.listByGoods(goodsId));
     }
 }

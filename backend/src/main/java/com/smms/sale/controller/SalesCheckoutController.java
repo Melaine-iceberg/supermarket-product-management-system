@@ -42,17 +42,19 @@ public class SalesCheckoutController {
         return ApiResponse.ok(checkoutService.checkout(cmd, cashier));
     }
 
-    /** 收银台会员检索（FR-SALE-05）：手机号/会员编号/姓名 */
+    /** 收银台会员检索（FR-SALE-05）：手机号/会员编号/姓名；关键词为空返回空列表 */
     @GetMapping("/members")
     @RequirePerm("sys:cashier:enter")
-    public ApiResponse<List<MemberSearchVO>> searchMembers(@RequestParam String keyword) {
+    public ApiResponse<List<MemberSearchVO>> searchMembers(
+            @RequestParam(required = false) String keyword) {
         return ApiResponse.ok(checkoutService.searchMembers(keyword));
     }
 
-    /** 收银台商品检索（FR-SALE-02）：条码/编码/PLU 精确 + 名称/拼音首字母模糊 */
+    /** 收银台商品检索（FR-SALE-02）：条码/编码/PLU 精确 + 名称/拼音首字母模糊；关键词为空返回空列表 */
     @GetMapping("/cashier/goods")
     @RequirePerm("sys:cashier:enter")
-    public ApiResponse<List<CashierGoodsVO>> searchCashierGoods(@RequestParam String keyword) {
+    public ApiResponse<List<CashierGoodsVO>> searchCashierGoods(
+            @RequestParam(required = false) String keyword) {
         return ApiResponse.ok(checkoutService.searchCashierGoods(keyword));
     }
 }

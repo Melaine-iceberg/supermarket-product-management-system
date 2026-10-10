@@ -7,7 +7,10 @@
          触发范围 = 缺货（结存<=0）或预警（0<结存<=下限），口径与库存预警一致（FR-INV-05）；
          近 N 日销量取 SALE_OUT 流水合计（在途量与日均在服务端参与公式计算）；
          默认供应商：优先 is_default=1，其次最早维护的供货关系；
-         最近采购价：最近一次入库实收单价 -->
+         最近采购价：最近一次入库实收单价。
+         注意：select 列顺序必须与 SuggestItemVO 记录构造参数顺序完全一致（MyBatis 按列序做
+         构造器自动映射）；其中 avgDailySales/leadTimeDays/suggestQty/calcBasis/supplierName
+         由服务端 fillComputed 按其公式（BR-INV-07）统一回填，此处仅占位以保证列数对齐。 -->
     <sql id="suggestSelect">
         SELECT
             g.id                  AS goodsId,
@@ -21,21 +24,32 @@
             CASE WHEN COALESCE(inv.quantity, 0) &lt;= 0 THEN 'OUT' ELSE 'WARNING' END AS suggestType,
             COALESCE(inv.quantity, 0)    AS quantity,
             g.safety_stock_lower  AS safetyStockLower,
-            COALESCE((SELECT SUM(ir.change_qty)
+            <!-- SALE_OUT 流水的 change_qty 为负数（出库），销量取正：-SUM -->
+            -COALESCE((SELECT SUM(ir.change_qty)
                         FROM inventory_record ir
                        WHERE ir.goods_id = g.id
                          AND ir.record_type = 'SALE_OUT'
                          AND ir.operate_time &gt;= DATE_SUB(NOW(), INTERVAL #{days} DAY)), 0) AS soldQty,
+            <!-- 占位，服务端回填：日均销量 = soldQty / N -->
+            CAST(NULL AS DECIMAL(18, 3))  AS avgDailySales,
             COALESCE((SELECT SUM(poi.quantity - poi.received_qty)
                         FROM purchase_order_item poi
                         JOIN purchase_order po ON po.id = poi.order_id
                        WHERE poi.goods_id = g.id
                          AND po.status IN ('APPROVED', 'PARTIAL')), 0) AS onWayQty,
+            <!-- 占位，服务端回填：默认供应商提前期，缺省取系统参数 -->
+            CAST(NULL AS SIGNED)          AS leadTimeDays,
+            <!-- 占位，服务端回填：建议采购量 -->
+            CAST(NULL AS DECIMAL(18, 3))  AS suggestQty,
+            <!-- 占位，服务端回填：计算依据文案 -->
+            CAST(NULL AS CHAR(1))         AS calcBasis,
             (SELECT sg.supplier_id
                FROM supplier_goods sg
               WHERE sg.goods_id = g.id
               ORDER BY sg.is_default DESC, sg.id ASC
               LIMIT 1)           AS supplierId,
+            <!-- 占位，服务端回填：默认供应商名称 -->
+            CAST(NULL AS CHAR(1))         AS supplierName,
             (SELECT sg.supply_price
                FROM supplier_goods sg
               WHERE sg.goods_id = g.id

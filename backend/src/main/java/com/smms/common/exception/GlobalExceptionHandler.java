@@ -7,7 +7,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -62,6 +64,18 @@ public class GlobalExceptionHandler {
         String message = fieldError != null
                 ? fieldError.getDefaultMessage()
                 : ErrorCode.PARAM_INVALID.getMessage();
+        return ApiResponse.fail(ErrorCode.PARAM_INVALID, message);
+    }
+
+    /** 缺少必需查询参数或参数类型/格式非法：返回 400 参数不合法，而非 500 系统繁忙 */
+    @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleMissingOrMismatchParam(Exception e) {
+        String message = e instanceof MissingServletRequestParameterException m
+                ? "缺少必需参数：" + m.getParameterName()
+                : "参数格式不合法" + (e instanceof MethodArgumentTypeMismatchException t
+                        ? "：" + t.getName() : "");
+        log.warn("参数异常: {}", message);
         return ApiResponse.fail(ErrorCode.PARAM_INVALID, message);
     }
 

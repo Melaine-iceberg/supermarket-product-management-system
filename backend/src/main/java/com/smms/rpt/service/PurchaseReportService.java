@@ -61,6 +61,10 @@ public class PurchaseReportService {
 
     /** 采购价格波动分析（③）：同商品多次采购单价趋势 */
     public List<PriceTrendRow> priceTrend(Long goodsId, ReportRange range, LoginUser user) {
+        // 未选商品时返回空序列，由前端提示“请选择商品”，避免空参进入 SQL 触发 500
+        if (goodsId == null) {
+            return List.of();
+        }
         LocalDateTime beginTime = range.beginDate().atStartOfDay();
         LocalDateTime endTime = range.endDate().plusDays(1).atStartOfDay();
         return mapper.selectPriceTrend(goodsId, beginTime, endTime);

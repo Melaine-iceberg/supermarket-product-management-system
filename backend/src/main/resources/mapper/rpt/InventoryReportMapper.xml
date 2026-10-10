@@ -113,7 +113,7 @@
                CASE
                    WHEN COALESCE(i.quantity, 0) &lt;= g.safety_stock_lower THEN
                        CEIL(g.safety_stock_lower * #{suggestK}
-                            + COALESCE((SELECT SUM(ir.change_qty) / #{avgDays}
+                            - COALESCE((SELECT SUM(ir.change_qty) / #{avgDays}
                                           FROM inventory_record ir
                                          WHERE ir.goods_id = g.id
                                            AND ir.record_type = 'SALE_OUT'
