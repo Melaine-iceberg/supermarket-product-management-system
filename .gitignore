@@ -16,6 +16,9 @@ dist/
 application-local.yaml
 *.pem
 
+#### 数据库转储（本地备份，不入库）####
+db/backup/
+
 #### 日志与临时文件 ####
 logs/
 *.log
