@@ -70,8 +70,8 @@ const quickLinks = computed(() => {
           <el-descriptions :column="2" border>
             <el-descriptions-item label="系统名称">超市商品管理系统（SMMS）</el-descriptions-item>
             <el-descriptions-item label="版本">v0.1.0 · 全模块交付（系统 / 商品 / 库存 / 采购 / 销售 / 会员 / 报表）</el-descriptions-item>
-            <el-descriptions-item label="技术栈">Vue 3 + Element Plus / Spring Boot 4 + MyBatis-Plus</el-descriptions-item>
-            <el-descriptions-item label="接口规范">RESTful /api/v1 · JWT Bearer 认证</el-descriptions-item>
+            <el-descriptions-item label="技术栈">前端 Vue 3 + Element Plus；后端 Spring Boot 4 + MyBatis-Plus</el-descriptions-item>
+            <el-descriptions-item label="接口规范">RESTful 风格（/api/v1），JWT Bearer 认证</el-descriptions-item>
           </el-descriptions>
           <el-alert
             class="tip"

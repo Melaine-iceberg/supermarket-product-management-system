@@ -125,7 +125,7 @@ onMounted(load)
         <el-table-column label="首字母" width="90">
           <template #default="{ row }">{{ row.firstLetter || '—' }}</template>
         </el-table-column>
-        <el-table-column label="Logo" width="90">
+        <el-table-column label="品牌标识" width="90">
           <template #default="{ row }">{{ row.logo ? '已设置' : '—' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100">
@@ -162,7 +162,7 @@ onMounted(load)
         <el-form-item label="首字母" prop="firstLetter">
           <el-input v-model="form.firstLetter" maxlength="2" placeholder="拼音首字母，选填" />
         </el-form-item>
-        <el-form-item label="Logo 路径">
+        <el-form-item label="标识图片路径">
           <el-input v-model="form.logo" maxlength="255" placeholder="图片相对路径，选填" />
         </el-form-item>
         <el-form-item label="状态">

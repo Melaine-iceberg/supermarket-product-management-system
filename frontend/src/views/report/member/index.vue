@@ -237,7 +237,7 @@ async function handlePrint() {
   } else if (view.value === 'consumption-ranking') {
     await printSheet({
       title,
-      meta: [...meta, `TOP ${topN.value}`],
+      meta: [...meta, `前 ${topN.value} 名`],
       columns: CONSUME_COLUMNS,
       rows: rankingRows.value,
     })
@@ -347,7 +347,7 @@ onMounted(load)
             </el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="view === 'consumption-ranking'" label="TOP N">
+        <el-form-item v-if="view === 'consumption-ranking'" label="取前 N 名">
           <el-input-number v-model="topN" :min="5" :max="100" :step="5" style="width: 100px" @change="load" />
         </el-form-item>
         <el-form-item v-if="view === 'sleeping'" label="沉睡天数">

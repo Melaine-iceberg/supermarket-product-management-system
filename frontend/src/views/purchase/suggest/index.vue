@@ -47,6 +47,10 @@ async function load() {
     })
     list.value = data.list
     total.value = data.total
+  } catch {
+    // 请求失败时清空列表并保留错误提示（由 request 拦截器弹出），避免误显示为“暂无数据”
+    list.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }

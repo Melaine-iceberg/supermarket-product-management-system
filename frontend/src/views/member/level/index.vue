@@ -22,6 +22,12 @@ function money(v: number | null | undefined) {
 
 const canUpdate = () => auth.hasPerm('sys:mem-level:update')
 
+// 操作人展示：种子/系统内置数据写入的 'system' 显示为“系统”，避免中文界面出现英文
+function operatorName(v: string | null | undefined) {
+  if (!v) return '—'
+  return v === 'system' ? '系统' : v
+}
+
 // ---------- 列表（FR-MEM-05） ----------
 const loading = ref(false)
 const list = ref<MemberLevelVO[]>([])
@@ -187,7 +193,7 @@ async function toggleStatus(row: MemberLevelVO) {
           <template #default="{ row }">{{ fmtTime(row.updateTime ?? row.createTime) }}</template>
         </el-table-column>
         <el-table-column prop="updateBy" label="更新人" width="100">
-          <template #default="{ row }">{{ row.updateBy ?? row.createBy ?? '—' }}</template>
+          <template #default="{ row }">{{ operatorName(row.updateBy ?? row.createBy) }}</template>
         </el-table-column>
         <el-table-column v-if="canUpdate()" label="操作" width="150" fixed="right" align="center">
           <template #default="{ row }">

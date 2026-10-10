@@ -62,6 +62,18 @@ const VALUE_TYPE_PLACEHOLDER: Record<string, string> = {
   STRING: '文本',
 }
 
+// 类型列的中文标签，避免表格出现 NUMBER / BOOLEAN 等英文枚举
+const VALUE_TYPE_LABEL: Record<string, string> = {
+  NUMBER: '数字',
+  BOOLEAN: '布尔',
+  TIME: '时间',
+  STRING: '文本',
+}
+
+function valueTypeLabel(v: string) {
+  return VALUE_TYPE_LABEL[v] ?? v
+}
+
 function openEdit(row: SysConfigVO) {
   editing.value = row
   form.configValue = row.configValue
@@ -112,7 +124,7 @@ onMounted(load)
           </template>
         </el-table-column>
         <el-table-column label="类型" width="90">
-          <template #default="{ row }">{{ row.valueType }}</template>
+          <template #default="{ row }">{{ valueTypeLabel(row.valueType) }}</template>
         </el-table-column>
         <el-table-column label="说明" min-width="220">
           <template #default="{ row }">{{ row.remark || '—' }}</template>
