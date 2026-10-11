@@ -27,7 +27,12 @@ CREATE TABLE IF NOT EXISTS sys_user (
     username      VARCHAR(30)  NOT NULL COMMENT '用户名（登录账号）',
     password      VARCHAR(100) NOT NULL COMMENT '密码哈希（BCrypt 强度10，BR-SYS-02）',
     real_name     VARCHAR(30)  NOT NULL COMMENT '真实姓名',
+    nickname      VARCHAR(64)  DEFAULT NULL COMMENT '昵称（第三方登录来源，如微信昵称）',
+    avatar        VARCHAR(255) DEFAULT NULL COMMENT '头像URL（第三方登录来源）',
+    wechat_openid VARCHAR(64)  DEFAULT NULL COMMENT '微信 OpenID（同一公众号/应用内唯一）',
+    wechat_unionid VARCHAR(64) DEFAULT NULL COMMENT '微信 UnionID（同一开放平台账号下唯一，可为空）',
     phone         VARCHAR(20)  DEFAULT NULL COMMENT '手机号',
+    email         VARCHAR(100) DEFAULT NULL COMMENT '邮箱（邮箱验证码登录/注册）',
     status        TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1启用 0停用',
     last_login_time DATETIME   DEFAULT NULL COMMENT '最后登录时间',
     fail_count    INT          NOT NULL DEFAULT 0 COMMENT '连续登录失败次数（FR-SYS-01）',
@@ -39,8 +44,31 @@ CREATE TABLE IF NOT EXISTS sys_user (
     update_by     VARCHAR(30)  DEFAULT NULL COMMENT '更新人',
     update_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_username (username)
+    UNIQUE KEY uk_username (username),
+    UNIQUE KEY uk_phone (phone),
+    UNIQUE KEY uk_email (email),
+    UNIQUE KEY uk_wechat_openid (wechat_openid),
+    KEY idx_wechat_unionid (wechat_unionid)
 ) ENGINE = InnoDB COMMENT = '系统用户';
+
+-- 登录验证码表（V1.2）：手机号/邮箱验证码登录与注册（不存明文，一次性消费）
+CREATE TABLE IF NOT EXISTS sys_auth_code (
+    id            BIGINT UNSIGNED AUTO_INCREMENT COMMENT '验证码ID',
+    channel       VARCHAR(10)  NOT NULL COMMENT '发送渠道：SMS短信 / EMAIL邮件',
+    target        VARCHAR(100) NOT NULL COMMENT '接收目标（手机号或邮箱）',
+    code_hash     VARCHAR(100) NOT NULL COMMENT '验证码哈希（BCrypt），不存明文',
+    scene         VARCHAR(20)  NOT NULL COMMENT '使用场景：LOGIN登录 / REGISTER注册 / BIND绑定',
+    used          TINYINT      NOT NULL DEFAULT 0 COMMENT '是否已使用：1是 0否（一次性）',
+    attempt_count INT          NOT NULL DEFAULT 0 COMMENT '已尝试校验次数（防暴力猜解）',
+    request_ip    VARCHAR(45)  DEFAULT NULL COMMENT '发送请求来源IP',
+    expire_time   DATETIME     NOT NULL COMMENT '过期时间',
+    send_time     DATETIME     NOT NULL COMMENT '发送时间',
+    create_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    KEY idx_ac_target (channel, target, create_time),
+    KEY idx_ac_expire (expire_time)
+) ENGINE = InnoDB COMMENT = '登录/注册验证码（不存明文，一次性消费）';
 
 -- 角色表（DR-29）：5 个内置角色不可删除（FR-SYS-04）
 CREATE TABLE IF NOT EXISTS sys_role (

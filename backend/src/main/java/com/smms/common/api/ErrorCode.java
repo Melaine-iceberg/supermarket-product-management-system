@@ -42,6 +42,25 @@ public enum ErrorCode {
     AUTHORIZER_AUTH_FAILED(1112, "授权账号或密码错误"),
     AUTHORIZER_NOT_MANAGER(1113, "授权人须为店长及以上账号（FR-SALE-07/11、FR-PUR-06）"),
 
+    // ---------- 多方式登录（V1.2，1114 ~ 1149） ----------
+    LOGIN_METHOD_DISABLED(1114, "该登录方式当前未开放，请联系管理员"),
+    REGISTER_DISABLED(1115, "自助注册当前未开放，请联系管理员开通账号"),
+    PHONE_INVALID(1116, "手机号格式不正确"),
+    EMAIL_INVALID(1117, "邮箱格式不正确"),
+    PHONE_EXISTS(1118, "该手机号已被其他账号占用"),
+    EMAIL_EXISTS(1119, "该邮箱已被其他账号占用"),
+    CODE_SEND_TOO_FAST(1120, "验证码发送过于频繁，请稍后重试"),
+    CODE_DAILY_LIMIT(1121, "该手机号/邮箱今日验证码发送次数已达上限"),
+    CODE_INVALID(1122, "验证码错误或已失效"),
+    CODE_ATTEMPT_EXCEED(1123, "验证码错误次数过多，本次验证码已作废"),
+    CODE_SEND_FAILED(1130, "验证码发送失败，请稍后重试或改用账号密码登录"),
+    ACCOUNT_NOT_BOUND(1124, "该手机号/邮箱尚未绑定系统账号，请先注册或联系管理员"),
+    ACCOUNT_NOT_BOUND_HINT(1125, "该账号未绑定手机号或邮箱，请用账号密码登录"),
+    WECHAT_NOT_CONFIGURED(1126, "微信登录未配置，请联系管理员"),
+    WECHAT_STATE_INVALID(1127, "微信登录会话已失效，请重新扫码"),
+    WECHAT_AUTH_FAILED(1128, "微信授权失败，请重试"),
+    WECHAT_NOT_BOUND(1129, "该微信尚未绑定系统账号，请联系管理员绑定后再使用微信登录"),
+
     // ---------- CAT 分类模块（1200 ~ 1299，FR-CAT-01 ~ 07） ----------
     CAT_NAME_EXISTS(1201, "同级下已存在同名分类"),
     CAT_LEVEL_EXCEED(1202, "分类层级最多3级"),

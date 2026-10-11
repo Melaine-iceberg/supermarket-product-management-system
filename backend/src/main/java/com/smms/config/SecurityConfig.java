@@ -51,7 +51,11 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/store-name").permitAll()
+                        .requestMatchers("/api/v1/auth/login", "/api/v1/auth/store-name",
+                                // V1.2 多渠道登录：登录页渲染与验证码/注册/微信回调均需免登录访问
+                                "/api/v1/auth/login-methods", "/api/v1/auth/code",
+                                "/api/v1/auth/login-by-code", "/api/v1/auth/wechat/auth-url",
+                                "/api/v1/auth/wechat/login", "/api/v1/auth/register").permitAll()
                         .requestMatchers("/api/v1/ping").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/error").permitAll()

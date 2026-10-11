@@ -12,6 +12,19 @@ const router = createRouter({
       meta: { public: true, title: '登录' },
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/RegisterView.vue'),
+      meta: { public: true, title: '员工注册' },
+    },
+    {
+      // 微信开放平台回调地址（V1.2），需与后端 smms.login.wechat.redirect-uri 一致
+      path: '/auth/wechat/callback',
+      name: 'wechat-callback',
+      component: () => import('@/views/WechatCallbackView.vue'),
+      meta: { public: true, title: '微信登录' },
+    },
+    {
       path: '/',
       component: () => import('@/layouts/MainLayout.vue'),
       children: [

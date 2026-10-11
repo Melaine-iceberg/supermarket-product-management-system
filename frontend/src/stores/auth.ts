@@ -4,7 +4,13 @@ import {
   login as loginApi,
   logout as logoutApi,
   fetchMe,
+  loginByCode as loginByCodeApi,
+  loginByWechat as loginByWechatApi,
+  register as registerApi,
   type LoginForm,
+  type CodeLoginForm,
+  type RegisterForm,
+  type LoginResult,
   type UserInfo,
   type MenuNode,
 } from '@/api/auth'
@@ -24,7 +30,22 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     async login(form: LoginForm) {
-      const result = await loginApi(form)
+      this.applyLoginResult(await loginApi(form))
+    },
+    /** 手机号/邮箱 + 验证码登录（V1.2） */
+    async loginByCode(form: CodeLoginForm) {
+      this.applyLoginResult(await loginByCodeApi(form))
+    },
+    /** 微信扫码回调换取登录态（V1.2） */
+    async loginByWechat(code: string, state: string) {
+      this.applyLoginResult(await loginByWechatApi(code, state))
+    },
+    /** 员工自助注册，注册成功即登录（V1.2） */
+    async register(form: RegisterForm) {
+      this.applyLoginResult(await registerApi(form))
+    },
+    /** 各登录入口共用的写入逻辑：先落 Token，再应用用户信息 */
+    applyLoginResult(result: LoginResult) {
       this.token = result.token
       localStorage.setItem(TOKEN_KEY, result.token)
       this.applyMe(result.user, result.menus, result.mustChangePwd)

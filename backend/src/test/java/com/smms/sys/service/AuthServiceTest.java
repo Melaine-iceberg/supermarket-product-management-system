@@ -8,9 +8,12 @@ import com.smms.security.LoginUser;
 import com.smms.security.UserContextService;
 import com.smms.sys.dto.LoginRequest;
 import com.smms.sys.dto.LoginResponse;
+import com.smms.sys.config.LoginProperties;
 import com.smms.sys.entity.SysUser;
+import com.smms.sys.mapper.SysRoleMapper;
 import com.smms.sys.mapper.SysTokenBlacklistMapper;
 import com.smms.sys.mapper.SysUserMapper;
+import com.smms.sys.mapper.SysUserRoleMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -48,6 +51,10 @@ class AuthServiceTest {
     @Mock
     private SysUserMapper userMapper;
     @Mock
+    private SysUserRoleMapper userRoleMapper;
+    @Mock
+    private SysRoleMapper roleMapper;
+    @Mock
     private SysTokenBlacklistMapper blacklistMapper;
     @Mock
     private JwtTokenService jwtTokenService;
@@ -66,15 +73,22 @@ class AuthServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
+    private AuthCodeService authCodeService;
+    @Mock
+    private WechatAuthService wechatAuthService;
+    @Mock
     private HttpServletRequest request;
+
+    /** 真实配置对象：登录测试只走密码分支，用默认值即可 */
+    private final LoginProperties loginProperties = new LoginProperties();
 
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userMapper, blacklistMapper, jwtTokenService, userContextService,
-                configService, permissionService, loginLogService, operationLogService, loginRateLimiter,
-                passwordEncoder);
+        authService = new AuthService(userMapper, userRoleMapper, roleMapper, blacklistMapper, jwtTokenService,
+                userContextService, configService, permissionService, loginLogService, operationLogService,
+                loginRateLimiter, passwordEncoder, authCodeService, wechatAuthService, loginProperties);
         when(loginRateLimiter.tryAcquire(anyString())).thenReturn(true);
         when(request.getRemoteAddr()).thenReturn("127.0.0.1");
     }

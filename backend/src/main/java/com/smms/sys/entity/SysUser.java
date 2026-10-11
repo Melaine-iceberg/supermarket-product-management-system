@@ -24,7 +24,23 @@ public class SysUser {
 
     private String realName;
 
+    /** 昵称（第三方登录来源，如微信昵称，V1.2） */
+    private String nickname;
+
+    /** 头像URL（第三方登录来源，V1.2） */
+    private String avatar;
+
+    /** 微信 OpenID：同一公众号/应用内唯一（V1.2） */
+    private String wechatOpenid;
+
+    /** 微信 UnionID：同一开放平台账号下唯一，可为空（V1.2） */
+    private String wechatUnionid;
+
+    /** 手机号：可作为登录凭证，全局唯一（V1.2） */
     private String phone;
+
+    /** 邮箱：可作为登录凭证，全局唯一（V1.2） */
+    private String email;
 
     /** 1 启用 0 停用 */
     private Integer status;

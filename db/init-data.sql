@@ -219,7 +219,7 @@ INSERT INTO sys_config (config_name, config_key, config_value, value_type, confi
 ('超市地址',              'store_address',             '',      'STRING', 'basic',     1, 1, '打印页眉', 'system'),
 ('超市电话',              'store_phone',               '',      'STRING', 'basic',     1, 1, '打印页眉', 'system'),
 ('小票纸宽',              'receipt_paper_width',        '58',    'NUMBER', 'basic',     1, 1, '58/80mm（IR-UI-08）', 'system'),
-('导出最大行数',          'export_max_rows',            '50000', 'NUMBER', 'basic',     1, 1, '单次导出上限（FR-RPT-08）', 'system');
+('导出最大行数',          'export_max_rows',            '50000', 'NUMBER', 'basic',     1, 1, '单次导出上限（FR-RPT-08）', 'system'),
 
 -- ---------------------------------------------------------------------
 -- 6. 数据字典（FR-SYS-07）

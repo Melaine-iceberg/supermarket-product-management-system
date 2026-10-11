@@ -32,6 +32,58 @@ mybatis-plus:
     banner: false
 
 smms:
+  # V1.2 多渠道登录开关
+  # ⚠ 启用 phone/email 前必须接入真实短信/邮件通道（实现 AuthCodeSender 接口），
+  #   否则验证码只会写入后端日志，线上等于无人能收到
+  login:
+    password: true          # 用户名密码登录（兼容旧账号，建议始终保留）
+    phone: true             # 手机号 + 短信验证码
+    email: true             # 邮箱 + 邮件验证码
+    register: true          # 员工自助注册（注册即用）
+    default-role-id: 5      # 自助注册默认角色ID，必须与 db/init-data.sql 的 sys_role.id 一致
+                            # 1超级管理员 2店长 3采购员 4库管员 5收银员——自注册默认给权限最小的收银员
+    code-expire-minutes: 5
+    code-interval-seconds: 60
+    code-daily-limit: 10    # 同一手机号/邮箱 24 小时内最多发送条数
+    code-max-attempts: 5    # 单条验证码最多校验失败次数，超出作废
+    # 仅本地联调可置 true：把验证码直接放在接口响应里，避免每次翻日志
+    expose-code-in-response: false
+    wechat:
+      enabled: false        # 需微信开放平台 AppID/AppSecret 与已备案回调域名
+      app-id: ""
+      app-secret: ""        # 可用 SMMS_LOGIN_WECHAT_APP_SECRET 覆盖（勿写 ${WECHAT_APP_SECRET:}：命名不统一易漏配）
+      redirect-uri: ""
+      scope: snsapi_login
+
+  # V1.3 验证码外发通道（短信/邮件真正发出去的能力）
+  # provider 取 log 时仅打日志不外发（开发/演示模式）；取 aliyun / smtp 时必须
+  # 把凭证配齐，否则自动回退到日志模式并在启动日志中告警。
+  # 全部字段都可用环境变量覆盖，便于容器化部署，例如：
+  #   SMMS_CODE_SMS_PROVIDER=aliyun  SMMS_CODE_SMS_ALIYUN_ACCESS_KEY_ID=xxx
+  #   SMMS_CODE_EMAIL_PROVIDER=smtp   SMMS_CODE_EMAIL_SMTP_HOST=smtp.qq.com
+  code:
+    sms:
+      provider: ${SMMS_CODE_SMS_PROVIDER:log}   # log | aliyun
+      aliyun:
+        access-key-id: ${SMMS_CODE_SMS_ALIYUN_ACCESS_KEY_ID:}
+        access-key-secret: ${SMMS_CODE_SMS_ALIYUN_ACCESS_KEY_SECRET:}
+        sign-name: ${SMMS_CODE_SMS_ALIYUN_SIGN_NAME:}                  # 已报备的短信签名，如“好又多超市”
+        template-code-login: ${SMMS_CODE_SMS_ALIYUN_TEMPLATE_LOGIN:}   # 登录用模板，变量名必须是 code
+        template-code-register: ${SMMS_CODE_SMS_ALIYUN_TEMPLATE_REGISTER:}  # 可留空，留空则注册也走登录模板
+        endpoint: ${SMMS_CODE_SMS_ALIYUN_ENDPOINT:dysmsapi.aliyuncs.com}
+        timeout-ms: ${SMMS_CODE_SMS_ALIYUN_TIMEOUT_MS:5000}
+    email:
+      provider: ${SMMS_CODE_EMAIL_PROVIDER:log}  # log | smtp
+      smtp:
+        host: ${SMMS_CODE_EMAIL_SMTP_HOST:}        # smtp.qq.com / smtp.163.com / smtp.exmail.qq.com ...
+        port: ${SMMS_CODE_EMAIL_SMTP_PORT:465}
+        username: ${SMMS_CODE_EMAIL_SMTP_USERNAME:}   # 通常是完整邮箱地址
+        password: ${SMMS_CODE_EMAIL_SMTP_PASSWORD:}   # ⚠ 是“授权码”不是登录密码
+        from: ${SMMS_CODE_EMAIL_SMTP_FROM:}           # 留空则用 username；可写“好又多超市 <noreply@x.com>”
+        from-name: ${SMMS_CODE_EMAIL_SMTP_FROM_NAME:好又多超市}
+        ssl-enabled: ${SMMS_CODE_EMAIL_SMTP_SSL:true}            # true→465 隐式 SSL；false→587 STARTTLS
+        starttls-enabled: ${SMMS_CODE_EMAIL_SMTP_STARTTLS:false}
+        timeout-ms: ${SMMS_CODE_EMAIL_SMTP_TIMEOUT_MS:10000}
   # JWT 密钥（IR-SW-03：HS256，长度≥32字节；生产环境必须通过环境变量覆盖）
   jwt:
     secret: ${SMMS_JWT_SECRET:dev-only-smms-jwt-secret-please-override-in-production}

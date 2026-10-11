@@ -52,6 +52,9 @@ dependencies {
     // 汉字转拼音（FR-SALE-02 收银拼音首字母检索，BSD）
     implementation 'com.belerweb:pinyin4j:2.5.1'
 
+    // 邮件验证码发送（V1.3 多渠道登录）：标准 SMTP，一套代码覆盖 QQ/163/企业邮/Gmail/Outlook
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+
     // 数据库驱动
     runtimeOnly 'com.mysql:mysql-connector-j'
 
