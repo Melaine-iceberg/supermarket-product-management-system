@@ -42,7 +42,7 @@ const ESCAPES: Record<string, string> = {
 }
 
 /** 业务文本（商品名/供应商名/备注）写入打印 HTML 前必须转义 */
-export function esc(v: unknown): string {
+export function esc(v: string | number | boolean | null | undefined): string {
   if (v == null) return ''
   return String(v).replace(/[&<>"']/g, (c) => ESCAPES[c] as string)
 }
@@ -64,7 +64,7 @@ export function pPercent(v: number | string | null | undefined): string {
   return v == null || v === '' ? '—' : `${Number(v).toFixed(2)}%`
 }
 
-export function pText(v: unknown): string {
+export function pText(v: string | number | boolean | null | undefined): string {
   return v == null || v === '' ? '—' : String(v)
 }
 

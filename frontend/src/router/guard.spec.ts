@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import type { AuthState, GuardTarget } from './guard'
 import { resolveNavigation } from './guard'
 
@@ -24,9 +24,9 @@ describe('resolveNavigation 路由守卫', () => {
   describe('① 公开页面（meta.public）', () => {
     it('未登录可访问公开页', async () => {
       const auth = stubAuth()
-      await expect(resolveNavigation(auth, target('login', '/login', { public: true }))).resolves.toBe(
-        true,
-      )
+      await expect(
+        resolveNavigation(auth, target('login', '/login', { public: true })),
+      ).resolves.toBe(true)
       // 公开页不得触发 refreshMe，避免登录页无谓请求
       expect(auth.refreshMe).not.toHaveBeenCalled()
     })

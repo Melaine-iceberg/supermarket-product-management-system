@@ -1,2 +1,13 @@
 allowBuilds:
-  '@parcel/watcher': set this to true or false
+  # sass 的原生文件监听器，仅在 sass --watch 时需要；构建/开发不使用，跳过其构建脚本
+  '@parcel/watcher': false
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.1.0
+  vite-plus: 1.1.0
+overrides:
+  vite@*: 'catalog:'
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: '*'

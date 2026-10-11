@@ -68,7 +68,7 @@ instance.interceptors.response.use(
 function forceLogout() {
   if (router.currentRoute.value.name !== 'login') {
     localStorage.removeItem(TOKEN_KEY)
-    router.push({ name: 'login' })
+    void router.push({ name: 'login' })
   }
 }
 
