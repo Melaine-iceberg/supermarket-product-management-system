@@ -3,6 +3,7 @@ package com.smms.sale.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.sale.dto.HoldCreateCommand;
 import com.smms.sale.dto.HoldDetailVO;
 import com.smms.sale.dto.HoldOrderVO;
@@ -61,7 +62,7 @@ public class HoldOrderService {
         List<HoldDetailVO.Item> items = new ArrayList<>();
         int itemCount = 0;
         BigDecimal amount = BigDecimal.ZERO;
-        for (HoldCreateCommand.HoldItem item : cmd.items()) {
+        for (HoldCreateCommand.HoldItem item : ItemRows.rejectNullRows(cmd.items(), "挂单明细")) {
             items.add(toSnapshot(item));
             itemCount += item.isWeighed() == 1 ? 1 : item.quantity().intValue();
             BigDecimal unit = item.overridePrice() != null ? item.overridePrice() : item.retailPrice();

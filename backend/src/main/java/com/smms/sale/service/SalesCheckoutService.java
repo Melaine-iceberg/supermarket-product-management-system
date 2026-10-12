@@ -3,6 +3,7 @@ package com.smms.sale.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.common.util.MaskUtils;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Promotion;
@@ -107,7 +108,7 @@ public class SalesCheckoutService {
         }
 
         // 1. 明细基础校验（BR-SALE-01：同商品一行、数量精度）
-        validateItems(cmd.items());
+        validateItems(ItemRows.rejectNullRows(cmd.items(), "结算明细"));
 
         // 2. 商品与价格档案（停用商品不可销售，FR-GOODS-05）
         Map<Long, Goods> goodsMap = loadGoods(cmd.items());

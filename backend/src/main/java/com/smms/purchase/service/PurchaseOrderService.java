@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Unit;
 import com.smms.goods.mapper.GoodsMapper;
@@ -320,6 +321,7 @@ public class PurchaseOrderService {
 
     /** 明细构建与校验（BR-PUR-03）：数量>0、单价≥0、行数≤200、商品有效且启用、同商品仅一行 */
     private List<PurchaseOrderItem> buildItems(List<PurchaseSaveRequest.ItemRequest> requests) {
+        ItemRows.rejectNullRows(requests, "采购明细");
         if (requests == null || requests.isEmpty() || requests.size() > MAX_ITEMS) {
             throw new BusinessException(ErrorCode.PUR_LINE_INVALID,
                     "采购明细须为 1~200 行（BR-PUR-03）");

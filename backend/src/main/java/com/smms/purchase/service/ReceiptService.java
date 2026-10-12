@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Unit;
 import com.smms.goods.mapper.GoodsMapper;
@@ -173,7 +174,7 @@ public class ReceiptService {
         // 基础校验并构建行
         List<Line> lines = new ArrayList<>();
         Set<Long> seen = new HashSet<>();
-        for (ReceiptCreateRequest.ItemRequest request : req.getItems()) {
+        for (ReceiptCreateRequest.ItemRequest request : ItemRows.rejectNullRows(req.getItems(), "入库明细")) {
             if (!seen.add(request.getPurchaseItemId())) {
                 throw new BusinessException(ErrorCode.PUR_RECEIPT_LINE_INVALID,
                         "入库明细重复：采购明细 " + request.getPurchaseItemId());

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.goods.entity.Category;
 import com.smms.goods.mapper.CategoryMapper;
 import com.smms.purchase.dto.PurchaseOrderDetailVO;
@@ -73,7 +74,7 @@ public class SuggestPurchaseService {
     /** 按默认供应商分组生成草稿采购单；缺供应商或不建议采购的商品进入跳过清单 */
     @Transactional
     public SuggestGenerateResultVO generate(SuggestGenerateRequest req, String operator) {
-        List<Long> goodsIds = req.getItems().stream()
+        List<Long> goodsIds = ItemRows.rejectNullRows(req.getItems(), "建议采购明细").stream()
                 .map(SuggestGenerateRequest.ItemRequest::getGoodsId).distinct().toList();
         Map<Long, SuggestItemVO> suggestMap = fillComputed(suggestMapper
                 .selectSuggestByGoodsIds(goodsIds, suggestDays())).stream()

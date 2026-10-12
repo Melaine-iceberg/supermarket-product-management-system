@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Unit;
 import com.smms.goods.mapper.GoodsMapper;
@@ -102,7 +103,7 @@ public class PurchaseReturnService {
         returnOrder.setRemark(req.getRemark());
 
         List<PurchaseReturnItem> items = new java.util.ArrayList<>();
-        for (PurchaseReturnCreateRequest.ItemRequest request : req.getItems()) {
+        for (PurchaseReturnCreateRequest.ItemRequest request : ItemRows.rejectNullRows(req.getItems(), "采购退货明细")) {
             if (!seen.add(request.getPurchaseItemId())) {
                 throw new BusinessException(ErrorCode.PUR_RETURN_LINE_INVALID,
                         "退货明细重复：采购明细 " + request.getPurchaseItemId());

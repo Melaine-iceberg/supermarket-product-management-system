@@ -2,11 +2,11 @@ package com.smms.purchase.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -30,7 +30,7 @@ public class PurchaseSaveRequest {
 
     /** 明细行数上限 200（BR-PUR-03） */
     @NotEmpty(message = "采购明细不能为空")
-    @Max(value = 200, message = "单张采购单明细最多 200 行（BR-PUR-03）")
+    @Size(max = 200, message = "单张采购单明细最多 200 行（BR-PUR-03）")
     @Valid
     private List<ItemRequest> items;
 

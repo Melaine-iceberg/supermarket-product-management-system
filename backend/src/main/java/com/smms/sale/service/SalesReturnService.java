@@ -27,6 +27,7 @@ import com.smms.sale.mapper.ReturnOrderItemMapper;
 import com.smms.sale.mapper.ReturnOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
+import com.smms.common.util.ItemRows;
 import com.smms.common.util.MaskUtils;
 import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
@@ -158,7 +159,8 @@ public class SalesReturnService {
 
         // 4. 明细校验与退款计算（BR-SALE-06/07）：按原成交单价（含折扣）比例退款
         Map<Long, SalesOrderItem> itemMap = loadOriginalItems(order.getId());
-        List<CalculatedReturn> lines = calculateReturnLines(req.items(), itemMap);
+        List<CalculatedReturn> lines =
+                calculateReturnLines(ItemRows.rejectNullRows(req.items(), "退货明细"), itemMap);
         BigDecimal totalRefund = lines.stream().map(CalculatedReturn::refundAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.mapper.CategoryMapper;
@@ -74,6 +75,7 @@ public class StockCheckService {
      */
     @Transactional
     public CheckOrderVO create(CheckCreateRequest req, String checkerName) {
+        ItemRows.rejectNullRows(req.goodsIds(), "盘点范围商品");
         Scope scope = resolveScope(req);
         List<CheckScopeGoods> goods = itemMapper.selectScopeGoods(
                 scope.type(), scope.categoryIds(), scope.goodsIds());

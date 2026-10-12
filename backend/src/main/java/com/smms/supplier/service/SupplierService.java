@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.util.ItemRows;
 import com.smms.common.util.MaskUtils;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.mapper.GoodsMapper;
@@ -195,8 +196,8 @@ public class SupplierService {
     @Transactional(rollbackFor = Exception.class)
     public void saveGoods(Long supplierId, SupplierGoodsSaveRequest req, String operatorRealName) {
         requireSupplier(supplierId);
-        List<SupplierGoodsSaveRequest.Item> items =
-                req.getItems() == null ? List.of() : req.getItems();
+        List<SupplierGoodsSaveRequest.Item> items = ItemRows.rejectNullRows(
+                req.getItems() == null ? List.of() : req.getItems(), "供货商品明细");
 
         // 商品有效性：存在且清单内不重复
         Set<Long> goodsIds = items.stream()
