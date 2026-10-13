@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
@@ -34,7 +35,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function qty(v: number | null | undefined) {
@@ -337,7 +338,7 @@ async function saveAudit() {
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="orderNo" label="单号" width="150" />
         <el-table-column label="类型" width="76" align="center">
           <template #default="{ row }">
@@ -486,7 +487,7 @@ async function saveAudit() {
           <div class="form-tip tip-break">当前成本快照（登记时服务端重取），审核通过时按实际结转成本定稿</div>
         </el-form-item>
         <el-form-item label="金额预览">
-          <span class="cost-preview">￥{{ previewAmount == null ? '—' : previewAmount.toFixed(2) }}</span>
+          <span class="cost-preview">￥{{ money(previewAmount) }}</span>
         </el-form-item>
         <el-form-item label="原因" prop="reason">
           <el-select v-model="form.reason" placeholder="选择原因（数据字典）" style="width: 100%">

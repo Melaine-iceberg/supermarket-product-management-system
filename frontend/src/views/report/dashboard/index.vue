@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
@@ -16,7 +17,7 @@ const chartRef = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function percent(v: number | null | undefined) {

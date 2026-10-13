@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
@@ -42,7 +43,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function statusTag(status: string) {
@@ -762,7 +763,7 @@ onMounted(() => {
             </el-form-item>
           </el-form>
 
-          <el-table v-loading="loading" :data="list" stripe>
+          <el-table v-loading="loading" border :data="list" stripe>
             <el-table-column prop="orderNo" label="单号" width="155" fixed="left" />
             <el-table-column prop="supplierName" label="供应商" min-width="130" show-overflow-tooltip />
             <el-table-column label="状态" width="110" align="center">
@@ -1027,7 +1028,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column label="金额" width="90" align="right">
-          <template #default="{ row }">￥{{ lineAmount(row as EditItem).toFixed(2) }}</template>
+          <template #default="{ row }">￥{{ money(lineAmount(row as EditItem)) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="70" align="center">
           <template #default="{ $index }">
@@ -1037,7 +1038,7 @@ onMounted(() => {
       </el-table>
       <div class="items-footer">
         <el-button type="primary" plain @click="openGoodsPicker">+ 添加商品</el-button>
-        <span>合计：￥{{ totalAmount.toFixed(2) }}</span>
+        <span>合计：￥{{ money(totalAmount) }}</span>
       </div>
 
       <template #footer>
@@ -1131,7 +1132,7 @@ onMounted(() => {
 
     <!-- ==================== 结算登记（FR-PUR-09） ==================== -->
     <el-dialog v-model="settleDialog.visible" :title="`结算登记 ${settleDialog.orderNo}`" width="460px">
-      <el-alert type="info" :closable="false" show-icon :title="`订购 ￥${settleDialog.totalAmount.toFixed(2)}，实收 ￥${settleDialog.receivedAmount.toFixed(2)}，退货 ￥${settleDialog.returnAmount.toFixed(2)}；结算登记仅做标记，不做财务核销`" class="dialog-alert" />
+      <el-alert type="info" :closable="false" show-icon :title="`订购 ￥${money(settleDialog.totalAmount)}，实收 ￥${money(settleDialog.receivedAmount)}，退货 ￥${money(settleDialog.returnAmount)}；结算登记仅做标记，不做财务核销`" class="dialog-alert" />
       <el-form label-width="90px" @submit.prevent>
         <el-form-item label="结算状态" required>
           <el-radio-group v-model="settleDialog.form.settleStatus">

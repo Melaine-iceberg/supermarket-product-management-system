@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { pageInventoryRecords, type InventoryRecordVO } from '@/api/inventory'
 
@@ -20,7 +21,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(4)
+  return v == null ? '—' : moneyText(v, 4)
 }
 
 function qty(v: number | null | undefined) {
@@ -127,7 +128,7 @@ onMounted(load)
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="operateTime" label="变动时间" width="165">
           <template #default="{ row }">{{ fmtTime(row.operateTime) }}</template>
         </el-table-column>

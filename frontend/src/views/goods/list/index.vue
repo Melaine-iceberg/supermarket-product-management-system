@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadRequestOptions } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { saveBlob } from '@/api/request'
+import { useUnsavedGuard } from '@/utils/unsavedGuard'
 import {
   getCategoryTree,
   listBrands,
@@ -181,6 +183,16 @@ const form = reactive({
   image: '',
 })
 
+/** 表单快照：用于未保存离开提醒（IR-UI-07/GAP-P2-25），打开表单时记录、提交成功后无需再比对 */
+const formSnapshot = ref('')
+
+/** 是否存在未保存修改（对话框打开且内容与打开时快照不一致） */
+function formDirty() {
+  return dialogVisible.value && !detailLoading.value && JSON.stringify(form) !== formSnapshot.value
+}
+
+useUnsavedGuard(formDirty, '商品表单尚未保存，离开将丢失当前修改，确认离开？')
+
 /** 表单用分类树：仅启用的叶子分类可选（BR-CAT-04），其余置灰 */
 interface CategoryOption {
   id: number
@@ -346,6 +358,7 @@ function clearImage() {
 function openCreate() {
   resetForm()
   dialogVisible.value = true
+  formSnapshot.value = JSON.stringify(form)
 }
 
 /** 编辑前先拉详情：列表行缺 remark/image，且编辑是全量覆盖（FR-GOODS-02） */
@@ -396,6 +409,7 @@ async function openEdit(row: GoodsListVO) {
         .catch(() => {})
     }
     dialogVisible.value = true
+    formSnapshot.value = JSON.stringify(form)
   } finally {
     detailLoading.value = false
   }
@@ -696,7 +710,7 @@ const reportRows = computed(() => {
 })
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 // ---------- 商品详情（FR-GOODS-04：档案 + 库存成本 + 流水/采购价/销量/供应商） ----------
@@ -977,8 +991,9 @@ async function handleDisablePromotion(promo: PromotionVO) {
       </template>
 
       <el-table
-        ref="tableRef"
+ref="tableRef"
         v-loading="loading"
+        border
         :data="list"
         stripe
         @sort-change="onSortChange"
@@ -995,7 +1010,18 @@ async function handleDisablePromotion(promo: PromotionVO) {
             <div v-if="row.spec" class="goods-spec">{{ row.spec }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="categoryName" label="分类" width="110" />
+        <el-table-column prop="categoryName" label="分类" width="110">
+          <template #default="{ row }">
+            {{ row.categoryName }}
+            <el-tooltip
+              v-if="row.categoryStatus === 0"
+              content="所属分类已停用：不可再被新商品选择，存量商品保留（FR-CAT-04）"
+              placement="top"
+            >
+              <el-tag size="small" type="danger" class="cat-disabled-tag">已停用</el-tag>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column label="品牌" width="100">
           <template #default="{ row }">{{ row.brandName || '—' }}</template>
         </el-table-column>
@@ -1787,6 +1813,10 @@ async function handleDisablePromotion(promo: PromotionVO) {
 
   .goods-name {
     font-weight: 500;
+  }
+
+  .cat-disabled-tag {
+    margin-left: 4px;
   }
 
   .goods-spec {

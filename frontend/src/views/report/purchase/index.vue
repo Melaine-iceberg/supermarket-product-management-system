@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { useRouter } from 'vue-router'
@@ -68,7 +69,7 @@ const trendChartRef = ref<HTMLDivElement>()
 const trendChart = shallowRef<echarts.ECharts>()
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function qty(v: number | null | undefined) {
@@ -397,7 +398,7 @@ onMounted(load)
       <template #header>
         <span>{{ view === 'summary-supplier' ? '采购汇总表（供应商维度）' : '采购汇总表（商品维度）' }}</span>
       </template>
-      <el-table v-loading="loading" :data="summaryRows" stripe>
+      <el-table v-loading="loading" border :data="summaryRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column v-if="view === 'summary-supplier'" prop="supplierName" label="供应商" min-width="160" show-overflow-tooltip />
         <el-table-column v-if="view === 'summary-goods'" prop="goodsCode" label="商品编码" width="120" />
@@ -454,7 +455,7 @@ onMounted(load)
     <!-- 供应商排行 -->
     <el-card v-if="view === 'supplier-ranking'">
       <template #header><span>供应商采购排行</span></template>
-      <el-table v-loading="loading" :data="rankingRows" stripe>
+      <el-table v-loading="loading" border :data="rankingRows" stripe>
         <el-table-column type="index" label="排名" width="60" align="center" />
         <el-table-column prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
         <el-table-column label="单数" prop="orderCount" width="70" align="right" />
@@ -505,7 +506,7 @@ onMounted(load)
       />
       <template v-else>
         <div ref="trendChartRef" class="trend-chart" />
-        <el-table v-loading="loading" :data="priceRows" stripe class="mt-16">
+        <el-table v-loading="loading" border :data="priceRows" stripe class="mt-16">
           <el-table-column type="index" label="#" width="50" align="center" />
           <el-table-column prop="orderNo" label="采购单号" width="160" />
           <el-table-column prop="supplierName" label="供应商" min-width="160" show-overflow-tooltip />
@@ -527,7 +528,7 @@ onMounted(load)
     <!-- 到货及时率 -->
     <el-card v-if="view === 'arrival'">
       <template #header><span>到货及时率统计</span></template>
-      <el-table v-loading="loading" :data="arrivalRows" stripe>
+      <el-table v-loading="loading" border :data="arrivalRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
         <el-table-column label="到货次数" prop="receiptCount" width="100" align="right" />

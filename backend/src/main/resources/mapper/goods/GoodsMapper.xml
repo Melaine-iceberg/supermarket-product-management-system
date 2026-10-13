@@ -13,6 +13,7 @@
             g.name             AS name,
             g.category_id      AS categoryId,
             c.name             AS categoryName,
+            c.status           AS categoryStatus,
             g.brand_id         AS brandId,
             b.name             AS brandName,
             g.unit_id          AS unitId,

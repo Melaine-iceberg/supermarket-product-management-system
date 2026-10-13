@@ -94,7 +94,7 @@ onMounted(load)
           </el-button>
         </div>
       </template>
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="fileName" label="备份文件" min-width="220" show-overflow-tooltip />
         <el-table-column label="大小" width="100">
           <template #default="{ row }">{{ humanSize(row.fileSize) }}</template>

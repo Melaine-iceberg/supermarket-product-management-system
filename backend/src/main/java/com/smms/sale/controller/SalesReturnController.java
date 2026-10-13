@@ -35,10 +35,10 @@ public class SalesReturnController {
 
     private final SalesReturnService salesReturnService;
 
-    /** 办理退货（FR-SALE-10）：返回退货单详情（含明细与退款金额） */
+    /** 办理退货（FR-SALE-10）：返回退货单详情（含明细与退款金额）；操作日志记退货单号（GAP-P2-03） */
     @PostMapping
     @RequirePerm("sys:ret:create")
-    @OpLog(module = "销售管理", action = "办理销售退货")
+    @OpLog(module = "销售管理", action = "办理销售退货", target = "#ret?.data.orderNo")
     public ApiResponse<ReturnOrderDetailVO> create(@Valid @RequestBody ReturnCreateRequest req) {
         return ApiResponse.ok(salesReturnService.createReturn(req, SecurityUtils.getLoginUser()));
     }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
@@ -30,7 +31,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 // ---------- 供应商下拉 ----------
@@ -357,7 +358,7 @@ onMounted(() => {
         </el-form-item>
       </el-form>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="orderNo" label="入库单号" width="155" fixed="left" />
         <el-table-column prop="purchaseOrderNo" label="采购单号" width="155" />
         <el-table-column prop="supplierName" label="供应商" min-width="130" show-overflow-tooltip />

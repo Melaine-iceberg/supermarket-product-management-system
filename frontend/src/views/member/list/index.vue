@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { saveBlob } from '@/api/request'
+import { useUnsavedGuard } from '@/utils/unsavedGuard'
 import {
   BALANCE_CHANGE_MAP,
   POINT_CHANGE_MAP,
@@ -34,7 +36,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 // ---------- 查询（FR-MEM-03） ----------
@@ -121,11 +123,21 @@ const editDialog = reactive({
   },
 })
 
+/** 表单快照：用于未保存离开提醒（IR-UI-07/GAP-P2-25） */
+let editSnapshot = ''
+
+function editDirty() {
+  return editDialog.visible && JSON.stringify(editDialog.form) !== editSnapshot
+}
+
+useUnsavedGuard(editDirty, '会员表单尚未保存，离开将丢失当前修改，确认离开？')
+
 function openCreate() {
   editDialog.editing = false
   editDialog.id = 0
   editDialog.form = { name: '', phone: '', gender: undefined, birthday: null, address: '', remark: '' }
   editDialog.visible = true
+  editSnapshot = JSON.stringify(editDialog.form)
 }
 
 async function openEdit(row: MemberListVO) {
@@ -142,6 +154,7 @@ async function openEdit(row: MemberListVO) {
     remark: detail.remark ?? '',
   }
   editDialog.visible = true
+  editSnapshot = JSON.stringify(editDialog.form)
 }
 
 /** 手机号被脱敏时禁改（无完整手机号查看权限的角色，BR-MEM-08） */
@@ -351,7 +364,7 @@ async function saveRecharge() {
       authorizerPassword: form.authorizerPassword,
       remark: form.remark.trim() || undefined,
     })
-    ElMessage.success(`充值成功，当前余额 ￥${Number(balance).toFixed(2)}`)
+    ElMessage.success(`充值成功，当前余额 ￥${moneyText(balance, 2)}`)
     rechargeDialog.visible = false
     load()
     // 抽屉打开中时同步刷新档案与流水
@@ -473,7 +486,7 @@ async function doDownloadTemplate() {
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="memberNo" label="会员编号" width="120" />
         <el-table-column prop="name" label="姓名" width="100" show-overflow-tooltip />
         <el-table-column prop="phone" label="手机号" width="130" />
@@ -794,7 +807,7 @@ async function doDownloadTemplate() {
                 <el-table-column label="变动金额" width="100" align="right">
                   <template #default="{ row }">
                     <span :class="row.changeAmount >= 0 ? 'plus' : 'minus'">
-                      ￥{{ Number(row.changeAmount).toFixed(2) }}
+                      ￥{{ money(row.changeAmount) }}
                     </span>
                   </template>
                 </el-table-column>

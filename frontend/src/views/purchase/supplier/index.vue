@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -23,7 +24,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 /** 结算方式选项（FR-SYS-07/GAP-P1-09：取自数据字典 settle_type 启用项，字典缺失时回退内置展示） */
@@ -401,7 +402,7 @@ async function saveGoods() {
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="supplierCode" label="编码" width="90" />
         <el-table-column prop="name" label="供应商名称" min-width="160" show-overflow-tooltip />
         <el-table-column prop="contactPerson" label="联系人" width="90">
@@ -623,7 +624,7 @@ async function saveGoods() {
         </el-table-column>
         <el-table-column label="最近供货价" width="90" align="right">
           <template #default="{ row }">
-            {{ row.lastSupplyPrice != null ? Number(row.lastSupplyPrice).toFixed(2) : '—' }}
+            {{ money(row.lastSupplyPrice) }}
           </template>
         </el-table-column>
         <el-table-column label="最近供货" width="150">

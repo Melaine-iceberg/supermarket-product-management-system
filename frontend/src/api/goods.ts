@@ -120,6 +120,8 @@ export interface GoodsListVO {
   name: string
   categoryId: number
   categoryName: string
+  /** 所属分类状态：1 启用 0 停用（FR-CAT-04：停用分类下商品保留并提示） */
+  categoryStatus: number | null
   brandId: number | null
   brandName: string | null
   unitId: number

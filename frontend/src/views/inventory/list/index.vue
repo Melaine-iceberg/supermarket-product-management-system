@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
@@ -25,7 +26,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function qty(v: number | null | undefined) {
@@ -237,7 +238,7 @@ async function saveCategoryThreshold() {
         </div>
       </template>
 
-      <el-table ref="tableRef" v-loading="loading" :data="list" stripe @sort-change="onSortChange">
+      <el-table ref="tableRef" v-loading="loading" border :data="list" stripe @sort-change="onSortChange">
         <el-table-column prop="goodsCode" label="商品编码" width="130" sortable="custom" />
         <el-table-column prop="name" label="商品名称" min-width="170" sortable="custom">
           <template #default="{ row }">

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -114,5 +115,15 @@ public class OperationLogService {
     /** 模块下拉选项（前端筛选用） */
     public List<String> listModules() {
         return logMapper.selectModules();
+    }
+
+    /** 按目标对象（单号等）批量查询操作日志，供单据详情追溯（FR-SALE-09/GAP-P2-03） */
+    public List<OperationLog> listByTargets(Collection<String> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return List.of();
+        }
+        return logMapper.selectList(Wrappers.<OperationLog>lambdaQuery()
+                .in(OperationLog::getTarget, targets)
+                .orderByAsc(OperationLog::getId));
     }
 }

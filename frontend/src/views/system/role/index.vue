@@ -167,7 +167,7 @@ onMounted(load)
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="roleName" label="角色名称" width="140" />
         <el-table-column label="角色代码" width="150">
           <template #default="{ row }">

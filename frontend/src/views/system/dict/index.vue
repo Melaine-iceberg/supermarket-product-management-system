@@ -118,7 +118,7 @@ onMounted(load)
               <el-icon><Plus /></el-icon>新增字典项
             </el-button>
           </div>
-          <el-table v-loading="loading" :data="activeDict?.items || []" stripe>
+          <el-table v-loading="loading" border :data="activeDict?.items || []" stripe>
             <el-table-column prop="label" label="标签" width="160" />
             <el-table-column label="存储值" width="160">
               <template #default="{ row }">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { PageResult } from '@/api/request'
@@ -53,7 +54,7 @@ function openOrder(row: DrillOrderRow) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function fmtTime(v: string | null | undefined) {
@@ -63,7 +64,7 @@ function fmtTime(v: string | null | undefined) {
 
 <template>
   <el-drawer :model-value="modelValue" :title="title" size="70%" @update:model-value="close">
-    <el-table v-loading="loading" :data="rows" stripe size="small">
+    <el-table v-loading="loading" border :data="rows" stripe size="small">
       <el-table-column prop="orderNo" label="销售单号" width="170" />
       <el-table-column prop="cashierName" label="收银员" width="90" />
       <el-table-column label="台号" width="60" align="center">

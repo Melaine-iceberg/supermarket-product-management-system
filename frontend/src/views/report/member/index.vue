@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { useAuthStore } from '@/stores/auth'
@@ -62,7 +63,7 @@ const levelChartRef = ref<HTMLDivElement>()
 const levelChart = shallowRef<echarts.ECharts>()
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function percent(v: number | null | undefined) {
@@ -386,7 +387,7 @@ onMounted(load)
     <el-card v-if="view === 'growth'">
       <template #header><span>会员增长趋势</span></template>
       <div ref="growthChartRef" class="chart" />
-      <el-table v-loading="loading" :data="growthRows" stripe class="mt-16" max-height="300">
+      <el-table v-loading="loading" border :data="growthRows" stripe class="mt-16" max-height="300">
         <el-table-column prop="bizDate" label="日期" width="110">
           <template #default="{ row }">{{ fmtDate(row.bizDate) }}</template>
         </el-table-column>
@@ -398,7 +399,7 @@ onMounted(load)
     <!-- 消费排行 -->
     <el-card v-if="view === 'consumption-ranking'">
       <template #header><span>会员消费排行 TOP {{ topN }}</span></template>
-      <el-table v-loading="loading" :data="rankingRows" stripe>
+      <el-table v-loading="loading" border :data="rankingRows" stripe>
         <el-table-column type="index" label="排名" width="60" align="center" />
         <el-table-column prop="memberNo" label="会员编号" width="120" />
         <el-table-column prop="name" label="姓名" width="100" />
@@ -426,7 +427,7 @@ onMounted(load)
     <el-card v-if="view === 'level-distribution'">
       <template #header><span>会员等级分布</span></template>
       <div ref="levelChartRef" class="chart" />
-      <el-table v-loading="loading" :data="levelRows" stripe class="mt-16">
+      <el-table v-loading="loading" border :data="levelRows" stripe class="mt-16">
         <el-table-column prop="levelName" label="等级" min-width="160" />
         <el-table-column label="会员数" prop="memberCount" width="120" align="right" />
       </el-table>
@@ -471,7 +472,7 @@ onMounted(load)
     <!-- 沉睡会员 -->
     <el-card v-if="view === 'sleeping'">
       <template #header><span>沉睡会员清单（{{ sleepingDays }} 天未消费）</span></template>
-      <el-table v-loading="loading" :data="sleepingRows" stripe>
+      <el-table v-loading="loading" border :data="sleepingRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="memberNo" label="会员编号" width="120" />
         <el-table-column prop="name" label="姓名" width="100" />
@@ -509,7 +510,7 @@ onMounted(load)
       <template #header>
         <span>会员生日提醒（{{ birthdayScope === 'week' ? '未来7天' : '当月' }}）</span>
       </template>
-      <el-table v-loading="loading" :data="birthdayRows" stripe>
+      <el-table v-loading="loading" border :data="birthdayRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="memberNo" label="会员编号" width="120" />
         <el-table-column prop="name" label="姓名" width="120" />

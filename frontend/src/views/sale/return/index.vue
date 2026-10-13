@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -26,7 +27,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 /** 行退款预估（与后端 BR-SALE-06 同口径：实付×数量比，HALF_UP 到分） */
@@ -153,6 +154,8 @@ interface ReturnLine {
   returnedQty: number
   /** 可退数量 */
   available: number
+  /** 商品档案是否允许退货：1 是 0 否；空按允许（BR-SALE-07） */
+  allowReturn: number | null
   selected: boolean
   returnQty: number | null
   remark: string
@@ -226,6 +229,7 @@ async function findOrder() {
           paidAmount: Number(i.paidAmount),
           returnedQty: Number(i.returnedQty),
           available,
+          allowReturn: i.allowReturn ?? null,
           selected: false,
           returnQty: null,
           remark: '',
@@ -257,6 +261,8 @@ const expired = computed(() => {
 })
 
 function onLineCheck(line: ReturnLine, checked: boolean) {
+  // 不允许退货的商品不可勾选（BR-SALE-07/GAP-P2-04）
+  if (line.allowReturn === 0) return
   line.selected = checked
   if (checked && line.returnQty == null) {
     line.returnQty = line.available
@@ -392,7 +398,7 @@ function offerPrintVoucher(d: ReturnOrderDetailVO) {
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="orderNo" label="退货单号" width="170" fixed="left" />
         <el-table-column prop="salesOrderNo" label="原销售单号" width="170" />
         <el-table-column label="会员" width="120" show-overflow-tooltip>
@@ -495,7 +501,15 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
         <el-table :data="createDialog.lines" size="small" border max-height="300">
           <el-table-column label="" width="44" align="center">
             <template #default="{ row }">
+              <el-tooltip
+                v-if="row.allowReturn === 0"
+                content="该商品不支持退货（BR-SALE-07：生鲜/散装等）"
+                placement="top"
+              >
+                <el-checkbox :model-value="false" disabled />
+              </el-tooltip>
               <el-checkbox
+                v-else
                 :model-value="row.selected"
                 @change="(v: boolean | string | number) => onLineCheck(row as ReturnLine, !!v)"
               />
@@ -504,6 +518,7 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
           <el-table-column prop="goodsName" label="商品" min-width="150">
             <template #default="{ row }">
               {{ row.goodsName }}<span v-if="row.barcode" class="muted">（{{ row.barcode }}）</span>
+              <el-tag v-if="row.allowReturn === 0" size="small" type="info" class="no-return-tag">不允许退货</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="成交单价" width="85" align="right">
@@ -520,7 +535,7 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
                 :max="row.available"
                 :precision="3"
                 :controls="false"
-                :disabled="!row.selected"
+                :disabled="!row.selected || row.allowReturn === 0"
                 size="small"
                 style="width: 110px"
               />
@@ -712,6 +727,10 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
 
   .order-desc {
     margin-bottom: 12px;
+  }
+
+  .no-return-tag {
+    margin-left: 6px;
   }
 
   .refund-form {

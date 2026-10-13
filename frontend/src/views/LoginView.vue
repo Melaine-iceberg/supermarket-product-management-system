@@ -74,7 +74,7 @@ async function handleLogin() {
           />
         </el-form-item>
         <el-form-item>
-          <el-checkbox v-model="form.rememberMe">记住我（7 天内免登录）</el-checkbox>
+          <el-checkbox v-model="form.rememberMe">记住我（72 小时内免登录）</el-checkbox>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" class="login-btn" :loading="loading" @click="handleLogin">

@@ -7,6 +7,8 @@ import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.common.util.MaskUtils;
+import com.smms.goods.entity.Goods;
+import com.smms.goods.mapper.GoodsMapper;
 import com.smms.member.entity.Member;
 import com.smms.member.mapper.MemberMapper;
 import com.smms.sale.dto.SalesOrderDetailVO;
@@ -22,16 +24,23 @@ import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.entity.OperationLog;
+import com.smms.sys.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 销售单查询服务（FR-SALE-09）：多条件分页与单据详情
- * （明细快照、收款信息、关联退货记录）。
+ * （明细快照、收款信息、关联退货记录、操作日志）。
  * 数据范围（BR-SALE-09）：收银员仅可查询本人经手的单据，店长/超管可查全部。
  */
 @Service
@@ -46,6 +55,8 @@ public class SalesQueryService {
     private final PaymentRecordMapper paymentRecordMapper;
     private final ReturnOrderMapper returnOrderMapper;
     private final MemberMapper memberMapper;
+    private final GoodsMapper goodsMapper;
+    private final OperationLogService operationLogService;
 
     /** 分页查询（FR-SALE-09）：收银员自动限定本人单据（BR-SALE-09） */
     public PageVO<SalesOrderVO> page(SalesOrderQuery q, LoginUser operator) {
@@ -66,7 +77,7 @@ public class SalesQueryService {
         return PageVO.of(result);
     }
 
-    /** 单据详情（FR-SALE-09）：单头 + 明细快照 + 收款 + 关联退货；收银员仅可看本人单据 */
+    /** 单据详情（FR-SALE-09）：单头 + 明细快照 + 收款 + 关联退货 + 操作日志；收银员仅可看本人单据 */
     public SalesOrderDetailVO detail(Long id, LoginUser operator) {
         SalesOrder order = requireOrderInScope(id, operator);
         List<SalesOrderItem> items = salesOrderItemMapper.selectList(
@@ -83,6 +94,16 @@ public class SalesQueryService {
         String memberPhone = member == null ? null
                 : SecurityUtils.canViewMemberPhone() ? member.getPhone() : MaskUtils.maskPhone(member.getPhone());
 
+        // 商品档案"是否允许退货"（BR-SALE-07/GAP-P2-04：退货界面据此禁用勾选并提示原因；档案已删为空按允许）
+        Map<Long, Goods> goodsMap = loadItemGoods(items);
+        // 操作日志（GAP-P2-03）：按目标对象（销售单号 + 关联退货单号）追溯
+        List<String> logTargets = new ArrayList<>();
+        logTargets.add(order.getOrderNo());
+        returns.forEach(r -> logTargets.add(r.getOrderNo()));
+        List<SalesOrderDetailVO.OpLogVO> opLogs = operationLogService.listByTargets(logTargets).stream()
+                .map(SalesQueryService::toOpLogVO)
+                .toList();
+
         return new SalesOrderDetailVO(
                 order.getId(), order.getOrderNo(), order.getCounterNo(), order.getCashierName(),
                 order.getMemberId(), memberName, memberPhone,
@@ -92,12 +113,13 @@ public class SalesQueryService {
                 order.getChangeAmount(), order.getOrderDiscountRate(), order.getDiscountReason(),
                 order.getCostAmount(), order.getProfitAmount(), order.getReturnStatus(),
                 order.getAuthorizerName(), order.getRemark(),
-                items.stream().map(SalesQueryService::toItemVO).toList(),
+                items.stream().map(i -> toItemVO(i, goodsMap)).toList(),
                 payments.stream().map(p -> new SalesOrderDetailVO.PaymentVO(
                         p.getPayType(), p.getAmount(), p.getPayTime(), p.getOperatorName())).toList(),
                 returns.stream().map(r -> new SalesOrderDetailVO.LinkedReturnVO(
                         r.getId(), r.getOrderNo(), r.getRefundAmount(), r.getReturnReason(),
-                        r.getRefundType(), r.getCashierName(), r.getAuthorizerName(), r.getReturnTime())).toList());
+                        r.getRefundType(), r.getCashierName(), r.getAuthorizerName(), r.getReturnTime())).toList(),
+                opLogs);
     }
 
     static boolean isGlobalSaleRole(LoginUser operator) {
@@ -125,13 +147,31 @@ public class SalesQueryService {
         return order;
     }
 
-    private static SalesOrderDetailVO.ItemVO toItemVO(SalesOrderItem item) {
+    /** 批量加载明细关联商品（仅档案商品；用于退货开关等档案态字段展示） */
+    private Map<Long, Goods> loadItemGoods(List<SalesOrderItem> items) {
+        List<Long> goodsIds = items.stream().map(SalesOrderItem::getGoodsId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (goodsIds.isEmpty()) {
+            return Map.of();
+        }
+        return goodsMapper.selectBatchIds(goodsIds).stream()
+                .collect(Collectors.toMap(Goods::getId, Function.identity()));
+    }
+
+    private static SalesOrderDetailVO.ItemVO toItemVO(SalesOrderItem item, Map<Long, Goods> goodsMap) {
+        Goods goods = item.getGoodsId() == null ? null : goodsMap.get(item.getGoodsId());
         return new SalesOrderDetailVO.ItemVO(
                 item.getId(), item.getGoodsId(), item.getGoodsName(), item.getBarcode(),
                 item.getUnitPrice(), item.getOriginalUnitPrice(), item.getQuantity(),
                 item.getIsWeighed(), item.getNetWeight(),
                 item.getAmount(), item.getDiscountRate(), item.getDiscountAmount(), item.getPaidAmount(),
                 item.getCostPrice(), item.getCostAmount(), item.getProfitAmount(),
-                item.getReturnedQty(), item.getLineType(), item.getRemark(), item.getPriceReason());
+                item.getReturnedQty(), item.getLineType(), item.getRemark(), item.getPriceReason(),
+                goods == null ? null : goods.getAllowReturn());
+    }
+
+    private static SalesOrderDetailVO.OpLogVO toOpLogVO(OperationLog log) {
+        return new SalesOrderDetailVO.OpLogVO(log.getId(), log.getAction(), log.getUsername(),
+                log.getRealName(), log.getResult(), log.getErrorMsg(), log.getOperateTime());
     }
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -28,7 +29,7 @@ import { newRequestToken } from '@/utils/token'
 const auth = useAuthStore()
 
 function money(v: number | null | undefined) {
-  return v == null ? '0.00' : Number(v).toFixed(2)
+  return v == null ? '0.00' : moneyText(v, 2)
 }
 
 // ---------- 购物车明细（FR-SALE-01/03） ----------
@@ -347,6 +348,7 @@ async function clearCart() {
 function resetOrder() {
   cart.value = []
   member.value = null
+  memberDisabledTip.value = false
   orderRateInput.value = null
   discountReasonApplied.value = ''
   orderAuth.username = ''
@@ -361,6 +363,8 @@ const remark = ref('')
 
 // ---------- 会员识别（FR-SALE-05） ----------
 const member = ref<MemberSearchVO | null>(null)
+/** 停用会员常驻提示（BR-MEM-03/GAP-P2-02：提示且不给折扣，按散客继续结算） */
+const memberDisabledTip = ref(false)
 const memberDialog = reactive({ visible: false, keyword: '', loading: false })
 const memberCandidates = ref<MemberSearchVO[]>([])
 
@@ -385,15 +389,15 @@ async function doSearchMembers() {
 }
 
 function pickMember(m: MemberSearchVO) {
-  if (m.status !== 1) {
-    ElMessage.warning('该会员已停用，不享受会员价与折扣（BR-MEM-03）')
-  }
   member.value = m
   memberDialog.visible = false
+  // 停用会员不阻断结算（BR-MEM-03/GAP-P2-02）：常驻提示、不享受折扣与积分，按散客继续
+  memberDisabledTip.value = m.status !== 1
 }
 
 function clearMember() {
   member.value = null
+  memberDisabledTip.value = false
 }
 
 // ---------- 整单折扣与单品改价（FR-SALE-07，店长现场授权） ----------
@@ -682,7 +686,8 @@ async function submitCheckout() {
     }
     const result = await checkout({
       counterNo: counterNo.value,
-      memberId: member.value?.id,
+      // 停用会员不享受折扣与积分（BR-MEM-03），按散客提交；后端亦兜底忽略停用会员
+      memberId: member.value && member.value.status === 1 ? member.value.id : undefined,
       orderDiscountRate: orderRate.value,
       authorizerUsername: needsAuthorizer.value ? orderAuth.username : undefined,
       authorizerPassword: needsAuthorizer.value ? orderAuth.password : undefined,
@@ -711,11 +716,29 @@ async function submitCheckout() {
     payDialog.visible = false
     doneDialog.result = result
     doneDialog.visible = true
-  } catch {
-    // 拦截器已提示（如库存不足/金额不足以后端校验为准）
+  } catch (e) {
+    // 拦截器已提示；库存不足/商品不可售等须在显著位置常驻提示并手动确认（IR-UI-06）
+    showPersistentCheckoutError(e)
   } finally {
     payDialog.submitting = false
   }
+}
+
+/** 需收银员手动确认的结算异常码：库存不足 1401、商品不存在或已停用 1501（IR-UI-06） */
+const PERSISTENT_ERROR_CODES = new Set([1401, 1501])
+
+/** 异常常驻提示：不自动消失，需收银员点击确认（IR-UI-06）；其余错误沿用拦截器轻提示 */
+function showPersistentCheckoutError(e: unknown) {
+  const err = e as { response?: { data?: { code?: number; message?: string } } }
+  const code = err?.response?.data?.code
+  const message = err?.response?.data?.message
+  if (code == null || !PERSISTENT_ERROR_CODES.has(code)) return
+  ElMessageBox.alert(message || '结算失败，请核对商品与库存后重试', '结算异常', {
+    type: 'error',
+    confirmButtonText: '我已确认',
+    closeOnClickModal: false,
+    closeOnPressEscape: false,
+  }).catch(() => undefined)
 }
 
 const doneDialog = reactive({ visible: false, result: null as CheckoutVO | null })
@@ -1101,7 +1124,18 @@ onUnmounted(() => {
               {{ member.levelName }} ｜ 积分 {{ member.points }} ｜ 储值 ￥{{ money(member.balance) }}
               <el-tag v-if="member.status !== 1" size="small" type="danger">已停用</el-tag>
             </div>
-            <div class="member-rate">等级折扣率：{{ Number(member.discountRate).toFixed(2) }}</div>
+            <div v-if="memberDisabledTip" class="member-rate member-disabled">
+              该会员已停用：不享受折扣与积分累计
+            </div>
+            <el-alert
+              v-if="memberDisabledTip"
+              class="member-disabled-alert"
+              type="warning"
+              :closable="false"
+              show-icon
+              title="停用会员按散客结算（BR-MEM-03）：本单无会员优惠、不累计积分"
+            />
+            <div v-else class="member-rate">等级折扣率：{{ Number(member.discountRate).toFixed(2) }}</div>
           </template>
           <template v-else>
             <el-button class="member-btn" size="large" plain @click="openMemberDialog">
@@ -1135,11 +1169,11 @@ onUnmounted(() => {
           <el-divider class="amount-divider" />
           <div class="amount-row">
             <span>实收合计</span>
-            <b>￥{{ money(paidTotal) }}</b>
+            <b class="change-amount">￥{{ money(paidTotal) }}</b>
           </div>
-          <div class="amount-row">
+          <div class="amount-row change-row">
             <span>找零</span>
-            <b v-if="estChange >= 0">￥{{ money(estChange) }}</b>
+            <b v-if="estChange >= 0" class="change-amount">￥{{ money(estChange) }}</b>
             <b v-else class="pay-short">收款不足 ￥{{ money(-estChange) }}</b>
           </div>
           <div class="amount-note">促销价 / 会员价以后端结算取价为准（BR-GOODS-04）</div>
@@ -1484,7 +1518,7 @@ onUnmounted(() => {
         <div class="pay-row"><span>实收合计</span><b>￥{{ money(paidTotal) }}</b></div>
         <div class="pay-row" :class="{ short: estChange < 0 }">
           <span>{{ estChange >= 0 ? '找零（预估）' : '收款不足' }}</span>
-          <b>￥{{ money(Math.abs(estChange)) }}</b>
+          <b :class="{ 'change-amount': estChange >= 0 }">￥{{ money(Math.abs(estChange)) }}</b>
         </div>
       </div>
       <div class="pay-note">实收不得低于应收；实际应收以后端结算取价为准，如有差异以结算结果为准</div>
@@ -1674,6 +1708,11 @@ onUnmounted(() => {
 
       .cart-table {
         height: 100%;
+
+        /* 明细行字号 ≥16px（IR-UI-06 收银台专项，GAP-P2-01） */
+        :deep(.el-table__cell) {
+          font-size: 16px;
+        }
       }
 
       .goods-name {
@@ -1739,6 +1778,15 @@ onUnmounted(() => {
           color: #409eff;
         }
 
+        /* 停用会员常驻提示（BR-MEM-03/GAP-P2-02） */
+        .member-disabled {
+          color: #e6a23c;
+        }
+
+        .member-disabled-alert {
+          margin-top: 8px;
+        }
+
         .member-btn {
           width: 100%;
         }
@@ -1768,9 +1816,24 @@ onUnmounted(() => {
           border-top: 1px dashed #dcdfe6;
           font-size: 16px;
 
+          /* 应收金额 ≥32px 加粗（IR-UI-06 硬指标，GAP-P2-01） */
           b {
             color: #f56c6c;
-            font-size: 22px;
+            font-size: 32px;
+            font-weight: 700;
+          }
+        }
+
+        /* 找零 ≥24px（IR-UI-06 硬指标，GAP-P2-01） */
+        .change-row {
+          .change-amount {
+            font-size: 24px;
+            font-weight: 700;
+            color: #e6a23c;
+          }
+
+          b {
+            font-size: 24px;
           }
         }
 
@@ -1851,9 +1914,18 @@ onUnmounted(() => {
       font-size: 14px;
       color: #606266;
 
+      /* 应收金额 ≥32px 加粗（IR-UI-06 硬指标，GAP-P2-01） */
       .payable {
         color: #f56c6c;
-        font-size: 18px;
+        font-size: 32px;
+        font-weight: 700;
+      }
+
+      /* 找零 ≥24px（IR-UI-06 硬指标，GAP-P2-01） */
+      .change-amount {
+        font-size: 24px;
+        font-weight: 700;
+        color: #e6a23c;
       }
 
       &.short b {

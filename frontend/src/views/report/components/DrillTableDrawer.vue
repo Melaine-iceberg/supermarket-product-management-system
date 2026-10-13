@@ -53,7 +53,7 @@ function display(v: unknown) {
 
 <template>
   <el-drawer :model-value="modelValue" :title="title" :size="size ?? '70%'" @update:model-value="close">
-    <el-table v-loading="loading" :data="rows" stripe size="small">
+    <el-table v-loading="loading" border :data="rows" stripe size="small">
       <el-table-column
         v-for="(col, i) in columns"
         :key="i"

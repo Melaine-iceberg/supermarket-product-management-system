@@ -259,6 +259,13 @@ const router = createRouter({
       meta: { public: true, title: '无权限' },
     },
     {
+      // 网络异常统一错误页（IR-UI-07/GAP-P2-25）：请求层无法连接服务器时跳转，支持重试
+      path: '/network-error',
+      name: 'network-error',
+      component: () => import('@/views/error/NetworkErrorView.vue'),
+      meta: { public: true, title: '网络异常' },
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/views/error/NotFoundView.vue'),

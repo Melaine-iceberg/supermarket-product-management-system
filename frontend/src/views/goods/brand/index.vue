@@ -120,7 +120,7 @@ onMounted(load)
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="name" label="品牌名称" min-width="160" />
         <el-table-column label="首字母" width="90">
           <template #default="{ row }">{{ row.firstLetter || '—' }}</template>

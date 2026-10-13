@@ -9,6 +9,7 @@ import com.smms.sale.dto.HoldOrderVO;
 import com.smms.sale.entity.HoldOrder;
 import com.smms.sale.mapper.HoldOrderMapper;
 import com.smms.security.LoginUser;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -76,9 +77,9 @@ public class HoldOrderService {
         hold.setItemCount(itemCount);
         hold.setAmount(amount.setScale(2, RoundingMode.HALF_UP));
         hold.setOrderRate(cmd.orderRate());
-        hold.setDiscountReason(trimToNull(cmd.discountReason()));
+        hold.setDiscountReason(TextSanitizer.sanitize(trimToNull(cmd.discountReason())));
         hold.setAuthorizerUsername(trimToNull(cmd.authorizerUsername()));
-        hold.setRemark(trimToNull(cmd.remark()));
+        hold.setRemark(TextSanitizer.sanitize(trimToNull(cmd.remark())));
         hold.setHoldTime(LocalDateTime.now());
         hold.setStatus(HoldOrder.STATUS_ACTIVE);
         // 审计字段（DR-C-08/GAP-P2-28）：挂单创建人=收银员

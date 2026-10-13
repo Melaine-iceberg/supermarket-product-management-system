@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -13,7 +14,7 @@ import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
 const auth = useAuthStore()
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 // ==================== 建议采购清单（FR-PUR-02） ====================
@@ -200,7 +201,8 @@ onMounted(() => {
       </el-form>
 
       <el-table
-        v-loading="loading"
+v-loading="loading"
+        border
         :data="list"
         stripe
         @selection-change="onSelectionChange"

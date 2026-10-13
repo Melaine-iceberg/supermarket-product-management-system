@@ -1,4 +1,5 @@
 import { getPrintInfo, type PrintInfoVO } from '@/api/system'
+import { moneyText } from './format'
 
 /**
  * 打印视图（FR-RPT-09、IR-UI-08、IR-HW-02）。
@@ -49,7 +50,7 @@ export function esc(v: unknown): string {
 
 /** 打印用金额：空值渲染 — */
 export function pMoney(v: number | string | null | undefined): string {
-  return v == null || v === '' ? '—' : Number(v).toFixed(2)
+  return v == null || v === '' ? '—' : moneyText(v, 2)
 }
 
 /** 打印用数量：去掉无意义的小数尾零 */

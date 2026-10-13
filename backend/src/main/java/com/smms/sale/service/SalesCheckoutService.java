@@ -39,6 +39,7 @@ import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -147,7 +148,7 @@ public class SalesCheckoutService {
         //    uk_so_token 兜底并发同令牌重放，NFR-REL-02）
         SalesOrder order;
         try {
-            order = insertOrder(cmd, cashier, now, lines, paid, change, authorizerName, requestToken);
+            order = insertOrder(cmd, member, cashier, now, lines, paid, change, authorizerName, requestToken);
         } catch (OrderReplaySignal signal) {
             return replayVO(signal.order);
         }
@@ -353,7 +354,8 @@ public class SalesCheckoutService {
                 .collect(Collectors.toMap(Promotion::getGoodsId, Function.identity(), (a, b) -> a));
     }
 
-    /** 会员上下文：不存在/停用即拒绝（BR-MEM-03：停用会员提示后按散客结算） */
+    /** 会员上下文：不存在即拒绝；停用会员不阻断结算，按散客继续（BR-MEM-03/GAP-P2-02：提示且不给折扣）
+     *  停用会员不享受等级折扣、不关联订单、不计积分与储值联动 */
     private MemberContext resolveMember(Long memberId) {
         if (memberId == null) {
             return new MemberContext(null, BigDecimal.ONE);
@@ -363,7 +365,9 @@ public class SalesCheckoutService {
             throw new BusinessException(ErrorCode.SALE_MEMBER_NOT_FOUND);
         }
         if (member.getStatus() == null || member.getStatus() != 1) {
-            throw new BusinessException(ErrorCode.SALE_MEMBER_DISABLED);
+            log.warn("停用会员按散客结算: memberId={}, memberNo={}（BR-MEM-03）",
+                    member.getId(), member.getMemberNo());
+            return new MemberContext(null, BigDecimal.ONE);
         }
         MemberLevel level = memberLevelMapper.selectById(member.getLevelId());
         BigDecimal rate = level != null && level.getStatus() != null && level.getStatus() == 1
@@ -598,7 +602,7 @@ public class SalesCheckoutService {
     }
 
     /** 销售单落库：唯一键冲突（并发出单）自动换单号重试（BR-SALE-02 全局唯一） */
-    private SalesOrder insertOrder(CheckoutCommand cmd, LoginUser cashier, LocalDateTime now,
+    private SalesOrder insertOrder(CheckoutCommand cmd, MemberContext member, LoginUser cashier, LocalDateTime now,
                                    CalculatedLines lines, BigDecimal paid, BigDecimal change,
                                    String authorizerName, String requestToken) {
         // 件数按落库行计算（无码商品恒为 1 件，FR-SALE-13）
@@ -614,7 +618,8 @@ public class SalesCheckoutService {
         // 关联当前在班班次（FR-SALE-12；未开班时为空，交班统计仅覆盖开班后单据）
         CashierShift workingShift = shiftMapper.selectWorking(cashier.userId());
         order.setShiftId(workingShift == null ? null : workingShift.getId());
-        order.setMemberId(cmd.memberId());
+        // 会员关联仅限有效会员（GAP-P2-02：停用会员按散客继续，不落 memberId）
+        order.setMemberId(member.hasMember() ? member.member().getId() : null);
         order.setSaleTime(now);
         order.setBusinessDate(businessDayService.businessDate(now));
         order.setItemCount(itemCount);
@@ -627,7 +632,7 @@ public class SalesCheckoutService {
         order.setChangeAmount(change);
         order.setOrderDiscountRate(cmd.orderDiscountRate());
         order.setDiscountReason(cmd.discountReason() == null || cmd.discountReason().isBlank()
-                ? null : cmd.discountReason().trim());
+                ? null : TextSanitizer.sanitize(cmd.discountReason().trim()));
         // 成本/毛利快照（BR-SALE-04/BR-RPT-01）：与明细行同公式汇总（行成本四舍五入到分后求和），
         // 供销售日报/看板按头表聚合；毛利 = 应收 − 成本
         BigDecimal costAmount = lines.lines().stream()
@@ -640,7 +645,7 @@ public class SalesCheckoutService {
         // 审计字段（DR-C-08/GAP-P2-28）：经办人/业务发生时间；销售单一经结算不可修改（BR-SALE-08）
         order.setCreateBy(cashier.username());
         order.setCreateTime(now);
-        order.setRemark(cmd.remark());
+        order.setRemark(TextSanitizer.sanitize(cmd.remark()));
         order.setRequestToken(requestToken);
 
         DuplicateKeyException conflict = null;
@@ -722,8 +727,8 @@ public class SalesCheckoutService {
             entity.setProfitAmount(paidAmount.subtract(costAmount));
             entity.setReturnedQty(BigDecimal.ZERO);
             entity.setLineType(line.goodsId() == null ? "TEMP" : "NORMAL");
-            entity.setRemark(line.remark());
-            entity.setPriceReason(line.priceReason());
+            entity.setRemark(TextSanitizer.sanitize(line.remark()));
+            entity.setPriceReason(TextSanitizer.sanitize(line.priceReason()));
             result.add(entity);
         }
         return result;

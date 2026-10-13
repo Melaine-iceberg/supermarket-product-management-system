@@ -64,6 +64,12 @@ instance.interceptors.response.use(
       redirectChangePassword(error.response.data.message)
       return Promise.reject(error)
     }
+    // 网络异常（无法连接服务器）：跳转统一错误页并提供重试（IR-UI-07/GAP-P2-25）；
+    // 超时（ECONNABORTED）按瞬时故障轻提示，不打断当前操作
+    if (!error.response && error.code === 'ERR_NETWORK') {
+      redirectNetworkError()
+      return Promise.reject(error)
+    }
     const msg =
       error.code === 'ECONNABORTED'
         ? '请求超时，请重试'
@@ -72,6 +78,17 @@ instance.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+/** 网络异常统一错误页（IR-UI-07）：记录中断前页面，重试按钮可返回并重新加载 */
+function redirectNetworkError() {
+  const current = router.currentRoute.value
+  if (current.name === 'network-error') return
+  const redirect = current.fullPath
+  router.push({
+    name: 'network-error',
+    query: redirect && redirect !== '/' ? { redirect } : undefined,
+  })
+}
 
 /** 强制改密错误码（与后端 ErrorCode.MUST_CHANGE_PWD 对齐） */
 const MUST_CHANGE_PWD_CODE = 1114

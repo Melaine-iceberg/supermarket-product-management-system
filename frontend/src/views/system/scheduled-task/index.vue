@@ -108,7 +108,7 @@ onMounted(() => {
       <template #header>
         定时任务一览（IR-SW-06：执行结果与耗时入日志，失败自动重试 2 次；任务幂等，支持手工补跑）
       </template>
-      <el-table v-loading="loading" :data="tasks" stripe>
+      <el-table v-loading="loading" border :data="tasks" stripe>
         <el-table-column prop="name" label="任务" width="150" />
         <el-table-column prop="code" label="代码" width="200" />
         <el-table-column prop="cron" label="调度（cron）" width="140" />

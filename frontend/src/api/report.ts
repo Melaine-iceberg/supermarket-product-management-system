@@ -54,6 +54,11 @@ export function fetchDashboard(trendDays: 7 | 30 = 7) {
   return http.get<DashboardVO>('/report/dashboard', { trendDays })
 }
 
+/** 顶部导航"待办消息"（IR-UI-02/GAP-P2-25）：按登录用户权限返回待办数量，无待办为空数组 */
+export function fetchDashboardTodos() {
+  return http.get<DashboardTodo[]>('/report/dashboard/todos')
+}
+
 // =====================================================================
 // 销售报表（FR-RPT-02）
 // =====================================================================

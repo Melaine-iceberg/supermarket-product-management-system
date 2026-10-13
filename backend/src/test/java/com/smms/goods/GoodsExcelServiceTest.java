@@ -398,7 +398,7 @@ class GoodsExcelServiceTest {
     @DisplayName("导出：指定字段子集，表头与数据行正确")
     void export_selectedFields() throws IOException {
         GoodsListVO vo = new GoodsListVO(1L, "0500001", "2000000000015", "可乐",
-                5L, "饮料", 3L, "可口可乐", 1L, "瓶", "500ml", "上海",
+                5L, "饮料", 1, 3L, "可口可乐", 1L, "瓶", "500ml", "上海",
                 new BigDecimal("3.50"), new BigDecimal("5.00"), new BigDecimal("4.50"),
                 null, null, null, 0, 1, BigDecimal.ZERO, null, 1,
                 new BigDecimal("10"), new BigDecimal("3.50"), new BigDecimal("35.00"),

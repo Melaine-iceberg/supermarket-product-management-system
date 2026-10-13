@@ -180,7 +180,7 @@ async function handleExport() {
         </button>
       </div>
 
-      <el-table ref="tableRef" v-loading="loading" :data="list" stripe @sort-change="onSortChange">
+      <el-table ref="tableRef" v-loading="loading" border :data="list" stripe @sort-change="onSortChange">
         <el-table-column prop="goodsCode" label="商品编码" width="130" sortable="custom" />
         <el-table-column prop="name" label="商品名称" min-width="170" sortable="custom">
           <template #default="{ row }">

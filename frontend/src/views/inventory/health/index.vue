@@ -120,7 +120,7 @@ onMounted(load)
 
     <!-- 差异清单 -->
     <el-card v-if="total > 0 || loading">
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="goodsCode" label="商品编码" width="140" />
         <el-table-column label="商品" min-width="200">
           <template #default="{ row }">

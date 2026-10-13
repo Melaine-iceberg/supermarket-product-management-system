@@ -35,10 +35,10 @@ public class SalesCheckoutController {
 
     private final SalesCheckoutService checkoutService;
 
-    /** 收银结算（FR-SALE-06）：返回单号与找零，供小票预览打印 */
+    /** 收银结算（FR-SALE-06）：返回单号与找零，供小票预览打印；操作日志记单号（GAP-P2-03） */
     @PostMapping("/checkout")
     @RequirePerm("sys:cashier:enter")
-    @OpLog(module = "销售管理", action = "收银结算")
+    @OpLog(module = "销售管理", action = "收银结算", target = "#ret?.data.orderNo")
     public ApiResponse<CheckoutVO> checkout(@Valid @RequestBody CheckoutCommand cmd) {
         LoginUser cashier = SecurityUtils.getLoginUser();
         return ApiResponse.ok(checkoutService.checkout(cmd, cashier));

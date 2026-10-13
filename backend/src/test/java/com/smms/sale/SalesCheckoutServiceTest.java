@@ -77,7 +77,7 @@ import static org.mockito.Mockito.when;
 /**
  * 收银结算核心单元测试：覆盖 BR-SALE-01（一行一商品/数量精度）、BR-SALE-02（单号）、
  * BR-SALE-03（金额分摊与尾差）、BR-SALE-04（快照）、BR-GOODS-04（取价优先级）、
- * FR-SALE-05（会员折扣/停用拒绝）、FR-SALE-06（收款校验/原子扣减/会员统计）、
+ * FR-SALE-05（会员折扣/停用会员按散客继续）、FR-SALE-06（收款校验/原子扣减/会员统计）、
  * FR-SALE-07（整单折扣/单品改价授权与原因留痕）。
  */
 @ExtendWith(MockitoExtension.class)
@@ -699,7 +699,7 @@ class SalesCheckoutServiceTest {
     // ---------- 会员校验（FR-SALE-05，BR-MEM-03） ----------
 
     @Test
-    @DisplayName("会员不存在/已停用拒绝结算")
+    @DisplayName("会员不存在拒绝结算；停用会员不阻断，按散客继续（BR-MEM-03/GAP-P2-02）")
     void checkout_memberValidation() {
         mockGoodsAndPromoAndStock();
         mockOrderInsertSuccess();
@@ -710,11 +710,16 @@ class SalesCheckoutServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage(ErrorCode.SALE_MEMBER_NOT_FOUND.getMessage());
 
-        when(memberMapper.selectById(MEMBER_ID)).thenReturn(member("0", 0, 0));
-        assertThatThrownBy(() -> service.checkout(command(MEMBER_ID, null, null,
-                List.of(pay("CASH", "50"))), CASHIER))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("停用");
+        // 停用会员：提示后按散客结算——无会员折扣、不关联会员、不触发积分/储值联动（BR-MEM-03）
+        when(memberMapper.selectById(MEMBER_ID)).thenReturn(member("500.00", 5, 0));
+        CheckoutVO vo = service.checkout(command(MEMBER_ID, null, null,
+                List.of(pay("CASH", "50"))), CASHIER);
+        assertThat(vo.orderNo()).isNotBlank();
+        SalesOrder order = capturedOrder();
+        assertThat(order.getMemberId()).isNull();
+        assertThat(order.getMemberDiscountAmount()).isEqualByComparingTo("0.00");
+        assertThat(capturedItems().get(0).getUnitPrice()).isEqualByComparingTo("10.00"); // 按零售价，非会员价
+        verify(memberBusinessService, never()).settleEffects(any(), any(), any(), any(), any(), any());
     }
 
     // ---------- 单号生成（BR-SALE-02） ----------

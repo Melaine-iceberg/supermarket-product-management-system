@@ -53,21 +53,23 @@ public class OperationLogAspect {
     public Object around(ProceedingJoinPoint pjp, OpLog opLog) throws Throwable {
         long start = System.currentTimeMillis();
         Throwable error = null;
+        Object result = null;
         try {
-            return pjp.proceed();
+            result = pjp.proceed();
+            return result;
         } catch (Throwable t) {
             error = t;
             throw t;
         } finally {
             try {
-                record(pjp, opLog, start, error);
+                record(pjp, opLog, start, error, result);
             } catch (Exception e) {
                 log.warn("操作日志记录失败: {}", e.getMessage());
             }
         }
     }
 
-    private void record(ProceedingJoinPoint pjp, OpLog opLog, long start, Throwable error) {
+    private void record(ProceedingJoinPoint pjp, OpLog opLog, long start, Throwable error, Object result) {
         OperationLog entity = new OperationLog();
         LoginUser user = SecurityUtils.getLoginUserOrNull();
         if (user != null) {
@@ -78,7 +80,7 @@ public class OperationLogAspect {
         }
         entity.setModule(opLog.module());
         entity.setAction(opLog.action());
-        entity.setTarget(resolveTarget(pjp, opLog.target()));
+        entity.setTarget(resolveTarget(pjp, opLog.target(), result));
         HttpServletRequest request = RequestUtils.currentRequest();
         if (request != null) {
             entity.setHttpMethod(request.getMethod());
@@ -94,8 +96,8 @@ public class OperationLogAspect {
         operationLogService.recordAsync(entity);
     }
 
-    /** 解析目标标识：支持 SpEL（如 #req.username、#id），空返回 null */
-    private String resolveTarget(ProceedingJoinPoint pjp, String targetExpr) {
+    /** 解析目标标识：支持 SpEL（如 #req.username、#id、#ret.data.orderNo），空返回 null */
+    private String resolveTarget(ProceedingJoinPoint pjp, String targetExpr, Object result) {
         if (targetExpr == null || targetExpr.isBlank() || !targetExpr.startsWith("#")) {
             return targetExpr == null || targetExpr.isBlank() ? null : truncate(targetExpr, 60);
         }
@@ -110,6 +112,8 @@ public class OperationLogAspect {
                     context.setVariable(paramNames[i], args[i]);
                 }
             }
+            // 返回值变量 ret（GAP-P2-03：单据号随返回值生成时，用 #ret.data.orderNo 记目标对象）
+            context.setVariable("ret", result);
             Object value = expression.getValue(context);
             return value == null ? null : truncate(String.valueOf(value), 60);
         } catch (Exception e) {

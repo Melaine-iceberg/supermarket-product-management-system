@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
 import { useAuthStore } from '@/stores/auth'
@@ -60,7 +61,7 @@ const page = ref(1)
 const size = ref(20)
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function percent(v: number | null | undefined) {
@@ -308,7 +309,7 @@ onMounted(async () => {
     <!-- 按商品毛利 -->
     <el-card v-if="view === 'by-goods'">
       <template #header><span>商品毛利分析</span></template>
-      <el-table v-loading="loading" :data="goodsRows" stripe>
+      <el-table v-loading="loading" border :data="goodsRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="goodsCode" label="商品编码" width="120" />
         <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
@@ -357,7 +358,7 @@ onMounted(async () => {
     <!-- 按分类毛利 -->
     <el-card v-if="view === 'by-category'">
       <template #header><span>分类毛利分析</span></template>
-      <el-table v-loading="loading" :data="categoryRows" stripe>
+      <el-table v-loading="loading" border :data="categoryRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="categoryName" label="分类" min-width="160" />
         <el-table-column label="单数" prop="orderCount" width="80" align="right" />
@@ -397,7 +398,7 @@ onMounted(async () => {
     <!-- 按时段毛利 -->
     <el-card v-if="view === 'by-day'">
       <template #header><span>时段毛利分析（按营业日）</span></template>
-      <el-table v-loading="loading" :data="dayData?.rows ?? []" stripe>
+      <el-table v-loading="loading" border :data="dayData?.rows ?? []" stripe>
         <el-table-column prop="bizDate" label="日期" width="110" />
         <el-table-column label="单数" prop="orderCount" width="70" align="right" />
         <el-table-column label="件数" width="70" align="right">
@@ -455,7 +456,7 @@ onMounted(async () => {
         <span>负毛利商品清单</span>
         <el-tag type="danger" size="small" class="header-tag">成交价低于成本价</el-tag>
       </template>
-      <el-table v-loading="loading" :data="negativeRows" stripe>
+      <el-table v-loading="loading" border :data="negativeRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="goodsCode" label="商品编码" width="120" />
         <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />

@@ -115,7 +115,7 @@ onMounted(() => {
 
     <el-card>
       <template #header>操作日志（只增不改不删，保留 ≥ 1 年）</template>
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column type="expand">
           <template #default="{ row }">
             <el-descriptions :column="2" border size="small" class="detail">

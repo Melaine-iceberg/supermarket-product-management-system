@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
@@ -50,7 +51,7 @@ const pieChartRef = ref<HTMLDivElement>()
 const pieChart = shallowRef<echarts.ECharts>()
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function percent(v: number | null | undefined) {
@@ -299,7 +300,7 @@ onMounted(async () => {
         <span>{{ VIEW_LABELS[view] }}</span>
       </template>
 
-      <el-table v-loading="loading" :data="rows" stripe>
+      <el-table v-loading="loading" border :data="rows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column v-if="view !== 'category-structure' && view !== 'brand-sales'" label="商品编码" prop="goodsCode" width="120" />
         <el-table-column v-if="view !== 'category-structure' && view !== 'brand-sales'" label="商品名称" prop="goodsName" min-width="160" show-overflow-tooltip />

@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * 经营概览看板（FR-RPT-01）：今日 KPI、待办事项（按角色权限过滤）、
  * 近 7/30 日销售趋势、TOP10 热销商品。
@@ -27,5 +29,11 @@ public class DashboardController {
     @RequirePerm("sys:rpt:dashboard")
     public ApiResponse<DashboardVO> summary(@RequestParam(defaultValue = "7") int trendDays) {
         return ApiResponse.ok(dashboardService.summary(trendDays, SecurityUtils.getLoginUser()));
+    }
+
+    /** 顶部待办消息（IR-UI-02/GAP-P2-25）：按登录用户权限返回待办数量，无需看板权限 */
+    @GetMapping("/todos")
+    public ApiResponse<List<DashboardVO.TodoVO>> todos() {
+        return ApiResponse.ok(dashboardService.todos(SecurityUtils.getLoginUser()));
     }
 }

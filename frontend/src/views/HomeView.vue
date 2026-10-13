@@ -78,7 +78,7 @@ const quickLinks = computed(() => {
             type="info"
             :closable="false"
             show-icon
-            title="单据打印（FR-RPT-09）与自定义报表（FR-RPT-10）尚未交付，其余需求已全部上线"
+            title="Must 级需求已全部上线；自定义报表（FR-RPT-10）与部分 Could 级增强（分类经营概览、供应商绩效、会员人工调整、系统监控、皮重录入、库存日快照等）尚未实现，清单与取舍见《需求实现差距分析报告》第 6 章"
           />
         </el-card>
       </el-col>

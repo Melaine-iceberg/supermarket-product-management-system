@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -19,7 +20,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 // ---------- 查询（FR-SALE-09） ----------
@@ -29,7 +30,9 @@ const total = ref(0)
 const query = reactive({
   orderNo: '',
   cashierName: '',
+  counterNo: null as number | null,
   memberKeyword: '',
+  memberOnly: '' as '' | 'true' | 'false',
   payType: '',
   returnStatus: '',
   dateRange: [] as string[],
@@ -45,7 +48,9 @@ async function load() {
     const data = await pageSalesOrders({
       orderNo: query.orderNo.trim() || undefined,
       cashierName: query.cashierName.trim() || undefined,
+      counterNo: query.counterNo ?? undefined,
       memberKeyword: query.memberKeyword.trim() || undefined,
+      memberOnly: query.memberOnly === '' ? undefined : query.memberOnly === 'true',
       payType: query.payType || undefined,
       returnStatus: query.returnStatus || undefined,
       beginDate: query.dateRange?.[0],
@@ -71,7 +76,9 @@ function resetQuery() {
   Object.assign(query, {
     orderNo: '',
     cashierName: '',
+    counterNo: null,
     memberKeyword: '',
+    memberOnly: '',
     payType: '',
     returnStatus: '',
     dateRange: [],
@@ -122,8 +129,24 @@ async function openDetail(row: SalesOrderVO) {
         <el-form-item label="收银员">
           <el-input v-model="query.cashierName" placeholder="姓名" clearable @keyup.enter="search" />
         </el-form-item>
+        <el-form-item label="收银台">
+          <el-input-number
+            v-model="query.counterNo"
+            :min="1"
+            :max="99"
+            :controls="false"
+            placeholder="台号"
+            style="width: 80px"
+          />
+        </el-form-item>
         <el-form-item label="会员">
           <el-input v-model="query.memberKeyword" placeholder="姓名/手机号" clearable @keyup.enter="search" />
+        </el-form-item>
+        <el-form-item label="会员单">
+          <el-select v-model="query.memberOnly" clearable placeholder="全部" style="width: 110px">
+            <el-option label="仅会员单" value="true" />
+            <el-option label="仅散客单" value="false" />
+          </el-select>
         </el-form-item>
         <el-form-item label="收款方式">
           <el-select v-model="query.payType" clearable placeholder="全部" style="width: 110px">
@@ -176,7 +199,7 @@ async function openDetail(row: SalesOrderVO) {
         <span>销售单列表</span>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="orderNo" label="销售单号" width="170" fixed="left" />
         <el-table-column prop="counterNo" label="台号" width="60" align="center">
           <template #default="{ row }">{{ String(row.counterNo).padStart(2, '0') }}</template>
@@ -389,6 +412,32 @@ async function openDetail(row: SalesOrderVO) {
               </el-table-column>
             </el-table>
           </template>
+
+          <!-- 操作日志（FR-SALE-09：结算/退货等留痕；GAP-P2-03） -->
+          <h4 class="section-title">操作日志</h4>
+          <el-table v-if="drawer.detail.operationLogs.length" :data="drawer.detail.operationLogs" size="small" border>
+            <el-table-column label="时间" width="170">
+              <template #default="{ row }">{{ fmtTime(row.operateTime) }}</template>
+            </el-table-column>
+            <el-table-column prop="action" label="动作" width="130" />
+            <el-table-column label="操作人" width="170">
+              <template #default="{ row }">
+                {{ row.realName || row.username }}
+                <span v-if="row.realName && row.username" class="muted">（{{ row.username }}）</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="结果" width="80" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.result === 1 ? 'success' : 'danger'" size="small">
+                  {{ row.result === 1 ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="失败原因" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.errorMsg ?? '—' }}</template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else description="暂无操作日志" :image-size="50" />
         </template>
       </div>
       <template #footer>

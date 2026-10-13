@@ -98,7 +98,7 @@ onMounted(load)
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="name" label="单位名称" width="160" />
         <el-table-column label="符号" width="120">
           <template #default="{ row }">{{ row.symbol || '—' }}</template>

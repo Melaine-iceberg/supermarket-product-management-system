@@ -34,6 +34,7 @@ import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -207,7 +208,7 @@ public class SalesReturnService {
             item.setRefundAmount(line.refundAmount());
             item.setCostPrice(line.item().getCostPrice());
             item.setCostAmount(line.costAmount());
-            item.setRemark(line.remark());
+            item.setRemark(TextSanitizer.sanitize(line.remark()));
             item.setCreateBy(operator.username());
             item.setCreateTime(now);
             returnOrderItemMapper.insert(item);
@@ -391,7 +392,7 @@ public class SalesReturnService {
         returnOrder.setSalesOrderId(order.getId());
         returnOrder.setMemberId(order.getMemberId());
         returnOrder.setReturnReason(req.returnReason());
-        returnOrder.setReasonRemark(req.reasonRemark());
+        returnOrder.setReasonRemark(TextSanitizer.sanitize(req.reasonRemark()));
         returnOrder.setRefundAmount(totalRefund);
         returnOrder.setRefundType(req.refundType());
         returnOrder.setCashierName(operator.realName());

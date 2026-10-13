@@ -14,6 +14,8 @@ public record GoodsListVO(
         String name,
         Long categoryId,
         String categoryName,
+        /** 所属分类状态：1 启用 0 停用（FR-CAT-04：停用分类下已有商品保留但列表提示） */
+        Integer categoryStatus,
         Long brandId,
         String brandName,
         Long unitId,

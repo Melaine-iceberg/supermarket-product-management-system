@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { dropEmptyColumns, pMoney, pPercent, printSheet, type PrintColumn } from '@/utils/print'
@@ -49,7 +50,7 @@ const rows = ref<SalesReportRow[]>([])
 const total = ref<SalesReportRow | null>(null)
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function percent(v: number | null | undefined) {
@@ -307,7 +308,7 @@ onMounted(() => {
         <span>{{ VIEW_LABELS[view] }}{{ monthly && view === 'daily' ? '（月报）' : '' }}</span>
       </template>
 
-      <el-table v-loading="loading" :data="rows" stripe>
+      <el-table v-loading="loading" border :data="rows" stripe>
         <el-table-column
           :label="view === 'daily' ? (monthly ? '月份' : '日期') : '分组'"
           prop="groupKey"

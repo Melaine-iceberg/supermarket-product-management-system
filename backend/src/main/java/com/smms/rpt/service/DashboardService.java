@@ -68,6 +68,11 @@ public class DashboardService {
                 alertSummary.totalCount());
     }
 
+    /** 顶部导航"待办消息"（IR-UI-02/GAP-P2-25）：按登录用户权限返回待办数量，任一登录用户可查 */
+    public List<DashboardVO.TodoVO> todos(LoginUser user) {
+        return todos(user, inventoryService.alertSummary());
+    }
+
     /** 待办事项：各角色按其权限过滤（FR-RPT-01） */
     private List<DashboardVO.TodoVO> todos(LoginUser user, AlertSummaryVO alertSummary) {
         List<DashboardVO.TodoVO> todos = new ArrayList<>();

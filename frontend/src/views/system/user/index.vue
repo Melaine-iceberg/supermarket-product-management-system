@@ -209,7 +209,7 @@ onMounted(() => {
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="username" label="用户名" width="110" />
         <el-table-column prop="realName" label="真实姓名" width="100" />
         <el-table-column prop="phone" label="手机号" width="130">

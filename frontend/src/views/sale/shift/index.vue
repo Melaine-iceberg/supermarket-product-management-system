@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -23,7 +24,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '0.00' : Number(v).toFixed(2)
+  return v == null ? '0.00' : moneyText(v, 2)
 }
 
 const canOpen = computed(() => auth.hasPerm('sys:shift:open'))
@@ -256,7 +257,7 @@ function printShift(detail: ShiftDetailVO) {
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column label="班次" width="90" fixed="left">
           <template #default="{ row }">#{{ row.id }}</template>
         </el-table-column>

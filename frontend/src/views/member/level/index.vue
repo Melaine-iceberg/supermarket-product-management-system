@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -17,7 +18,7 @@ function fmtTime(v: string | null | undefined) {
 }
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 const canUpdate = () => auth.hasPerm('sys:mem-level:update')
@@ -163,7 +164,7 @@ async function toggleStatus(row: MemberLevelVO) {
         class="table-alert"
       />
 
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="sortNo" label="排序" width="70" align="center" />
         <el-table-column prop="name" label="等级名称" width="140" />
         <el-table-column label="升级门槛（累计消费）" width="170" align="right">

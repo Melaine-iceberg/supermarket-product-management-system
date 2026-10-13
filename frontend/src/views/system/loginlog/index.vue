@@ -71,7 +71,7 @@ onMounted(load)
 
     <el-card>
       <template #header>登录日志（记录成功/失败、IP、浏览器、操作系统）</template>
-      <el-table v-loading="loading" :data="list" stripe>
+      <el-table v-loading="loading" border :data="list" stripe>
         <el-table-column prop="loginTime" label="登录时间" width="170" />
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="ip" label="IP 地址" width="140">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
 import { useAuthStore } from '@/stores/auth'
@@ -78,7 +79,7 @@ const page = ref(1)
 const size = ref(20)
 
 function money(v: number | null | undefined) {
-  return v == null ? '—' : Number(v).toFixed(2)
+  return v == null ? '—' : moneyText(v, 2)
 }
 
 function qty(v: number | null | undefined) {
@@ -400,7 +401,7 @@ onMounted(async () => {
     <!-- 库存汇总（商品维度） -->
     <el-card v-if="view === 'summary-goods'">
       <template #header><span>库存汇总表（商品维度）</span></template>
-      <el-table v-loading="loading" :data="summaryRows" stripe>
+      <el-table v-loading="loading" border :data="summaryRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
         <el-table-column prop="goodsCode" label="商品编码" width="120" />
@@ -439,7 +440,7 @@ onMounted(async () => {
     <!-- 库存汇总（分类维度） -->
     <el-card v-if="view === 'summary-category'">
       <template #header><span>库存汇总表（分类维度）</span></template>
-      <el-table v-loading="loading" :data="summaryRows" stripe>
+      <el-table v-loading="loading" border :data="summaryRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="categoryName" label="分类" min-width="160" />
         <el-table-column prop="goodsCount" label="商品数" width="80" align="right" />
@@ -458,7 +459,7 @@ onMounted(async () => {
     <!-- 库存预警 -->
     <el-card v-if="view === 'warnings'">
       <template #header><span>库存预警报表</span></template>
-      <el-table v-loading="loading" :data="warningRows" stripe>
+      <el-table v-loading="loading" border :data="warningRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="goodsCode" label="商品编码" width="120" />
         <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
@@ -506,7 +507,7 @@ onMounted(async () => {
     <!-- 变动明细 -->
     <el-card v-if="view === 'changes'">
       <template #header><span>库存变动明细汇总</span></template>
-      <el-table v-loading="loading" :data="changeRows" stripe>
+      <el-table v-loading="loading" border :data="changeRows" stripe>
         <el-table-column label="变动类型" min-width="140">
           <template #default="{ row }">{{ CHANGE_TYPE_MAP[row.recordType] ?? row.recordType }}</template>
         </el-table-column>
@@ -530,7 +531,7 @@ onMounted(async () => {
     <!-- 周转率（商品） -->
     <el-card v-if="view === 'turnover-goods'">
       <template #header><span>库存周转率（商品维度）</span></template>
-      <el-table v-loading="loading" :data="turnoverRows" stripe>
+      <el-table v-loading="loading" border :data="turnoverRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="goodsCode" label="商品编码" width="120" />
         <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
@@ -584,7 +585,7 @@ onMounted(async () => {
     <!-- 周转率（分类） -->
     <el-card v-if="view === 'turnover-category'">
       <template #header><span>库存周转率（分类维度）</span></template>
-      <el-table v-loading="loading" :data="turnoverRows" stripe>
+      <el-table v-loading="loading" border :data="turnoverRows" stripe>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="categoryName" label="分类" min-width="160" />
         <el-table-column label="结存" width="100" align="right">
@@ -619,7 +620,7 @@ onMounted(async () => {
           <el-descriptions-item label="损耗率">{{ percent(lossData.lossRate) }}</el-descriptions-item>
         </el-descriptions>
       </div>
-      <el-table v-loading="loading" :data="lossData?.rows ?? []" stripe class="loss-table">
+      <el-table v-loading="loading" border :data="lossData?.rows ?? []" stripe class="loss-table">
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
         <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />

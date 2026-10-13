@@ -216,6 +216,19 @@ export interface SalesOrderItemVO {
   remark: string | null
   /** 改价原因（未改价 null，FR-SALE-07） */
   priceReason: string | null
+  /** 商品档案是否允许退货：1 是 0 否；无码商品/档案已删为空（BR-SALE-07） */
+  allowReturn: number | null
+}
+
+export interface SalesOrderOpLogVO {
+  id: number
+  action: string
+  username: string
+  realName: string | null
+  /** 1 成功 0 失败 */
+  result: number
+  errorMsg: string | null
+  operateTime: string
 }
 
 export interface SalesOrderDetailVO {
@@ -256,6 +269,8 @@ export interface SalesOrderDetailVO {
     authorizerName: string | null
     returnTime: string
   }[]
+  /** 单据操作日志（FR-SALE-09：结算/退货等留痕，GAP-P2-03） */
+  operationLogs: SalesOrderOpLogVO[]
 }
 
 export function pageSalesOrders(params: SalesOrderQuery) {
