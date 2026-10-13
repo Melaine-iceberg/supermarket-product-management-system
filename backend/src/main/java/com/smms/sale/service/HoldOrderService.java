@@ -81,6 +81,9 @@ public class HoldOrderService {
         hold.setRemark(trimToNull(cmd.remark()));
         hold.setHoldTime(LocalDateTime.now());
         hold.setStatus(HoldOrder.STATUS_ACTIVE);
+        // 审计字段（DR-C-08/GAP-P2-28）：挂单创建人=收银员
+        hold.setCreateBy(cashier.username());
+        hold.setCreateTime(hold.getHoldTime());
         holdMapper.insert(hold);
         return toVO(hold);
     }

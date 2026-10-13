@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -115,6 +116,9 @@ public class SysRoleService {
             SysRolePermission rp = new SysRolePermission();
             rp.setRoleId(roleId);
             rp.setPermId(permId);
+            // 审计字段（DR-C-08/GAP-P2-28）：关联创建人=经办管理员
+            rp.setCreateBy(operator);
+            rp.setCreateTime(LocalDateTime.now());
             rolePermissionMapper.insert(rp);
         }
         role.setUpdateBy(operator);

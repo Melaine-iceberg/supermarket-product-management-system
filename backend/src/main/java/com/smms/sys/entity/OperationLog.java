@@ -56,4 +56,12 @@ public class OperationLog {
     private Integer costMs;
 
     private LocalDateTime operateTime;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

@@ -241,6 +241,8 @@ public class ReceiptService {
             item.setReceivedPrice(line.price());
             item.setAmount(line.amount());
             item.setRemark(line.remark());
+            item.setCreateBy(operator.username());
+            item.setCreateTime(receipt.getReceiptTime());
             receiptItemMapper.insert(item);
             orderMapper.addReceivedQty(line.item().getId(), line.qty());
         }
@@ -379,6 +381,10 @@ public class ReceiptService {
         if (request.getReceivedPrice() == null || request.getReceivedPrice().compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException(ErrorCode.PUR_RECEIPT_LINE_INVALID, "实收单价不能为负");
         }
+        if (request.getReceivedPrice().scale() > 4) {
+            // 成本单价 4 位精度（DR-C-07 / GAP-P2-29）：与库存流水/移动加权成本口径一致
+            throw new BusinessException(ErrorCode.PUR_RECEIPT_LINE_INVALID, "实收单价最多 4 位小数（DR-C-07）");
+        }
     }
 
     /** 价差授权判定（BR-PUR-05）：与采购单价偏离超容差；采购单价为 0 而实收为正同样须授权 */
@@ -428,6 +434,9 @@ public class ReceiptService {
         receipt.setTotalAmount(total);
         receipt.setRemark(req.getRemark());
         receipt.setRequestToken(requestToken);
+        // 审计字段（DR-C-08/GAP-P2-28）：验收经办人/业务发生时间
+        receipt.setCreateBy(operator.username());
+        receipt.setCreateTime(receiptTime);
 
         DuplicateKeyException conflict = null;
         for (int attempt = 0; attempt < MAX_RETRY; attempt++) {

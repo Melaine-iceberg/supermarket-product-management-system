@@ -32,4 +32,12 @@ public class PaymentRecord {
 
     /** 操作人（收银员） */
     private String operatorName;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

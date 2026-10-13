@@ -152,8 +152,10 @@ public class SalesCheckoutService {
             return replayVO(signal.order);
         }
 
-        // 8. 明细落库（快照，BR-SALE-04）
+        // 8. 明细落库（快照，BR-SALE-04；create_by 记经办收银员，DR-C-08）
         for (SalesOrderItem item : buildItems(order.getId(), lines)) {
+            item.setCreateBy(cashier.username());
+            item.setCreateTime(now);
             salesOrderItemMapper.insert(item);
         }
 
@@ -635,6 +637,9 @@ public class SalesCheckoutService {
         order.setProfitAmount(lines.payable().subtract(costAmount));
         order.setReturnStatus("NONE");
         order.setAuthorizerName(authorizerName);
+        // 审计字段（DR-C-08/GAP-P2-28）：经办人/业务发生时间；销售单一经结算不可修改（BR-SALE-08）
+        order.setCreateBy(cashier.username());
+        order.setCreateTime(now);
         order.setRemark(cmd.remark());
         order.setRequestToken(requestToken);
 
@@ -732,6 +737,9 @@ public class SalesCheckoutService {
         record.setAmount(pay.amount().setScale(2, RoundingMode.HALF_UP));
         record.setPayTime(now);
         record.setOperatorName(cashierName);
+        // 审计字段（DR-C-08）：付款记录创建人=经办收银员
+        record.setCreateBy(cashierName);
+        record.setCreateTime(now);
         return record;
     }
 

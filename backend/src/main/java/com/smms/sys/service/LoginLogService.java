@@ -29,6 +29,9 @@ public class LoginLogService {
             if (entity.getLoginTime() == null) {
                 entity.setLoginTime(LocalDateTime.now());
             }
+            // 审计字段（DR-C-08/GAP-P2-28）：日志创建人=登录用户名（失败记录亦留存尝试账号）
+            entity.setCreateBy(entity.getUsername());
+            entity.setCreateTime(entity.getLoginTime());
             loginLogMapper.insert(entity);
         } catch (Exception e) {
             log.error("登录日志写入失败: username={}", entity.getUsername(), e);

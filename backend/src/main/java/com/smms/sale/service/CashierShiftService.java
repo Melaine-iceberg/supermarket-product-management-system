@@ -65,6 +65,9 @@ public class CashierShiftService {
         shift.setReturnAmount(BigDecimal.ZERO);
         shift.setExpectedCash(BigDecimal.ZERO);
         shift.setStatus(CashierShift.STATUS_WORKING);
+        // 审计字段（DR-C-08/GAP-P2-28）：开班经办收银员
+        shift.setCreateBy(cashier.username());
+        shift.setCreateTime(shift.getStartTime());
         shiftMapper.insert(shift);
         return toVO(shift);
     }
@@ -84,6 +87,8 @@ public class CashierShiftService {
         shift.setEndTime(LocalDateTime.now());
         shift.setStatus(CashierShift.STATUS_CLOSED);
         applyStats(shift, stats);
+        shift.setUpdateBy(cashier.username());
+        shift.setUpdateTime(shift.getEndTime());
         shiftMapper.updateById(shift);
         return new ShiftVO.Detail(toVO(shift), orders);
     }

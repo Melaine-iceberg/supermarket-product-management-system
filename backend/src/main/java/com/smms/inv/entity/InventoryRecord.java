@@ -59,4 +59,12 @@ public class InventoryRecord {
     private LocalDate businessDate;
 
     private String remark;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

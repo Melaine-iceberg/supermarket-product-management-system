@@ -64,4 +64,12 @@ public class HoldOrder {
 
     /** 取单/删除时间 */
     private LocalDateTime takenTime;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

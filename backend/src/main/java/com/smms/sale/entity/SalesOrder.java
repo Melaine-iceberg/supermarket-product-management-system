@@ -91,4 +91,12 @@ public class SalesOrder {
 
     /** 请求令牌（提交防重，NFR-REL-02；uk_so_token 唯一键兜底并发重放） */
     private String requestToken;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

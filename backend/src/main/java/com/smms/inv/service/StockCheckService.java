@@ -119,6 +119,9 @@ public class StockCheckService {
             item.setGoodsId(g.goodsId());
             item.setBookQty(g.bookQty());
             item.setCostPrice(g.costPrice());
+            // 审计字段（DR-C-08/GAP-P2-28）：明细创建人=盘点人
+            item.setCreateBy(checkerName);
+            item.setCreateTime(now);
             items.add(item);
         }
         for (int i = 0; i < items.size(); i += INSERT_BATCH) {

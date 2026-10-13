@@ -51,4 +51,12 @@ public class ReceiptOrder {
 
     /** 请求令牌（提交防重，NFR-REL-02；uk_ro_token 唯一键兜底并发重放） */
     private String requestToken;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

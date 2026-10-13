@@ -14,10 +14,10 @@
                LIMIT 3) t
     </select>
 
-    <!-- 采购明细入库时成本单价（FR-PUR-08）：按实收数量加权平均 -->
+    <!-- 采购明细入库时成本单价（FR-PUR-08）：按实收数量加权平均；成本单价 4 位精度（DR-C-07/GAP-P2-29） -->
     <select id="selectAvgReceiptPrice" resultType="java.math.BigDecimal">
         SELECT CASE WHEN SUM(roi.received_qty) = 0 THEN NULL
-                    ELSE ROUND(SUM(roi.received_price * roi.received_qty) / SUM(roi.received_qty), 2)
+                    ELSE ROUND(SUM(roi.received_price * roi.received_qty) / SUM(roi.received_qty), 4)
                END
         FROM receipt_order_item roi
         WHERE roi.purchase_item_id = #{purchaseItemId}

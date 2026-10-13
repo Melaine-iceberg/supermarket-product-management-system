@@ -208,6 +208,8 @@ public class SalesReturnService {
             item.setCostPrice(line.item().getCostPrice());
             item.setCostAmount(line.costAmount());
             item.setRemark(line.remark());
+            item.setCreateBy(operator.username());
+            item.setCreateTime(now);
             returnOrderItemMapper.insert(item);
 
             SalesOrderItem original = line.item();
@@ -396,6 +398,9 @@ public class SalesReturnService {
         returnOrder.setReturnTime(now);
         returnOrder.setBusinessDate(businessDayService.businessDate(now));
         returnOrder.setRequestToken(requestToken);
+        // 审计字段（DR-C-08/GAP-P2-28）：经办人/业务发生时间
+        returnOrder.setCreateBy(operator.username());
+        returnOrder.setCreateTime(now);
         if (authorizer != null && !authorizer.isBlank()) {
             returnOrder.setAuthorizerName(authorizer);
             returnOrder.setAuthorizeTime(now);

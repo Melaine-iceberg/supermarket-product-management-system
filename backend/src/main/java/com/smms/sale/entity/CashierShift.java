@@ -59,4 +59,12 @@ public class CashierShift {
     private BigDecimal expectedCash;
 
     private String status;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

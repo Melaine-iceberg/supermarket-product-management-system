@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -86,7 +87,7 @@ public class SysUserService {
         user.setCreateBy(operator);
         userMapper.insert(user);
 
-        saveRoles(user.getId(), roleIds);
+        saveRoles(user.getId(), roleIds, operator);
         userContextService.invalidate(user.getId());
         return new UserCreated(toVO(userMapper.selectById(user.getId())), initialPassword);
     }
@@ -111,7 +112,7 @@ public class SysUserService {
                 throw new BusinessException(ErrorCode.SUPER_ADMIN_ROLE_PROTECTED);
             }
             userRoleMapper.delete(Wrappers.<SysUserRole>lambdaQuery().eq(SysUserRole::getUserId, id));
-            saveRoles(id, roleIds);
+            saveRoles(id, roleIds, operator);
             userContextService.invalidateAll();
         } else {
             userContextService.invalidate(id);
@@ -170,11 +171,14 @@ public class SysUserService {
         return distinct;
     }
 
-    private void saveRoles(Long userId, List<Long> roleIds) {
+    private void saveRoles(Long userId, List<Long> roleIds, String operator) {
         for (Long roleId : roleIds) {
             SysUserRole userRole = new SysUserRole();
             userRole.setUserId(userId);
             userRole.setRoleId(roleId);
+            // 审计字段（DR-C-08/GAP-P2-28）：关联创建人=经办管理员
+            userRole.setCreateBy(operator);
+            userRole.setCreateTime(LocalDateTime.now());
             userRoleMapper.insert(userRole);
         }
     }

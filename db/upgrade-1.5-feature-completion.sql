@@ -73,17 +73,132 @@ INSERT IGNORE INTO sys_permission (id, parent_id, name, perm_type, perm_code, ro
 INSERT IGNORE INTO sys_role_permission (role_id, perm_id) VALUES
 (1, 16), (1, 161), (1, 17), (1, 171);
 
-ALTER TABLE supplier_goods ADD COLUMN last_supply_price DECIMAL(12,4) DEFAULT NULL COMMENT '最近供货价（最近一次入库实收单价，入库回写，FR-SUP-04）' AFTER last_supply_time;
-
--- ---------------------------------------------------------------------
--- ⑤ 建议采购原值（UC-INV-002 6a / GAP-P2-14）：草稿保留生成时的建议量与建议价
--- ---------------------------------------------------------------------
-ALTER TABLE purchase_order_item ADD COLUMN suggested_qty DECIMAL(10,3) DEFAULT NULL COMMENT '生成草稿时的建议采购量（UC-INV-002 6a；手工建单为空）' AFTER returned_qty;
-ALTER TABLE purchase_order_item ADD COLUMN suggested_price DECIMAL(12,2) DEFAULT NULL COMMENT '生成草稿时的建议单价（同上）' AFTER suggested_qty;
-
 -- ---------------------------------------------------------------------
 -- ④ 系统参数：无结束符扫码自动查询（IR-HW-01③ / GAP-P1-13）
 -- ---------------------------------------------------------------------
 INSERT IGNORE INTO sys_config (config_name, config_key, config_value, value_type, config_group, editable, instant_effect, remark, update_by) VALUES
 ('无结束符扫码自动查询', 'barcode_auto_query', 'true', 'BOOLEAN', 'sale', 1, 1,
  '扫码枪无结束符时按输入间隔≤50ms判定扫码结束并自动查询（IR-HW-01③）', 'system');
+
+-- ---------------------------------------------------------------------
+-- ⑤ 供应商最近供货价（FR-SUP-04 / GAP-P2-13）：入库验收回写
+-- ---------------------------------------------------------------------
+ALTER TABLE supplier_goods ADD COLUMN last_supply_price DECIMAL(12,4) DEFAULT NULL COMMENT '最近供货价（最近一次入库实收单价，入库回写，FR-SUP-04）' AFTER last_supply_time;
+
+-- ---------------------------------------------------------------------
+-- ⑥ 建议采购原值（UC-INV-002 6a / GAP-P2-14）：草稿保留生成时的建议量与建议价
+-- ---------------------------------------------------------------------
+ALTER TABLE purchase_order_item ADD COLUMN suggested_qty DECIMAL(10,3) DEFAULT NULL COMMENT '生成草稿时的建议采购量（UC-INV-002 6a；手工建单为空）' AFTER returned_qty;
+ALTER TABLE purchase_order_item ADD COLUMN suggested_price DECIMAL(12,2) DEFAULT NULL COMMENT '生成草稿时的建议单价（同上）' AFTER suggested_qty;
+
+-- ---------------------------------------------------------------------
+-- ⑦ 审计字段补齐（DR-C-08 / GAP-P2-28）：销售域/班次/明细/流水/日志/关联表统一四字段；
+--    时间字段带默认值，创建人由服务层写入（存量行按默认时间补）
+-- ---------------------------------------------------------------------
+ALTER TABLE sys_user_role
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE sys_role_permission
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE operation_log
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE login_log
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE purchase_order_item
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE receipt_order
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE receipt_order_item
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE purchase_return_item
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE inventory_record
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE stock_check_item
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE sales_order
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE sales_order_item
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE payment_record
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE return_order
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE return_order_item
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE hold_order
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+ALTER TABLE cashier_shift
+    ADD COLUMN create_by   VARCHAR(30) DEFAULT NULL COMMENT '创建人',
+    ADD COLUMN create_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    ADD COLUMN update_by   VARCHAR(30) DEFAULT NULL COMMENT '更新人',
+    ADD COLUMN update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间';
+
+-- ---------------------------------------------------------------------
+-- ⑧ 成本精度（DR-C-07 / GAP-P2-29）：实收单价/退货单价 12,2 → 12,4（成本类字段统一 4 位）
+-- ---------------------------------------------------------------------
+ALTER TABLE receipt_order_item MODIFY COLUMN received_price DECIMAL(12,4) NOT NULL COMMENT '实收单价（存货成本以此为准，BR-PUR-07；成本精度 12,4，DR-C-07）';
+ALTER TABLE purchase_return_item MODIFY COLUMN return_price DECIMAL(12,4) NOT NULL COMMENT '退货单价（入库时成本单价，按入库记录加权；成本精度 12,4，DR-C-07）';

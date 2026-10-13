@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 import java.math.BigDecimal;
 
 /**
@@ -44,4 +46,12 @@ public class PurchaseOrderItem {
     private BigDecimal suggestedPrice;
 
     private String remark;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

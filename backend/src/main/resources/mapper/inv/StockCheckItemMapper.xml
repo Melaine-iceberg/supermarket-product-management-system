@@ -90,12 +90,12 @@
         <foreach collection="orderIds" item="oid" open="(" separator="," close=")">#{oid}</foreach>
     </select>
 
-    <!-- 批量插入明细快照行（service 按 500 行/批分片） -->
+    <!-- 批量插入明细快照行（service 按 500 行/批分片）；create_by 记盘点人（DR-C-08/GAP-P2-28） -->
     <insert id="insertBatch">
-        INSERT INTO stock_check_item (order_id, goods_id, book_qty, cost_price)
+        INSERT INTO stock_check_item (order_id, goods_id, book_qty, cost_price, create_by, create_time)
         VALUES
         <foreach collection="items" item="it" separator=",">
-            (#{it.orderId}, #{it.goodsId}, #{it.bookQty}, #{it.costPrice})
+            (#{it.orderId}, #{it.goodsId}, #{it.bookQty}, #{it.costPrice}, #{it.createBy}, #{it.createTime})
         </foreach>
     </insert>
 

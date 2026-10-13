@@ -34,4 +34,12 @@ public class LoginLog {
     private String message;
 
     private LocalDateTime loginTime;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

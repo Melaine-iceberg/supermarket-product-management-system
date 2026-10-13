@@ -461,9 +461,9 @@ onMounted(() => {
             <el-input-number v-model="row.receivedQty" :min="0" :precision="3" :controls="false" style="width: 110px" />
           </template>
         </el-table-column>
-        <el-table-column label="实收单价" width="130">
+        <el-table-column label="实收单价" width="130" align="right">
           <template #default="{ row }">
-            <el-input-number v-model="row.receivedPrice" :min="0" :precision="2" :controls="false" style="width: 110px" />
+            <el-input-number v-model="row.receivedPrice" :min="0" :precision="4" :controls="false" style="width: 110px" />
           </template>
         </el-table-column>
         <el-table-column label="提示" width="200">

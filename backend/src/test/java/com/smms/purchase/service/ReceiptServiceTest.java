@@ -138,6 +138,23 @@ class ReceiptServiceTest {
     }
 
     @Test
+    @DisplayName("成本精度 12,4：实收单价 4 位小数原样入库并作为成本，行金额仍为 2 位（GAP-P2-29）")
+    void createKeepsFourDecimalPrice() {
+        PurchaseOrder order = order(PurchaseOrder.STATUS_APPROVED);
+        PurchaseOrderItem item = poItem("10", "10", "0");
+        stubFullReceiptFlow(order, item, "10", "9.8765", null);
+
+        ReceiptOrderVO vo = service.create(request("10", "9.8765", null), operator("验收员"));
+
+        // 10 × 9.8765 = 98.765 → 行金额/总额四舍五入到分 98.77
+        assertThat(vo.totalAmount()).isEqualByComparingTo("98.77");
+        ArgumentCaptor<StockChange> stockCaptor = ArgumentCaptor.forClass(StockChange.class);
+        verify(inventoryService).stockIn(stockCaptor.capture());
+        // 成本单价保留 4 位（DR-C-07），不做 2 位截断
+        assertThat(stockCaptor.getValue().unitCost()).isEqualByComparingTo("9.8765");
+    }
+
+    @Test
     @DisplayName("入库验收：部分入库采购单转部分入库状态")
     void createPartialKeepsPartialStatus() {
         PurchaseOrder order = order(PurchaseOrder.STATUS_APPROVED);

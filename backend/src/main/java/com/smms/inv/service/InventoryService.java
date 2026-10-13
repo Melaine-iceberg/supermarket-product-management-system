@@ -236,6 +236,9 @@ public class InventoryService {
         // 营业日（BR-RPT-02/GAP-P1-05）：库存流水按记账时刻归属，库存变动/周转/期初报表按该字段聚合
         record.setBusinessDate(businessDayService.businessDate(operateTime));
         record.setRemark(cmd.remark());
+        // 审计字段（DR-C-08/GAP-P2-28）：流水创建人=操作人（只增表，无更新语义）
+        record.setCreateBy(cmd.operator());
+        record.setCreateTime(operateTime);
         inventoryRecordMapper.insert(record);
     }
 

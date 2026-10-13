@@ -38,6 +38,9 @@ public class OperationLogService {
             if (entity.getOperateTime() == null) {
                 entity.setOperateTime(LocalDateTime.now());
             }
+            // 审计字段（DR-C-08/GAP-P2-28）：日志创建人=操作用户
+            entity.setCreateBy(entity.getUsername());
+            entity.setCreateTime(entity.getOperateTime());
             logMapper.insert(entity);
         } catch (Exception e) {
             // 日志失败不影响业务，但必须留下痕迹（NFR-REL-07）

@@ -105,6 +105,8 @@ public class PurchaseOrderService {
 
         for (PurchaseOrderItem item : items) {
             item.setOrderId(order.getId());
+            item.setCreateBy(operator);
+            item.setCreateTime(LocalDateTime.now());
             itemMapper.insert(item);
         }
         log.info("采购单创建: orderNo={}, 供应商={}, 金额={}, 操作人={}",
@@ -131,6 +133,8 @@ public class PurchaseOrderService {
                 .eq(PurchaseOrderItem::getOrderId, id));
         for (PurchaseOrderItem item : items) {
             item.setOrderId(id);
+            item.setCreateBy(operator);
+            item.setCreateTime(LocalDateTime.now());
             itemMapper.insert(item);
         }
     }

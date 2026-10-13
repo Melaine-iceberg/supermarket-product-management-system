@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 import java.math.BigDecimal;
 
 /**
@@ -75,4 +77,12 @@ public class SalesOrderItem {
 
     /** 改价原因（FR-SALE-07） */
     private String priceReason;
+
+    private String createBy;
+
+    private LocalDateTime createTime;
+
+    private String updateBy;
+
+    private LocalDateTime updateTime;
 }

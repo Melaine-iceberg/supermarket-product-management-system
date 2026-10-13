@@ -144,9 +144,13 @@ public class PurchaseReturnService {
             total = total.add(item.getAmount());
         }
         returnOrder.setTotalAmount(total.setScale(2, RoundingMode.HALF_UP));
+        returnOrder.setCreateTime(LocalDateTime.now());
         insertWithOrderNo(returnOrder);
         for (PurchaseReturnItem item : items) {
             item.setReturnId(returnOrder.getId());
+            // 审计字段（DR-C-08/GAP-P2-28）：明细创建人=经办人
+            item.setCreateBy(operator);
+            item.setCreateTime(LocalDateTime.now());
             returnItemMapper.insert(item);
         }
         return detail(returnOrder.getId());
