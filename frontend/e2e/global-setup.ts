@@ -19,7 +19,8 @@ import { apiLogin, apiOk, type PageResult } from './helpers/api'
  *
  * 种子数据是「关键路径回归」的确定性前提：
  * - 收银员分类浏览（DEF-19）需要启用分类下的启用商品；
- * - 库管员验收（DEF-18）需要 APPROVED/PARTIAL 采购单出现在待入库选单。
+ * - 库管员验收（DEF-18）需要 APPROVED/PARTIAL 采购单出现在待入库选单；
+ * - 收银台手机号后 4 位（GAP-P2-19）需要固定手机号的种子会员。
  */
 
 interface Supplier {
@@ -37,6 +38,12 @@ interface PurchaseOrder {
   id: number
   orderNo: string
   status: string
+}
+
+interface Member {
+  id: number
+  name: string
+  phone: string
 }
 
 export default async function globalSetup(): Promise<void> {
@@ -69,6 +76,7 @@ async function ensureSeedData(api: APIRequestContext, token: string): Promise<vo
   const supplierId = await ensureSupplier(api, token)
   const goodsId = await ensureGoods(api, token)
   await ensureReceivablePurchaseOrder(api, token, supplierId, goodsId)
+  await ensureMember(api, token)
 }
 
 async function ensureSupplier(api: APIRequestContext, token: string): Promise<number> {
@@ -176,6 +184,27 @@ async function ensureReceivablePurchaseOrder(
   if (pickable.total < 1) {
     throw new Error('造数异常：已审核采购单未出现在待入库选单（/receipt-orders/pickable）')
   }
+}
+
+/** 保证存在收银台手机号脱敏回归所需的种子会员（后 4 位展示断言用，GAP-P2-19） */
+async function ensureMember(api: APIRequestContext, token: string): Promise<number> {
+  const page = await apiOk<PageResult<Member>>(api, 'get', '/api/v1/members', {
+    token,
+    params: { phone: SEED.member.phone, size: 50 },
+  })
+  const found = page.list.find((m) => m.phone === SEED.member.phone)
+  if (found) return found.id
+  await apiOk(api, 'post', '/api/v1/members', {
+    token,
+    data: { name: SEED.member.name, phone: SEED.member.phone, remark: SEED.remark },
+  })
+  const created = await apiOk<PageResult<Member>>(api, 'get', '/api/v1/members', {
+    token,
+    params: { phone: SEED.member.phone, size: 50 },
+  })
+  const member = created.list.find((m) => m.phone === SEED.member.phone)
+  if (!member) throw new Error('造数异常：种子会员创建后查询不到')
+  return member.id
 }
 
 /** 各演示账号经登录接口取 Token，写入浏览器 localStorage 并导出登录态（admin 复用造数 Token） */

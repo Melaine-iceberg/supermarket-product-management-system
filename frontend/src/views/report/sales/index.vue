@@ -12,12 +12,7 @@ import {
   fetchSalesByPayMethod,
   fetchSalesDaily,
   fetchSalesMemberRatio,
-  lastMonthRange,
-  recentDaysRange,
-  thisMonthRange,
-  thisWeekRange,
   todayRange,
-  yesterdayRange,
   type DrillOrderFilters,
   type ReportRange,
   type SalesReportRow,
@@ -25,6 +20,7 @@ import {
 } from '@/api/report'
 import { getDictItems } from '@/api/system'
 import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
+import { RANGE_PRESETS, presetRange, type RangePreset } from '../components/rangePresets'
 
 type ViewKey = 'daily' | 'pay-method' | 'hour' | 'cashier' | 'counter' | 'member-ratio'
 
@@ -62,19 +58,8 @@ function syncRange() {
   range.endDate = dateRange.value?.[1]
 }
 
-function setRange(preset: 'today' | 'yesterday' | 'week' | 'month' | 'lastMonth' | 'recent7' | 'recent30') {
-  const r =
-    preset === 'today'
-      ? todayRange()
-      : preset === 'yesterday'
-        ? yesterdayRange()
-        : preset === 'week'
-          ? thisWeekRange()
-          : preset === 'month'
-            ? thisMonthRange()
-            : preset === 'lastMonth'
-              ? lastMonthRange()
-              : recentDaysRange(preset === 'recent7' ? 7 : 30)
+function setRange(preset: RangePreset) {
+  const r = presetRange(preset)
   dateRange.value = [r.beginDate, r.endDate]
   load()
 }
@@ -292,13 +277,9 @@ onMounted(() => {
         </el-form-item>
       </el-form>
       <div class="presets">
-        <el-button size="small" @click="setRange('today')">今日</el-button>
-        <el-button size="small" @click="setRange('yesterday')">昨日</el-button>
-        <el-button size="small" @click="setRange('week')">本周</el-button>
-        <el-button size="small" @click="setRange('month')">本月</el-button>
-        <el-button size="small" @click="setRange('lastMonth')">上月</el-button>
-        <el-button size="small" @click="setRange('recent7')">近7日</el-button>
-        <el-button size="small" @click="setRange('recent30')">近30日</el-button>
+        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+          {{ p.label }}
+        </el-button>
       </div>
     </el-card>
 

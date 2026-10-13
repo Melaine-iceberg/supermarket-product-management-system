@@ -124,6 +124,7 @@ public class SalesReportController {
     public ApiResponse<PageVO<DrillOrderRow>> drillOrders(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long brandId,
             @RequestParam(required = false) String payType,
             @RequestParam(required = false) Integer hour,
             @RequestParam(required = false) String cashierName,
@@ -133,7 +134,7 @@ public class SalesReportController {
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         DrillOrderQuery q = new DrillOrderQuery(range.beginDate(), range.endDate(),
-                null, null, cashierName, counterNo, memberOnly, null,
+                null, null, brandId, cashierName, counterNo, memberOnly, null,
                 payType, hour, page, size);
         return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }

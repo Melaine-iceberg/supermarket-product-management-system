@@ -145,7 +145,8 @@ public class InventoryReportController {
                 new ReportRange(beginDate, endDate), SecurityUtils.getLoginUser()));
     }
 
-    /** 汇总数字下钻（BR-RPT-06）：变动类型/周转商品行 → 构成汇总的库存流水明细（含单据号回溯） */
+    /** 汇总数字下钻（BR-RPT-06）：变动类型/周转商品/周转分类行 → 构成汇总的库存流水明细（含单据号回溯）；
+     *  支持商品与分类筛选（库存汇总/预警行下钻商品流水、分类周转行下钻分类流水，GAP-P2-21） */
     @GetMapping("/drill-records")
     @RequirePerm("sys:rpt:inventory")
     public ApiResponse<PageVO<DrillInvRecordRow>> drillRecords(
@@ -153,11 +154,12 @@ public class InventoryReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String recordType,
             @RequestParam(required = false) Long goodsId,
+            @RequestParam(required = false) Long categoryId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         return ApiResponse.ok(drillDownService.inventoryRecords(new DrillInvRecordQuery(
-                range.beginDate(), range.endDate(), recordType, goodsId, page, size),
+                range.beginDate(), range.endDate(), recordType, goodsId, categoryId, page, size),
                 SecurityUtils.getLoginUser()));
     }
 

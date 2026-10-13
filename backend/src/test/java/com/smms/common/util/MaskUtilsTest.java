@@ -15,6 +15,13 @@ class MaskUtilsTest {
     }
 
     @Test
+    void shouldMaskPhoneTail4ForCashier() {
+        assertEquals("****5678", MaskUtils.maskPhoneTail4("13800005678"));
+        assertEquals("****", MaskUtils.maskPhoneTail4("138"));
+        assertEquals(null, MaskUtils.maskPhoneTail4(null));
+    }
+
+    @Test
     void shouldMaskBankAccount() {
         assertEquals("****6789", MaskUtils.maskBankAccount("622202123456789"));
         assertEquals("****", MaskUtils.maskBankAccount("1234"));

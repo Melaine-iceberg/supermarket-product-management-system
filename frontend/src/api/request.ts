@@ -10,6 +10,17 @@ export interface ApiResponse<T = unknown> {
   timestamp: string
 }
 
+/** 业务错误：保留后端业务错误码（bizCode），供页面做错误分支（如 1301 编码重复重新生成） */
+export type BizError = Error & { bizCode?: number }
+
+function bizError(message: string, code?: number): BizError {
+  const error = new Error(message) as BizError
+  if (code != null) {
+    error.bizCode = code
+  }
+  return error
+}
+
 /** 分页结果（IR-COM-04）：列表接口须返回总条数以支持前端分页 */
 export interface PageResult<T> {
   list: T[]
@@ -49,10 +60,10 @@ instance.interceptors.response.use(
     }
     if (body.code === MUST_CHANGE_PWD_CODE) {
       redirectChangePassword(body.message)
-      return Promise.reject(new Error(body.message))
+      return Promise.reject(bizError(body.message, body.code))
     }
     ElMessage.error(body.message || '请求失败')
-    return Promise.reject(new Error(body.message))
+    return Promise.reject(bizError(body.message, body.code))
   },
   (error) => {
     if (error.response?.status === 401) {

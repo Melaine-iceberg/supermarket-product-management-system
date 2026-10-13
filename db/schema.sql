@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS sys_config (
     value_type    VARCHAR(10)  NOT NULL DEFAULT 'STRING' COMMENT '值类型：STRING/NUMBER/BOOLEAN/TIME',
     config_group  VARCHAR(30)  NOT NULL DEFAULT 'basic' COMMENT '参数分组',
     editable      TINYINT      NOT NULL DEFAULT 1 COMMENT '是否可修改：1是 0否',
-    instant_effect TINYINT     NOT NULL DEFAULT 1 COMMENT '是否立即生效：1是 0否',
+    instant_effect TINYINT     NOT NULL DEFAULT 1 COMMENT '是否立即生效：1=保存后立即清参数缓存生效；0=不强制刷新缓存，最迟60秒（缓存周期）内生效（FR-SYS-06/GAP-P2-24）',
     remark        VARCHAR(200) DEFAULT NULL COMMENT '备注',
     update_by     VARCHAR(30)  DEFAULT NULL COMMENT '更新人',
     update_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

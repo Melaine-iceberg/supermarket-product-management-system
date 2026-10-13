@@ -307,15 +307,25 @@
 
     <!-- ==================== 下钻明细（BR-RPT-06） ==================== -->
 
-    <!-- 变动明细下钻条件：与变动汇总同口径（营业日区间、变动类型） -->
+    <!-- 变动明细下钻条件：与变动汇总同口径（营业日区间、变动类型/商品/分类）；
+         明细/周转行必带营业日区间；库存汇总/预警（实时结存）下钻不传日期，按商品全量流水另页回溯 -->
     <sql id="invRecordDrillWhere">
-        ir.business_date &gt;= #{q.beginDate}
-        AND ir.business_date &lt;= #{q.endDate}
+        1 = 1
+        <if test="q.beginDate != null">
+            AND ir.business_date &gt;= #{q.beginDate}
+        </if>
+        <if test="q.endDate != null">
+            AND ir.business_date &lt;= #{q.endDate}
+        </if>
         <if test="q.recordType != null and q.recordType != ''">
             AND ir.record_type = #{q.recordType}
         </if>
         <if test="q.goodsId != null">
             AND ir.goods_id = #{q.goodsId}
+        </if>
+        <if test="q.categoryId != null">
+            AND EXISTS (SELECT 1 FROM goods g2
+                        WHERE g2.id = ir.goods_id AND g2.category_id = #{q.categoryId})
         </if>
     </sql>
 

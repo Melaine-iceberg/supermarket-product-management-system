@@ -24,9 +24,8 @@ import {
   fetchLossReport,
   fetchTurnoverByCategory,
   fetchTurnoverByGoods,
-  recentDaysRange,
   STOCK_STATUS_MAP,
-  thisMonthRange,
+  todayRange,
   type DrillInvRecordRow,
   type DrillLossRow,
   type InvChangeRow,
@@ -39,6 +38,7 @@ import {
 } from '@/api/report'
 import type { DrillColumn } from '../components/drill'
 import DrillTableDrawer from '../components/DrillTableDrawer.vue'
+import { RANGE_PRESETS, presetRange, type RangePreset } from '../components/rangePresets'
 
 type ViewKey = 'summary-goods' | 'summary-category' | 'warnings' | 'changes' | 'turnover-goods' | 'turnover-category' | 'loss'
 
@@ -56,7 +56,7 @@ const loading = ref(false)
 const exporting = ref(false)
 const auth = useAuthStore()
 const view = ref<ViewKey>('summary-goods')
-const initRange = thisMonthRange()
+const initRange = todayRange()
 const range = reactive<ReportRange>({ ...initRange })
 /** 日期选择器模型（el-date-picker 需要数组），查询前同步进 range */
 const dateRange = ref<string[]>([initRange.beginDate, initRange.endDate])
@@ -99,8 +99,8 @@ function syncRange() {
   range.endDate = dateRange.value?.[1]
 }
 
-function setRange(preset: 'month' | 'recent7' | 'recent30') {
-  const r = preset === 'month' ? thisMonthRange() : recentDaysRange(preset === 'recent7' ? 7 : 30)
+function setRange(preset: RangePreset) {
+  const r = presetRange(preset)
   dateRange.value = [r.beginDate, r.endDate]
   load()
 }
@@ -281,19 +281,30 @@ async function handlePrint() {
 }
 
 // ---------- 下钻（BR-RPT-06）：汇总数字 → 构成它的库存流水/损耗单据 ----------
-// 库存流水下钻（变动明细行、周转商品行 → SALE_OUT 流水）
+// 库存流水下钻（变动明细/周转行、库存汇总/预警行 → 库存流水）
 const drillRecordVisible = ref(false)
 const drillRecordTitle = ref('')
-let drillRecordFilter: { recordType?: string; goodsId?: number } = {}
+let drillRecordFilter: { recordType?: string; goodsId?: number; categoryId?: number } = {}
+/** true：实时结存类汇总（库存汇总/预警）下钻全量流水，不限营业日区间 */
+let drillRecordAllDates = false
 
-function openDrillRecords(filter: { recordType?: string; goodsId?: number }, label: string) {
+function openDrillRecords(
+  filter: { recordType?: string; goodsId?: number; categoryId?: number },
+  label: string,
+  allDates = false,
+) {
   drillRecordFilter = filter
-  drillRecordTitle.value = `下钻：${label}（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`
+  drillRecordAllDates = allDates
+  const windowText = allDates
+    ? '全部流水'
+    : `${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}`
+  drillRecordTitle.value = `下钻：${label}（${windowText}）`
   drillRecordVisible.value = true
 }
 
 function fetchDrillRecordsPage(p: number, size: number) {
-  return fetchInventoryDrillRecords({ ...range, ...drillRecordFilter, page: p, size })
+  const dates = drillRecordAllDates ? {} : { ...range }
+  return fetchInventoryDrillRecords({ ...dates, ...drillRecordFilter, page: p, size })
 }
 
 const drillRecordColumns: DrillColumn<DrillInvRecordRow>[] = [
@@ -392,9 +403,9 @@ onMounted(async () => {
         </el-form-item>
       </el-form>
       <div v-if="view === 'changes' || view.includes('turnover') || view === 'loss'" class="presets">
-        <el-button size="small" @click="setRange('month')">本月</el-button>
-        <el-button size="small" @click="setRange('recent7')">近7日</el-button>
-        <el-button size="small" @click="setRange('recent30')">近30日</el-button>
+        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+          {{ p.label }}
+        </el-button>
       </div>
     </el-card>
 
@@ -423,6 +434,18 @@ onMounted(async () => {
             <el-tag :type="STOCK_STATUS_MAP[row.stockStatus]?.type ?? 'info'" size="small">
               {{ STOCK_STATUS_MAP[row.stockStatus]?.label ?? row.stockStatus }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)"
+            >
+              流水
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -491,6 +514,18 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="最近变动" width="160">
           <template #default="{ row }">{{ fmtTime(row.lastChangeTime) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)"
+            >
+              流水
+            </el-button>
+          </template>
         </el-table-column>
       </el-table>
       <el-pagination
@@ -605,6 +640,24 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="周转天数" width="100" align="right">
           <template #default="{ row }">{{ qty(row.turnoverDays) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.categoryId != null"
+              link
+              type="primary"
+              size="small"
+              @click="
+                openDrillRecords(
+                  { recordType: 'SALE_OUT', categoryId: row.categoryId },
+                  `分类 ${row.categoryName ?? ''} 销售出库流水`,
+                )
+              "
+            >
+              销售流水
+            </el-button>
+          </template>
         </el-table-column>
       </el-table>
     </el-card>

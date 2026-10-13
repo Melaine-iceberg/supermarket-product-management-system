@@ -132,7 +132,7 @@ public class MemberReportController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         DrillOrderQuery q = new DrillOrderQuery(beginDate, endDate,
-                null, null, null, null, memberOnly, memberId, null, null, page, size);
+                null, null, null, null, null, memberOnly, memberId, null, null, page, size);
         return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }
 

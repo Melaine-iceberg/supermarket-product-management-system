@@ -13,14 +13,14 @@ import {
   fetchMemberGrowth,
   fetchMemberLevelDistribution,
   fetchSleepingMembers,
-  recentDaysRange,
-  thisMonthRange,
+  todayRange,
   type DrillOrderFilters,
   type MemberContributionVO,
   type MemberRptRow,
   type ReportRange,
 } from '@/api/report'
 import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
+import { RANGE_PRESETS, presetRange, type RangePreset } from '../components/rangePresets'
 
 type ViewKey = 'growth' | 'consumption-ranking' | 'level-distribution' | 'contribution' | 'sleeping' | 'birthday'
 
@@ -37,7 +37,7 @@ const loading = ref(false)
 const exporting = ref(false)
 const auth = useAuthStore()
 const view = ref<ViewKey>('growth')
-const initRange = thisMonthRange()
+const initRange = todayRange()
 const range = reactive<ReportRange>({ ...initRange })
 /** 日期选择器模型（el-date-picker 需要数组），查询前同步进 range */
 const dateRange = ref<string[]>([initRange.beginDate, initRange.endDate])
@@ -83,8 +83,8 @@ function syncRange() {
   range.endDate = dateRange.value?.[1]
 }
 
-function setRange(preset: 'month' | 'recent7' | 'recent30') {
-  const r = preset === 'month' ? thisMonthRange() : recentDaysRange(preset === 'recent7' ? 7 : 30)
+function setRange(preset: RangePreset) {
+  const r = presetRange(preset)
   dateRange.value = [r.beginDate, r.endDate]
   load()
 }
@@ -377,9 +377,9 @@ onMounted(load)
         </el-form-item>
       </el-form>
       <div v-if="view === 'growth' || view === 'contribution'" class="presets">
-        <el-button size="small" @click="setRange('month')">本月</el-button>
-        <el-button size="small" @click="setRange('recent7')">近7日</el-button>
-        <el-button size="small" @click="setRange('recent30')">近30日</el-button>
+        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+          {{ p.label }}
+        </el-button>
       </div>
     </el-card>
 

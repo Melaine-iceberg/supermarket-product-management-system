@@ -602,6 +602,8 @@ export interface DrillOrderFilters {
   endDate?: string
   goodsId?: number
   categoryId?: number
+  /** 品牌销售行下钻（GAP-P2-21） */
+  brandId?: number
   cashierName?: string
   counterNo?: number
   /** true 仅会员单 / false 仅散客单 / 空为全部 */
@@ -698,12 +700,13 @@ export interface DrillInvRecordRow {
   remark: string | null
 }
 
-/** 库存流水下钻（BR-RPT-06）：recordType/goodsId 与报表行对应 */
+/** 库存流水下钻（BR-RPT-06）：recordType/goodsId/categoryId 与报表行对应（GAP-P2-21） */
 export function fetchInventoryDrillRecords(filters: {
   beginDate?: string
   endDate?: string
   recordType?: string
   goodsId?: number
+  categoryId?: number
   page?: number
   size?: number
 }) {

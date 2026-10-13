@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { moneyText } from '@/utils/format'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadRequestOptions } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -43,6 +43,10 @@ import {
 } from '@/api/goods'
 
 const auth = useAuthStore()
+
+/** 商品模块错误码（与后端 ErrorCode 对齐）：UC-GOODS-001 E1/E2 分支交互用 */
+const GOODS_CODE_EXISTS = 1301
+const GOODS_BARCODE_EXISTS = 1302
 
 // ---------- 查询条件（FR-GOODS-03 多维检索） ----------
 const loading = ref(false)
@@ -156,6 +160,10 @@ const editingDetail = ref<{ barcode: string; prices: number[]; image: string | n
 const formRef = ref<FormInstance>()
 const saving = ref(false)
 const detailLoading = ref(false)
+/** 条码占用高亮与聚焦（UC-GOODS-001 E1） */
+const barcodeInvalid = ref(false)
+const barcodeInputRef = ref<{ focus: () => void }>()
+const goodsCodeInputRef = ref<{ focus: () => void }>()
 /** 商品图片（IR-SW-05）：存储相对路径 + 本地/受控预览 URL */
 const imagePreview = ref('')
 const imageUploading = ref(false)
@@ -285,6 +293,7 @@ function resetForm() {
   editing.value = null
   editingDetail.value = null
   revokeImagePreview()
+  barcodeInvalid.value = false
   formRef.value?.resetFields()
   Object.assign(form, {
     name: '',
@@ -419,7 +428,15 @@ async function openEdit(row: GoodsListVO) {
 async function fillInStoreBarcode() {
   const { barcode } = await nextBarcode()
   form.barcode = barcode
+  barcodeInvalid.value = false
   ElMessage.info(`已生成店内码预览：${barcode}`)
+}
+
+/** UC-GOODS-001 E2：清空手工编码，保存时由系统按"分类码+流水"自动生成 */
+function regenerateGoodsCode() {
+  form.goodsCode = ''
+  ElMessage.info('已清空手工编码，保存时按"分类码+流水"自动生成')
+  nextTick(() => goodsCodeInputRef.value?.focus())
 }
 
 function num(v: number | null | undefined) {
@@ -479,8 +496,27 @@ async function save() {
     }
     dialogVisible.value = false
     load()
-  } catch {
-    // 拦截器已提示；确认框取消则停留表单
+  } catch (e) {
+    // 拦截器已提示；E1/E2 附加字段级交互（UC-GOODS-001）
+    const bizCode = (e as { bizCode?: number }).bizCode
+    if (bizCode === GOODS_BARCODE_EXISTS) {
+      // E1：高亮并聚焦条码字段，提示文案（含占用商品名称）已由拦截器展示
+      barcodeInvalid.value = true
+      await nextTick()
+      barcodeInputRef.value?.focus()
+    } else if (bizCode === GOODS_CODE_EXISTS && !editing.value) {
+      // E2：提供【重新生成编码】入口（清空手工编码 → 保存时自动生成）
+      try {
+        await ElMessageBox.confirm(
+          '该商品编码已被占用。点击「重新生成编码」将清空手工编码，保存时由系统按分类码+流水自动生成；也可选择「手动修改」自行更换编码。',
+          '商品编码重复',
+          { confirmButtonText: '重新生成编码', cancelButtonText: '手动修改', type: 'warning' },
+        )
+        regenerateGoodsCode()
+      } catch {
+        // 用户选择手动修改
+      }
+    }
   } finally {
     saving.value = false
   }
@@ -1298,16 +1334,28 @@ ref="tableRef"
           <el-col :span="12">
             <el-form-item label="商品编码">
               <el-input
+                ref="goodsCodeInputRef"
                 v-model="form.goodsCode"
                 :disabled="!!editing"
                 maxlength="20"
                 :placeholder="editing ? '创建后不可修改' : '留空自动生成（分类码+流水）'"
-              />
+              >
+                <template v-if="!editing" #append>
+                  <el-button @click="regenerateGoodsCode">重新生成</el-button>
+                </template>
+              </el-input>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="商品条码" prop="barcode">
-              <el-input v-model="form.barcode" maxlength="20" placeholder="1~20 位数字">
+              <el-input
+                ref="barcodeInputRef"
+                v-model="form.barcode"
+                maxlength="20"
+                :class="{ 'barcode-error': barcodeInvalid }"
+                placeholder="1~20 位数字"
+                @input="barcodeInvalid = false"
+              >
                 <template v-if="!editing" #append>
                   <el-button @click="fillInStoreBarcode">店内码</el-button>
                 </template>
@@ -1843,6 +1891,13 @@ ref="tableRef"
 
   .dialog-alert {
     margin-bottom: 14px;
+  }
+
+  /* UC-GOODS-001 E1：条码被占用时高亮字段，配合后端"已被商品【XX】占用"提示 */
+  .barcode-error {
+    :deep(.el-input__wrapper) {
+      box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+    }
   }
 
   .created-box {

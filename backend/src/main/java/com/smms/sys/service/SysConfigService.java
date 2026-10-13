@@ -18,8 +18,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 系统参数服务（FR-SYS-06）：键值对业务参数，60 秒缓存；
- * instant_effect=1 的参数修改后立即对读取方生效。
+ * 系统参数服务（FR-SYS-06）：键值对业务参数，60 秒读取缓存。
+ * 生效方式与 sys_config.instant_effect 标注一致（GAP-P2-24）：
+ * instant_effect=1 修改后立即清缓存，后续读取即用新值；instant_effect=0 不强制刷新缓存，
+ * 最迟在缓存周期（60 秒）后对新读取生效，无需重启系统。
  */
 @Service
 @RequiredArgsConstructor
@@ -65,7 +67,7 @@ public class SysConfigService {
                 .orderByAsc(SysConfig::getId));
     }
 
-    /** 修改参数（FR-SYS-06：修改需权限并留痕，校验值类型） */
+    /** 修改参数（FR-SYS-06：修改需权限并留痕，校验值类型；生效方式与 instant_effect 标注一致，GAP-P2-24） */
     public void update(String key, String value, String remark, String updateBy) {
         SysConfig config = configMapper.selectOne(
                 Wrappers.<SysConfig>lambdaQuery().eq(SysConfig::getConfigKey, key));
@@ -82,7 +84,10 @@ public class SysConfigService {
         }
         config.setUpdateBy(updateBy);
         configMapper.updateById(config);
-        cache.remove(key);
+        // 仅"立即生效"参数主动清缓存；其余参数按缓存周期自然刷新，避免"重启生效"标注误导
+        if (config.getInstantEffect() != null && config.getInstantEffect() == 1) {
+            cache.remove(key);
+        }
     }
 
     private void validateValue(SysConfig config, String value) {

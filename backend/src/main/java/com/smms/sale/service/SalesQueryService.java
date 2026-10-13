@@ -67,10 +67,10 @@ public class SalesQueryService {
         LocalDateTime endTime = scoped.endDate() == null ? null : scoped.endDate().plusDays(1).atStartOfDay();
         IPage<SalesOrderVO> result =
                 salesOrderMapper.selectOrderPage(new Page<>(pageNo, size), scoped, beginTime, endTime);
-        // 会员手机号按角色脱敏（BR-MEM-08：完整手机号仅店长及以上可见）
+        // 会员手机号按角色脱敏（BR-MEM-08：销售单/收银台一线界面仅显示后 4 位，完整手机号仅店长及以上可见）
         if (!SecurityUtils.canViewMemberPhone()) {
             List<SalesOrderVO> masked = result.getRecords().stream()
-                    .map(o -> o.withMemberPhone(MaskUtils.maskPhone(o.memberPhone())))
+                    .map(o -> o.withMemberPhone(MaskUtils.maskPhoneTail4(o.memberPhone())))
                     .toList();
             result.setRecords(masked);
         }
@@ -90,9 +90,9 @@ public class SalesQueryService {
 
         Member member = order.getMemberId() == null ? null : memberMapper.selectById(order.getMemberId());
         String memberName = member == null ? null : member.getName();
-        // 手机号按角色脱敏（BR-MEM-08）
+        // 手机号按角色脱敏（BR-MEM-08：一线界面仅显示后 4 位，完整手机号仅店长及以上可见）
         String memberPhone = member == null ? null
-                : SecurityUtils.canViewMemberPhone() ? member.getPhone() : MaskUtils.maskPhone(member.getPhone());
+                : SecurityUtils.canViewMemberPhone() ? member.getPhone() : MaskUtils.maskPhoneTail4(member.getPhone());
 
         // 商品档案"是否允许退货"（BR-SALE-07/GAP-P2-04：退货界面据此禁用勾选并提示原因；档案已删为空按允许）
         Map<Long, Goods> goodsMap = loadItemGoods(items);

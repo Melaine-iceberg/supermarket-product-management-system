@@ -560,14 +560,32 @@ public class GoodsService {
         }
     }
 
+    /**
+     * 条码全局唯一（BR-GOODS-01）。占用时提示占用商品名称（UC-GOODS-001 E1：
+     * "条码 xxx 已被商品【XX】占用"）；占用者为停用商品时附带状态说明，避免用户无从排查。
+     */
     private void checkBarcodeUnique(String barcode, Long excludeId) {
         Long count = goodsMapper.selectCount(Wrappers.<Goods>lambdaQuery()
                 .eq(Goods::getBarcode, barcode)
                 .ne(excludeId != null, Goods::getId, excludeId));
-        if (count != null && count > 0) {
-            throw new BusinessException(ErrorCode.GOODS_BARCODE_EXISTS,
-                    "商品条码【" + barcode + "】已存在（含停用商品）");
+        if (count == null || count == 0) {
+            return;
         }
+        Goods occupying = goodsMapper.selectOne(Wrappers.<Goods>lambdaQuery()
+                .select(Goods::getId, Goods::getName, Goods::getStatus)
+                .eq(Goods::getBarcode, barcode)
+                .ne(excludeId != null, Goods::getId, excludeId)
+                .orderByAsc(Goods::getId)
+                .last("LIMIT 1"));
+        if (occupying == null) {
+            // 并发下占用行恰好被删除/改码：回退到通用文案
+            throw new BusinessException(ErrorCode.GOODS_BARCODE_EXISTS,
+                    "商品条码【" + barcode + "】已被占用（含停用商品）");
+        }
+        String disabled = occupying.getStatus() != null && occupying.getStatus() == 0
+                ? "，该商品已停用" : "";
+        throw new BusinessException(ErrorCode.GOODS_BARCODE_EXISTS,
+                "条码 " + barcode + " 已被商品【" + occupying.getName() + "】占用" + disabled);
     }
 
     private void checkGoodsCodeUnique(String code, Long excludeId) {

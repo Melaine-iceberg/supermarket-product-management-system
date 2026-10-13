@@ -218,7 +218,7 @@ INSERT INTO sys_config (config_name, config_key, config_value, value_type, confi
 ('营业日起始时刻',        'business_day_start',         '00:00', 'TIME',   'report',     1, 1, '跨零点单据归属营业日规则（BR-RPT-02）', 'system'),
 ('登录失败锁定阈值',      'login_fail_limit',           '5',     'NUMBER', 'security',   1, 1, '连续失败N次锁定账号（FR-SYS-01）', 'system'),
 ('登录锁定时长(分钟)',    'lock_minutes',               '15',    'NUMBER', 'security',   1, 1, '锁定时长（FR-SYS-01）', 'system'),
-('Token有效期(小时)',     'token_expire_hours',         '8',     'NUMBER', 'security',   1, 0, 'JWT有效期，修改后对新签发Token生效（IR-SW-03）', 'system'),
+('Token有效期(小时)',     'token_expire_hours',         '8',     'NUMBER', 'security',   1, 0, 'JWT有效期；修改后最迟 60 秒内对新签发 Token 生效，存量 Token 不受影响（无需重启，IR-SW-03）', 'system'),
 ('职责分离是否强制拒绝',  'duty_separation_strict',     'false', 'BOOLEAN', 'security',  1, 1, 'false时放行但记异常日志（BR-SYS-01）', 'system'),
 ('店内码前缀',            'barcode_prefix',             '20',    'STRING', 'goods',      1, 1, 'EAN-13店内码前缀20~29（FR-GOODS-07）', 'system'),
 ('无结束符扫码自动查询',  'barcode_auto_query',         'true',  'BOOLEAN', 'sale',      1, 1, '扫码枪无结束符时按输入间隔≤50ms判定扫码结束并自动查询（IR-HW-01③）', 'system'),

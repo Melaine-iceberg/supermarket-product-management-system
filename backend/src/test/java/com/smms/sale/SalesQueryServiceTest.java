@@ -93,6 +93,32 @@ class SalesQueryServiceTest {
     }
 
     @Test
+    @DisplayName("详情：非店长角色手机号仅显示后 4 位（BR-MEM-08 收银台口径，GAP-P2-19）")
+    void detail_masksMemberPhoneTail4ForCashier() {
+        LoginUser cashier = new LoginUser(9L, "cashier", "陈收银",
+                List.of("CASHIER"), List.of("收银员"), Set.of(), null, false);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(cashier, null, List.of()));
+
+        SalesOrder order = order();
+        order.setMemberId(88L);
+        when(salesOrderMapper.selectById(ORDER_ID)).thenReturn(order);
+        when(salesOrderItemMapper.selectList(any())).thenReturn(List.of());
+        when(returnOrderMapper.selectList(any())).thenReturn(List.of());
+        when(goodsMapper.selectBatchIds(anyCollection())).thenReturn(List.of());
+        Member member = new Member();
+        member.setId(88L);
+        member.setName("张会员");
+        member.setPhone("13800005678");
+        when(memberMapper.selectById(88L)).thenReturn(member);
+
+        SalesOrderDetailVO detail = service.detail(ORDER_ID, cashier);
+
+        // 收银员仅见后 4 位，不泄露完整号码（此前误用 138****5678 通用口径）
+        assertThat(detail.memberPhone()).isEqualTo("****5678");
+    }
+
+    @Test
     @DisplayName("详情：商品档案已删除时 allowReturn 为空，按允许退货处理")
     void detail_deletedGoodsAllowReturnNull() {
         when(salesOrderMapper.selectById(ORDER_ID)).thenReturn(order());

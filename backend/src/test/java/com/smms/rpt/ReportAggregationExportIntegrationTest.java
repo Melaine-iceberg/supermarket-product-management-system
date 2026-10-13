@@ -11,6 +11,8 @@ import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.service.GoodsService;
 import com.smms.rpt.dto.DrillInvRecordQuery;
 import com.smms.rpt.dto.DrillInvRecordRow;
+import com.smms.rpt.dto.DrillOrderQuery;
+import com.smms.rpt.dto.DrillOrderRow;
 import com.smms.rpt.dto.GoodsRankRow;
 import com.smms.rpt.dto.InvSummaryRow;
 import com.smms.rpt.dto.PurchSummaryRow;
@@ -68,7 +70,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *       并校验 FR-RPT-08 的 5 万行超限提示可达；</li>
  *   <li>GAP-P0-10①：商品/品类毛利扣减退货后与销售日报 BR-RPT-01 口径一致；</li>
  *   <li>GAP-P0-10②③：无毛利权限角色在库存/采购汇总与下钻中看不到成本类字段（真实 SQL 路径）；</li>
- *   <li>GAP-P1-05：采购/库存/损耗报表按 business_date 聚合，不再按 create_time/operate_time/audit_time。</li>
+ *   <li>GAP-P1-05：采购/库存/损耗报表按 business_date 聚合，不再按 create_time/operate_time/audit_time；</li>
+ *   <li>GAP-P2-21：品牌销售行按 brandId 下钻、库存流水分类型/商品/分类下钻（真实 SQL 过滤）。</li>
  * </ul>
  */
 @Testcontainers(disabledWithoutDocker = true)
@@ -297,9 +300,9 @@ class ReportAggregationExportIntegrationTest {
         assertThat(maskedPurch.settledAmount()).isNull();
         assertThat(maskedPurch.purchaseQty()).isEqualByComparingTo("10");
 
-        // 下钻流水：单位成本不返回
+        // 下钻流水：单位成本不返回；分类筛选（GAP-P2-21）在真实 SQL 下同路径生效
         PageVO<DrillInvRecordRow> drills = drillDownService.inventoryRecords(
-                new DrillInvRecordQuery(day, day, "PURCHASE_IN", goodsId, 1, 20), CASHIER);
+                new DrillInvRecordQuery(day, day, "PURCHASE_IN", goodsId, categoryId, 1, 20), CASHIER);
         assertThat(drills.list()).isNotEmpty();
         assertThat(drills.list().get(0).unitCost()).isNull();
 
@@ -312,7 +315,7 @@ class ReportAggregationExportIntegrationTest {
                 .filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
         assertThat(fullPurch.purchaseAmount()).isEqualByComparingTo("100.00");
         assertThat(drillDownService.inventoryRecords(
-                        new DrillInvRecordQuery(day, day, "PURCHASE_IN", goodsId, 1, 20), MANAGER)
+                        new DrillInvRecordQuery(day, day, "PURCHASE_IN", goodsId, categoryId, 1, 20), MANAGER)
                 .list().get(0).unitCost()).isEqualByComparingTo("10.0000");
 
         // 预警建议采购量：近 N 营业日销量子查询（business_date）在真实 SQL 下可执行
@@ -392,6 +395,36 @@ class ReportAggregationExportIntegrationTest {
         assertThat(purchaseReportService.summaryForExport(range, "supplier", MANAGER, 1)).hasSize(1);
     }
 
+    // ==================== GAP-P2-21：品牌下钻与库存分类下钻 ====================
+
+    @Test
+    @DisplayName("品牌销售行下钻：drill-orders 按 brandId 筛选，与品牌口径一致（GAP-P2-21）")
+    void brandDrillFiltersOrdersByBrand() {
+        long categoryId = ensureCategory("批次六品牌下钻分类");
+        long unitId = ensureUnit("件");
+        long brandA = ensureBrand("批次六品牌A");
+        long brandB = ensureBrand("批次六品牌B");
+        Long goodsA = insertGoodsRow(categoryId, unitId, "T6G001", "品牌下钻商品A", brandA);
+        Long goodsB = insertGoodsRow(categoryId, unitId, "T6G002", "品牌下钻商品B", brandB);
+        LocalDate day = LocalDate.of(2026, 6, 1);
+
+        long soA = insertSalesOrder("XS202606010001", day, "100.00", "60.00", 1);
+        insertSalesItem(soA, goodsA, "品牌下钻商品A", "100.00", "1", "100.00", "60.00", "60.00");
+        long soB = insertSalesOrder("XS202606010002", day, "50.00", "30.00", 1);
+        insertSalesItem(soB, goodsB, "品牌下钻商品B", "50.00", "1", "50.00", "30.00", "30.00");
+
+        // 品牌 A 仅命中其商品所在销售单（真实 SQL EXISTS 过滤）
+        PageVO<DrillOrderRow> brandAOrders = drillDownService.orders(new DrillOrderQuery(
+                day, day, null, null, brandA, null, null, null, null, null, null, 1, 20), MANAGER);
+        assertThat(brandAOrders.list()).hasSize(1);
+        assertThat(brandAOrders.list().get(0).orderNo()).isEqualTo("XS202606010001");
+
+        // 品牌 + 分类条件可组合，且分类筛选既有行为不受影响
+        assertThat(drillDownService.orders(new DrillOrderQuery(
+                day, day, null, categoryId, brandB, null, null, null, null, null, null, 1, 20), MANAGER)
+                .list()).extracting(DrillOrderRow::orderNo).containsExactly("XS202606010002");
+    }
+
     // ==================== 测试数据 ====================
 
     private long insertGoodsRow(long categoryId, long unitId, String code, String name) {
@@ -400,6 +433,21 @@ class ReportAggregationExportIntegrationTest {
                 VALUES (?, ?, ?, ?, ?, 9.90)
                 """, code, "899" + code + "0", name, categoryId, unitId);
         return jdbcTemplate.queryForObject("SELECT id FROM goods WHERE goods_code = ?", Long.class, code);
+    }
+
+    private long insertGoodsRow(long categoryId, long unitId, String code, String name, long brandId) {
+        jdbcTemplate.update("""
+                INSERT INTO goods (goods_code, barcode, name, category_id, unit_id, brand_id, retail_price)
+                VALUES (?, ?, ?, ?, ?, ?, 9.90)
+                """, code, "899" + code + "0", name, categoryId, unitId, brandId);
+        return jdbcTemplate.queryForObject("SELECT id FROM goods WHERE goods_code = ?", Long.class, code);
+    }
+
+    private long ensureBrand(String name) {
+        jdbcTemplate.update("""
+                INSERT INTO brand (name, status) SELECT ?, 1 WHERE NOT EXISTS (SELECT 1 FROM brand WHERE name = ?)
+                """, name, name);
+        return jdbcTemplate.queryForObject("SELECT id FROM brand WHERE name = ?", Long.class, name);
     }
 
     private void insertSalesItem(long orderId, long goodsId, String goodsName, String unitPrice, String qty,

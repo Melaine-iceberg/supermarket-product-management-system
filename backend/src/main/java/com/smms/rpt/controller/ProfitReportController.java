@@ -113,7 +113,8 @@ public class ProfitReportController {
                 new ReportRange(beginDate, endDate), SecurityUtils.getLoginUser()));
     }
 
-    /** 汇总数字下钻（BR-RPT-06）：构成毛利汇总的销售单列表（成本/毛利按角色过滤，BR-RPT-07） */
+    /** 汇总数字下钻（BR-RPT-06）：构成毛利汇总的销售单列表（成本/毛利按角色过滤，BR-RPT-07）；
+     *  支持按商品/分类/品牌筛选（品牌行下钻，GAP-P2-21） */
     @GetMapping("/drill-orders")
     @RequirePerm("sys:rpt:profit")
     public ApiResponse<PageVO<DrillOrderRow>> drillOrders(
@@ -121,11 +122,12 @@ public class ProfitReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long goodsId,
             @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long brandId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         DrillOrderQuery q = new DrillOrderQuery(range.beginDate(), range.endDate(),
-                goodsId, categoryId, null, null, null, null, null, null, page, size);
+                goodsId, categoryId, brandId, null, null, null, null, null, null, page, size);
         return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }
 

@@ -266,16 +266,35 @@ class GoodsServiceTest {
     // ---------- 新增：唯一性与格式校验 ----------
 
     @Test
-    @DisplayName("BR-GOODS-01：条码重复（含停用商品）拒绝新增")
-    void create_duplicateBarcode_rejected() {
+    @DisplayName("BR-GOODS-01 / UC-GOODS-001 E1：条码重复时提示占用商品名称（含停用标注）拒绝新增")
+    void create_duplicateBarcode_reportsOccupyingGoodsName() {
         stubCommonLookups();
         when(goodsMapper.selectCount(any())).thenReturn(1L);
+        Goods occupying = goodsWithBarcode("6901234567892");
+        occupying.setName("测试牛奶 250ml");
+        occupying.setStatus(0);
+        when(goodsMapper.selectOne(any())).thenReturn(occupying);
+
+        assertThatThrownBy(() -> service.create(
+                createReq("6901234567892", null, null, 0, null, null), "admin"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("条码 6901234567892 已被商品【测试牛奶 250ml】占用")
+                .hasMessageContaining("该商品已停用");
+        verify(goodsMapper, never()).insert(any(Goods.class));
+    }
+
+    @Test
+    @DisplayName("BR-GOODS-01：条码占用、占用行不可查时回退通用文案")
+    void create_duplicateBarcode_fallbackMessage() {
+        stubCommonLookups();
+        when(goodsMapper.selectCount(any())).thenReturn(1L);
+        when(goodsMapper.selectOne(any())).thenReturn(null);
 
         assertThatThrownBy(() -> service.create(
                 createReq("6901234567892", null, null, 0, null, null), "admin"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("条码")
-                .hasMessageContaining("已存在");
+                .hasMessageContaining("已被占用");
         verify(goodsMapper, never()).insert(any(Goods.class));
     }
 

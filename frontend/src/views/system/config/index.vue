@@ -89,7 +89,9 @@ async function save() {
   try {
     await updateConfig(editing.value.configKey, form.configValue, form.remark, form.password)
     ElMessage.success(
-      editing.value.instantEffect === 1 ? '参数已保存并即时生效' : '参数已保存，重启后生效',
+      editing.value.instantEffect === 1
+        ? '参数已保存并即时生效'
+        : '参数已保存，最迟 60 秒内生效（无需重启）',
     )
     dialogVisible.value = false
     form.password = ''
@@ -129,11 +131,20 @@ onMounted(load)
         <el-table-column label="说明" min-width="220">
           <template #default="{ row }">{{ row.remark || '—' }}</template>
         </el-table-column>
-        <el-table-column label="生效方式" width="90">
+        <el-table-column label="生效方式" width="110">
           <template #default="{ row }">
-            <el-tag :type="row.instantEffect === 1 ? 'success' : 'info'" size="small" effect="plain">
-              {{ row.instantEffect === 1 ? '即时' : '重启' }}
-            </el-tag>
+            <el-tooltip
+              :content="
+                row.instantEffect === 1
+                  ? '保存后立即清除参数缓存，后续读取即用新值'
+                  : '保存后不强制刷新缓存，最迟 60 秒（缓存周期）内生效，无需重启系统'
+              "
+              placement="top"
+            >
+              <el-tag :type="row.instantEffect === 1 ? 'success' : 'info'" size="small" effect="plain">
+                {{ row.instantEffect === 1 ? '即时' : '延迟' }}
+              </el-tag>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="90" fixed="right">

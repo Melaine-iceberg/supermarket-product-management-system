@@ -117,7 +117,7 @@ class DrillDownServiceTest {
     @DisplayName("下钻库存流水：无毛利权限时单位成本不返回，前后结存与单据号保留")
     void inventoryRecordDrillMasksUnitCost() {
         DrillInvRecordQuery q = new DrillInvRecordQuery(
-                LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), "SALE_OUT", 1L, 1, 20);
+                LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), "SALE_OUT", 1L, null, 1, 20);
         DrillInvRecordRow row = new DrillInvRecordRow(99L, 1L, "G001", "测试商品", "SALE_OUT",
                 new BigDecimal("-2"), new BigDecimal("10"), new BigDecimal("8"),
                 new BigDecimal("18.0000"), "XS", "XS202603010001", "陈收银",

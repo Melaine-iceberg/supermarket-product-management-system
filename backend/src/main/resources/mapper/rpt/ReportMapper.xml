@@ -509,6 +509,11 @@
                         JOIN goods g ON g.id = soi.goods_id
                         WHERE soi.order_id = so.id AND g.category_id = #{q.categoryId})
         </if>
+        <if test="q.brandId != null">
+            AND EXISTS (SELECT 1 FROM sales_order_item soi
+                        JOIN goods g ON g.id = soi.goods_id
+                        WHERE soi.order_id = so.id AND g.brand_id = #{q.brandId})
+        </if>
         <if test="q.cashierName != null and q.cashierName != ''">
             AND so.cashier_name LIKE CONCAT('%', #{q.cashierName}, '%')
         </if>

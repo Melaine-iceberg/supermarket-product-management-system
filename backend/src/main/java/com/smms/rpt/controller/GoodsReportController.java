@@ -113,7 +113,8 @@ public class GoodsReportController {
                 new ReportRange(beginDate, endDate), SecurityUtils.getLoginUser()));
     }
 
-    /** 汇总数字下钻（BR-RPT-06）：构成该汇总的销售单列表，逐单金额与汇总一致（AC-16） */
+    /** 汇总数字下钻（BR-RPT-06）：构成该汇总的销售单列表，逐单金额与汇总一致（AC-16）；
+     *  品牌销售行按 brandId 筛选（GAP-P2-21） */
     @GetMapping("/drill-orders")
     @RequirePerm("sys:rpt:goods")
     public ApiResponse<PageVO<DrillOrderRow>> drillOrders(
@@ -121,6 +122,7 @@ public class GoodsReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long goodsId,
             @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long brandId,
             @RequestParam(required = false) String cashierName,
             @RequestParam(required = false) Integer counterNo,
             @RequestParam(required = false) Boolean memberOnly,
@@ -128,7 +130,7 @@ public class GoodsReportController {
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         DrillOrderQuery q = new DrillOrderQuery(range.beginDate(), range.endDate(),
-                goodsId, categoryId, cashierName, counterNo, memberOnly, null,
+                goodsId, categoryId, brandId, cashierName, counterNo, memberOnly, null,
                 null, null, page, size);
         return ApiResponse.ok(drillDownService.orders(q, SecurityUtils.getLoginUser()));
     }

@@ -12,13 +12,12 @@ import {
   fetchDrillOrders,
   fetchGoodsRanking,
   fetchSlowMoving,
-  recentDaysRange,
-  thisMonthRange,
   todayRange,
   type GoodsRankRow,
   type ReportRange,
 } from '@/api/report'
 import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
+import { RANGE_PRESETS, presetRange, type RangePreset } from '../components/rangePresets'
 
 type ViewKey = 'ranking' | 'category-structure' | 'slow-moving' | 'brand-sales'
 
@@ -33,7 +32,7 @@ const loading = ref(false)
 const exporting = ref(false)
 const auth = useAuthStore()
 const view = ref<ViewKey>('ranking')
-const initRange = thisMonthRange()
+const initRange = todayRange()
 const range = reactive<ReportRange>({ ...initRange })
 /** 日期选择器模型（el-date-picker 需要数组），查询前同步进 range */
 const dateRange = ref<string[]>([initRange.beginDate, initRange.endDate])
@@ -67,13 +66,8 @@ function syncRange() {
   range.endDate = dateRange.value?.[1]
 }
 
-function setRange(preset: 'today' | 'month' | 'recent7' | 'recent30') {
-  const r =
-    preset === 'today'
-      ? todayRange()
-      : preset === 'month'
-        ? thisMonthRange()
-        : recentDaysRange(preset === 'recent7' ? 7 : 30)
+function setRange(preset: RangePreset) {
+  const r = presetRange(preset)
   dateRange.value = [r.beginDate, r.endDate]
   load()
 }
@@ -205,14 +199,16 @@ async function handlePrint() {
 // ---------- 下钻（BR-RPT-06）：汇总行 → 构成它的销售单列表 ----------
 const drillVisible = ref(false)
 const drillTitle = ref('')
-let drillFilter: { goodsId?: number; categoryId?: number } = {}
+let drillFilter: { goodsId?: number; categoryId?: number; brandId?: number } = {}
 
-function openDrill(row: GoodsRankRow, by: 'goods' | 'category') {
+function openDrill(row: GoodsRankRow, by: 'goods' | 'category' | 'brand') {
   drillFilter =
     by === 'goods'
       ? { goodsId: row.goodsId ?? undefined }
-      : { categoryId: row.categoryId ?? undefined }
-  const name = by === 'goods' ? row.goodsName : row.categoryName
+      : by === 'category'
+        ? { categoryId: row.categoryId ?? undefined }
+        : { brandId: row.brandId ?? undefined }
+  const name = by === 'goods' ? row.goodsName : by === 'category' ? row.categoryName : row.brandName
   drillTitle.value = `下钻：${name ?? '—'} 销售单（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`
   drillVisible.value = true
 }
@@ -279,10 +275,9 @@ onMounted(async () => {
         </el-form-item>
       </el-form>
       <div class="presets">
-        <el-button size="small" @click="setRange('today')">今日</el-button>
-        <el-button size="small" @click="setRange('month')">本月</el-button>
-        <el-button size="small" @click="setRange('recent7')">近7日</el-button>
-        <el-button size="small" @click="setRange('recent30')">近30日</el-button>
+        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+          {{ p.label }}
+        </el-button>
       </div>
     </el-card>
 
@@ -345,6 +340,13 @@ onMounted(async () => {
         <el-table-column v-if="view === 'category-structure'" label="操作" width="80" fixed="right">
           <template #default="{ row }">
             <el-button v-if="row.categoryId" link type="primary" @click="openDrill(row as GoodsRankRow, 'category')">
+              下钻
+            </el-button>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="view === 'brand-sales'" label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.brandId" link type="primary" @click="openDrill(row as GoodsRankRow, 'brand')">
               下钻
             </el-button>
           </template>

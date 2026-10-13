@@ -1,17 +1,57 @@
 <script setup lang="ts">
 import { moneyText } from '@/utils/format'
-import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { fetchDashboard, todayRange, type DashboardVO } from '@/api/report'
+import {
+  fetchDashboard,
+  fetchDrillOrders,
+  recentDaysRange,
+  todayRange,
+  type DashboardVO,
+  type DrillOrderFilters,
+} from '@/api/report'
 import { useAuthStore } from '@/stores/auth'
 import { pQty, printSheet, pTable } from '@/utils/print'
+import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const data = ref<DashboardVO | null>(null)
 const trendDays = ref<7 | 30>(7)
+
+// ---------- KPI / TOP10 下钻（BR-RPT-06 / GAP-P2-21） ----------
+const canDrillSales = computed(() => auth.hasPerm('sys:rpt:sales'))
+const canDrillGoods = computed(() => auth.hasPerm('sys:rpt:goods'))
+const drillVisible = ref(false)
+const drillTitle = ref('')
+let drillFilters: DrillOrderFilters = {}
+
+function openDrill(filters: DrillOrderFilters, title: string) {
+  drillFilters = filters
+  drillTitle.value = title
+  drillVisible.value = true
+}
+
+function fetchDrillPage(p: number, size: number) {
+  return fetchDrillOrders('sales', { ...drillFilters, page: p, size })
+}
+
+/** KPI 下钻：今日销售额/订单数/毛利额 → 构成它的今日销售单 */
+function drillTodayKpi(label: string) {
+  const r = todayRange()
+  openDrill({ beginDate: r.beginDate, endDate: r.endDate }, `下钻：${label}（${r.beginDate}）`)
+}
+
+/** TOP10 行下钻：近 N 日该商品销售单 */
+function drillTopGoods(goodsId: number, goodsName: string) {
+  const r = recentDaysRange(trendDays.value)
+  openDrill(
+    { goodsId, beginDate: r.beginDate, endDate: r.endDate },
+    `下钻：${goodsName}（近 ${trendDays.value} 日）`,
+  )
+}
 
 const chartRef = ref<HTMLDivElement>()
 const chart = shallowRef<echarts.ECharts>()
@@ -148,22 +188,37 @@ watch(trendDays, load)
       <el-button size="small" @click="handlePrint">打印看板</el-button>
     </div>
 
-    <!-- KPI 卡片（FR-RPT-01） -->
+    <!-- KPI 卡片（FR-RPT-01）：销售额/订单数/毛利额可下钻到今日销售单（BR-RPT-06/GAP-P2-21） -->
     <el-row :gutter="16" class="kpi-row">
       <el-col :xs="12" :sm="8" :md="4">
-        <el-card shadow="hover" class="kpi-card">
+        <el-card
+          shadow="hover"
+          class="kpi-card"
+          :class="{ clickable: canDrillSales }"
+          @click="canDrillSales && drillTodayKpi('今日销售额')"
+        >
           <div class="kpi-label">今日销售额</div>
           <div class="kpi-value primary">￥{{ money(data?.kpi.salesAmount) }}</div>
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="8" :md="4">
-        <el-card shadow="hover" class="kpi-card">
+        <el-card
+          shadow="hover"
+          class="kpi-card"
+          :class="{ clickable: canDrillSales }"
+          @click="canDrillSales && drillTodayKpi('今日订单数')"
+        >
           <div class="kpi-label">今日订单数</div>
           <div class="kpi-value">{{ data?.kpi.orderCount ?? 0 }}</div>
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="8" :md="4">
-        <el-card shadow="hover" class="kpi-card">
+        <el-card
+          shadow="hover"
+          class="kpi-card"
+          :class="{ clickable: canDrillSales }"
+          @click="canDrillSales && drillTodayKpi('今日毛利额')"
+        >
           <div class="kpi-label">今日毛利额</div>
           <div class="kpi-value" :class="Number(data?.kpi.profitAmount ?? 0) >= 0 ? 'success' : 'danger'">
             ￥{{ money(data?.kpi.profitAmount) }}
@@ -171,7 +226,12 @@ watch(trendDays, load)
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="8" :md="4">
-        <el-card shadow="hover" class="kpi-card">
+        <el-card
+          shadow="hover"
+          class="kpi-card"
+          :class="{ clickable: canDrillSales }"
+          @click="canDrillSales && drillTodayKpi('毛利率')"
+        >
           <div class="kpi-label">毛利率</div>
           <div class="kpi-value">{{ percent(data?.kpi.profitRate) }}</div>
         </el-card>
@@ -243,8 +303,20 @@ watch(trendDays, load)
         <el-table-column label="销售额" width="120" align="right">
           <template #default="{ row }">￥{{ money(row.salesAmount) }}</template>
         </el-table-column>
+        <el-table-column v-if="canDrillGoods" label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              link
+              type="primary"
+              @click="drillTopGoods(row.goodsId, row.goodsName)"
+            >下钻</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- 下钻单据列表（BR-RPT-06） -->
+    <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
   </div>
 </template>
 

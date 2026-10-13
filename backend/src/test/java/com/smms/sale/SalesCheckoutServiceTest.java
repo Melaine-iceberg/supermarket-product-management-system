@@ -985,7 +985,7 @@ class SalesCheckoutServiceTest {
         assertThat(normalVO.levelName()).isEqualTo("银卡会员");
         assertThat(normalVO.discountRate()).isEqualByComparingTo("0.98");
         // 手机号脱敏（BR-MEM-08：收银台仅显示后 4 位）与储值余额回显（BR-MEM-07）
-        assertThat(normalVO.phone()).isEqualTo("138****0001");
+        assertThat(normalVO.phone()).isEqualTo("****0001");
         assertThat(normalVO.balance()).isEqualByComparingTo("88.50");
         MemberSearchVO disabledVO = result.get(0);
         assertThat(disabledVO.status()).isZero();

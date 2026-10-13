@@ -257,10 +257,10 @@ public class SalesReturnService {
                         q.returnReason(), q.beginDate(), q.endDate(), operator.realName(), q.page(), q.size());
         IPage<ReturnOrderVO> result =
                 returnOrderMapper.selectReturnPage(new Page<>(pageNo, size), scoped);
-        // 会员手机号按角色脱敏（BR-MEM-08：完整手机号仅店长及以上可见）
+        // 会员手机号按角色脱敏（BR-MEM-08：退货办理一线界面仅显示后 4 位，完整手机号仅店长及以上可见）
         if (!SecurityUtils.canViewMemberPhone()) {
             List<ReturnOrderVO> masked = result.getRecords().stream()
-                    .map(r -> r.withMemberPhone(MaskUtils.maskPhone(r.memberPhone())))
+                    .map(r -> r.withMemberPhone(MaskUtils.maskPhoneTail4(r.memberPhone())))
                     .toList();
             result.setRecords(masked);
         }
@@ -289,9 +289,9 @@ public class SalesReturnService {
                 returnOrder.getSalesOrderId(), order == null ? null : order.getOrderNo(),
                 order == null ? null : order.getSaleTime(),
                 member == null ? null : member.getName(),
-                // 手机号按角色脱敏（BR-MEM-08）
+                // 手机号按角色脱敏（BR-MEM-08：一线界面仅显示后 4 位）
                 member == null ? null
-                        : SecurityUtils.canViewMemberPhone() ? member.getPhone() : MaskUtils.maskPhone(member.getPhone()),
+                        : SecurityUtils.canViewMemberPhone() ? member.getPhone() : MaskUtils.maskPhoneTail4(member.getPhone()),
                 returnOrder.getReturnReason(), returnOrder.getReasonRemark(),
                 returnOrder.getRefundAmount(), returnOrder.getRefundType(),
                 returnOrder.getCashierName(), returnOrder.getAuthorizerName(),

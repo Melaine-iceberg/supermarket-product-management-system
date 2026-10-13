@@ -35,6 +35,7 @@ import com.smms.sale.mapper.PaymentRecordMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.security.LoginUser;
+import com.smms.security.SecurityUtils;
 import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
@@ -254,8 +255,10 @@ public class SalesCheckoutService {
             boolean enabled = m.getStatus() != null && m.getStatus() == 1;
             BigDecimal rate = enabled && level != null && level.getStatus() != null && level.getStatus() == 1
                     ? level.getDiscountRate() : BigDecimal.ONE;
-            // 手机号脱敏（BR-MEM-08：收银台仅显示姓名与手机号后 4 位）
-            return new MemberSearchVO(m.getId(), m.getMemberNo(), m.getName(), MaskUtils.maskPhone(m.getPhone()),
+            // 手机号脱敏（BR-MEM-08：收银台仅显示姓名与手机号后 4 位；店长及以上可见完整号码）
+            String phone = SecurityUtils.canViewMemberPhone()
+                    ? m.getPhone() : MaskUtils.maskPhoneTail4(m.getPhone());
+            return new MemberSearchVO(m.getId(), m.getMemberNo(), m.getName(), phone,
                     level == null ? "普通会员" : level.getName(), rate, m.getPoints(), m.getBalance(), m.getStatus());
         }).toList();
     }

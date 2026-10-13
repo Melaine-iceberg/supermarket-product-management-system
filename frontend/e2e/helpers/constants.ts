@@ -57,6 +57,10 @@ export const SEED = {
     purchasePrice: 2,
     retailPrice: 3.5,
   },
+  member: {
+    name: 'E2E会员',
+    phone: '13800009999',
+  },
   purchaseQuantity: 10,
   remark: 'E2E 自动造数，请勿删除',
 } as const
