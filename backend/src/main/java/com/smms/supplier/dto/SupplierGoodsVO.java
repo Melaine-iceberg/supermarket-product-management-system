@@ -33,4 +33,10 @@ public class SupplierGoodsVO {
 
     /** 最近供货时间 */
     private LocalDateTime lastSupplyTime;
+
+    /** 最近供货价（最近一次入库实收单价） */
+    private BigDecimal lastSupplyPrice;
+
+    /** 商品状态：1启用 0停用（采购选品仅可选启用商品） */
+    private Integer goodsStatus;
 }

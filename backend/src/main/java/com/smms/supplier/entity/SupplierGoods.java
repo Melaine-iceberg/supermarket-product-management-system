@@ -32,6 +32,9 @@ public class SupplierGoods {
     /** 最近供货时间（入库验收时回写，人工维护不可修改） */
     private LocalDateTime lastSupplyTime;
 
+    /** 最近供货价（最近一次入库实收单价，入库验收时回写，FR-SUP-04） */
+    private BigDecimal lastSupplyPrice;
+
     private String createBy;
 
     private LocalDateTime createTime;

@@ -29,8 +29,8 @@ import {
   type PurchaseOrderVO,
   type PurchaseReturnVO,
 } from '@/api/purchase'
-import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
-import { pageGoods, type GoodsListVO } from '@/api/goods'
+import { pageSuppliers, getSupplierGoods, type SupplierListVO } from '@/api/supplier'
+import { pageGoods } from '@/api/goods'
 import { getDictItems } from '@/api/system'
 import { pMoney, pQty, printSheet } from '@/utils/print'
 
@@ -171,6 +171,9 @@ interface EditItem {
   unitName: string
   quantity: number | null
   price: number | null
+  /** 建议采购原值（建议采购生成时记录，UC-INV-002 6a；手工添加为空） */
+  suggestedQty?: number | null
+  suggestedPrice?: number | null
   remark: string
 }
 
@@ -219,21 +222,38 @@ async function openEdit(row: PurchaseOrderVO) {
     unitName: i.unitName ?? '',
     quantity: Number(i.quantity),
     price: Number(i.price),
+    suggestedQty: i.suggestedQty,
+    suggestedPrice: i.suggestedPrice,
     remark: i.remark ?? '',
   }))
   editDialog.visible = true
 }
 
-/** 商品搜索弹窗：从商品档案选行（仅启用商品，BR-PUR-03） */
+/** 商品选择行：全量商品档案 / 供应商供货商品两种来源统一形状（FR-SUP-04） */
+interface PickerGoodsRow {
+  id: number
+  goodsCode: string
+  name: string
+  spec: string | null
+  unitName: string | null
+  purchasePrice: number | null
+  supplyPrice?: number | null
+  lastSupplyPrice?: number | null
+}
+
+/** 商品搜索弹窗：默认按所选供应商的供货商品过滤（带出最近供货价），可切换全量商品（FR-PUR-01） */
 const goodsPicker = reactive({
   visible: false,
   keyword: '',
   loading: false,
-  list: [] as GoodsListVO[],
+  /** 仅看该供应商供货商品（FR-SUP-04；未选供应商时禁用） */
+  onlySupplier: true,
+  list: [] as PickerGoodsRow[],
 })
 
 function openGoodsPicker() {
   goodsPicker.keyword = ''
+  goodsPicker.onlySupplier = editDialog.supplierId != null
   goodsPicker.visible = true
   searchGoods()
 }
@@ -241,6 +261,30 @@ function openGoodsPicker() {
 async function searchGoods() {
   goodsPicker.loading = true
   try {
+    if (goodsPicker.onlySupplier && editDialog.supplierId != null) {
+      // 供应商供货商品（FR-SUP-04）：前端按关键字过滤，仅启用商品可采购（BR-PUR-03）
+      const all = await getSupplierGoods(editDialog.supplierId)
+      const kw = goodsPicker.keyword.trim().toLowerCase()
+      goodsPicker.list = all
+        .filter((g) => g.goodsStatus !== 0)
+        .filter(
+          (g) =>
+            !kw ||
+            g.goodsName.toLowerCase().includes(kw) ||
+            g.goodsCode.toLowerCase().includes(kw),
+        )
+        .map((g) => ({
+          id: g.goodsId,
+          goodsCode: g.goodsCode,
+          name: g.goodsName,
+          spec: g.spec,
+          unitName: g.unitName,
+          purchasePrice: null,
+          supplyPrice: g.supplyPrice,
+          lastSupplyPrice: g.lastSupplyPrice,
+        }))
+      return
+    }
     const data = await pageGoods({
       name: goodsPicker.keyword.trim() || undefined,
       goodsCode: goodsPicker.keyword.trim() || undefined,
@@ -248,13 +292,20 @@ async function searchGoods() {
       page: 1,
       size: 50,
     })
-    goodsPicker.list = data.list
+    goodsPicker.list = data.list.map((g) => ({
+      id: g.id,
+      goodsCode: g.goodsCode,
+      name: g.name,
+      spec: g.spec,
+      unitName: g.unitName,
+      purchasePrice: g.purchasePrice,
+    }))
   } finally {
     goodsPicker.loading = false
   }
 }
 
-function pickGoods(goods: GoodsListVO) {
+function pickGoods(goods: PickerGoodsRow) {
   if (editDialog.items.some((i) => i.goodsId === goods.id)) {
     ElMessage.warning('该商品已在明细中（同商品仅一行，BR-PUR-03）')
     return
@@ -263,9 +314,12 @@ function pickGoods(goods: GoodsListVO) {
     goodsId: goods.id,
     goodsCode: goods.goodsCode,
     goodsName: goods.name,
-    unitName: goods.unitName,
+    unitName: goods.unitName ?? '',
     quantity: 1,
-    price: goods.purchasePrice != null ? Number(goods.purchasePrice) : 0,
+    // 单价默认链（FR-SUP-04）：该供应商最近供货价 → 协议供货价 → 商品档案进货参考价
+    price: goods.lastSupplyPrice ?? goods.supplyPrice ?? goods.purchasePrice ?? 0,
+    suggestedQty: null,
+    suggestedPrice: null,
     remark: '',
   })
   goodsPicker.visible = false
@@ -298,6 +352,8 @@ async function saveOrder() {
         goodsId: i.goodsId,
         quantity: Number(i.quantity),
         price: Number(i.price),
+        suggestedQty: i.suggestedQty ?? undefined,
+        suggestedPrice: i.suggestedPrice ?? undefined,
         remark: i.remark || undefined,
       })),
     }
@@ -892,6 +948,12 @@ onMounted(() => {
             <el-table-column label="单价" width="80" align="right">
               <template #default="{ row }">{{ money(row.price) }}</template>
             </el-table-column>
+            <el-table-column label="建议量" width="70" align="right">
+              <template #default="{ row }">{{ row.suggestedQty ?? '—' }}</template>
+            </el-table-column>
+            <el-table-column label="建议价" width="80" align="right">
+              <template #default="{ row }">{{ row.suggestedPrice != null ? money(row.suggestedPrice) : '—' }}</template>
+            </el-table-column>
             <el-table-column label="金额" width="90" align="right">
               <template #default="{ row }">{{ money(row.amount) }}</template>
             </el-table-column>
@@ -956,6 +1018,14 @@ onMounted(() => {
             <el-input-number v-model="row.price" :min="0" :precision="2" :controls="false" style="width: 110px" />
           </template>
         </el-table-column>
+        <el-table-column label="建议量 / 建议价" width="120" align="center">
+          <template #default="{ row }">
+            <span v-if="row.suggestedQty != null || row.suggestedPrice != null" class="suggested-cell">
+              {{ row.suggestedQty ?? '—' }} / {{ row.suggestedPrice != null ? money(row.suggestedPrice) : '—' }}
+            </span>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="金额" width="90" align="right">
           <template #default="{ row }">￥{{ lineAmount(row as EditItem).toFixed(2) }}</template>
         </el-table-column>
@@ -976,27 +1046,50 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 商品选择 -->
-    <el-dialog v-model="goodsPicker.visible" title="选择商品（仅启用商品可采购）" width="620px">
+    <!-- 商品选择（FR-PUR-01：可按供应商供货商品过滤，亦可切换全量商品） -->
+    <el-dialog v-model="goodsPicker.visible" title="选择商品（仅启用商品可采购）" width="680px">
       <el-form inline @submit.prevent="searchGoods">
         <el-form-item>
-          <el-input v-model="goodsPicker.keyword" placeholder="商品名称/编码" clearable style="width: 240px" @keyup.enter="searchGoods" />
+          <el-input v-model="goodsPicker.keyword" placeholder="商品名称/编码" clearable style="width: 220px" @keyup.enter="searchGoods" />
+        </el-form-item>
+        <el-form-item label="来源">
+          <el-switch
+            v-model="goodsPicker.onlySupplier"
+            :disabled="editDialog.supplierId == null"
+            active-text="仅该供应商供货商品"
+            inactive-text="全量商品"
+            @change="searchGoods"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="searchGoods">搜索</el-button>
         </el-form-item>
       </el-form>
+      <el-alert
+        v-if="goodsPicker.onlySupplier && editDialog.supplierId != null"
+        type="info"
+        :closable="false"
+        show-icon
+        title="按供应商-商品关联带出供货价与最近供货价（FR-SUP-04）；选择商品后单价默认取最近供货价"
+        class="picker-alert"
+      />
       <el-table v-loading="goodsPicker.loading" :data="goodsPicker.list" size="small" stripe max-height="360">
         <el-table-column prop="goodsCode" label="编码" width="100" />
         <el-table-column prop="name" label="商品" min-width="150" show-overflow-tooltip />
         <el-table-column prop="spec" label="规格" width="90" show-overflow-tooltip />
         <el-table-column prop="unitName" label="单位" width="60" />
+        <el-table-column v-if="goodsPicker.onlySupplier" label="最近供货价" width="100" align="right">
+          <template #default="{ row }">{{ money(row.lastSupplyPrice) }}</template>
+        </el-table-column>
+        <el-table-column v-if="goodsPicker.onlySupplier" label="协议供货价" width="100" align="right">
+          <template #default="{ row }">{{ money(row.supplyPrice) }}</template>
+        </el-table-column>
         <el-table-column label="进货参考价" width="100" align="right">
           <template #default="{ row }">{{ money(row.purchasePrice) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="70" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="pickGoods(row as GoodsListVO)">选择</el-button>
+            <el-button link type="primary" @click="pickGoods(row as PickerGoodsRow)">选择</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -1151,6 +1244,15 @@ onMounted(() => {
 
 .dialog-alert {
   margin-bottom: 12px;
+}
+
+.picker-alert {
+  margin-bottom: 10px;
+}
+
+.suggested-cell {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .items-footer {

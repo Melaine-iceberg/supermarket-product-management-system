@@ -325,7 +325,8 @@ public class PurchaseOrderService {
                             unit == null ? null : unit.getName(),
                             i.getQuantity(), i.getPrice(), i.getAmount(),
                             i.getReceivedQty(), i.getReturnedQty(),
-                            i.getQuantity().subtract(i.getReceivedQty()), i.getRemark());
+                            i.getQuantity().subtract(i.getReceivedQty()),
+                            i.getSuggestedQty(), i.getSuggestedPrice(), i.getRemark());
                 }).toList());
     }
 
@@ -397,6 +398,9 @@ public class PurchaseOrderService {
                     .setScale(2, RoundingMode.HALF_UP));
             item.setReceivedQty(BigDecimal.ZERO);
             item.setReturnedQty(BigDecimal.ZERO);
+            // 建议采购原值（UC-INV-002 6a）：仅建议采购生成时携带，手工建单为空
+            item.setSuggestedQty(request.getSuggestedQty());
+            item.setSuggestedPrice(request.getSuggestedPrice());
             item.setRemark(request.getRemark());
             return item;
         }).toList();

@@ -16,6 +16,8 @@ import com.smms.purchase.mapper.SuggestPurchaseMapper;
 import com.smms.purchase.service.PurchaseOrderService;
 import com.smms.purchase.service.SuggestPurchaseService;
 import com.smms.supplier.entity.Supplier;
+import com.smms.supplier.entity.SupplierGoods;
+import com.smms.supplier.mapper.SupplierGoodsMapper;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -51,6 +53,7 @@ class SuggestPurchaseServiceTest {
 
     @Mock private SuggestPurchaseMapper suggestMapper;
     @Mock private SupplierMapper supplierMapper;
+    @Mock private SupplierGoodsMapper supplierGoodsMapper;
     @Mock private CategoryMapper categoryMapper;
     @Mock private SysConfigService configService;
     @Mock private PurchaseOrderService purchaseOrderService;
@@ -60,8 +63,9 @@ class SuggestPurchaseServiceTest {
     @BeforeEach
     void setUp() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SupplierGoods.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Category.class);
-        service = new SuggestPurchaseService(suggestMapper, supplierMapper, categoryMapper,
+        service = new SuggestPurchaseService(suggestMapper, supplierMapper, supplierGoodsMapper, categoryMapper,
                 configService, purchaseOrderService);
     }
 
@@ -171,6 +175,65 @@ class SuggestPurchaseServiceTest {
         assertThat(saved.getItems()).hasSize(1);
         assertThat(saved.getItems().get(0).getQuantity()).isEqualByComparingTo("12");
         assertThat(saved.getItems().get(0).getPrice()).isEqualByComparingTo("9.8");
+        // 建议原值保留（UC-INV-002 6a）：建议量 12、建议价 9.8
+        assertThat(saved.getItems().get(0).getSuggestedQty()).isEqualByComparingTo("12");
+        assertThat(saved.getItems().get(0).getSuggestedPrice()).isEqualByComparingTo("9.8");
+    }
+
+    @Test
+    @DisplayName("一键生成：可改供应商（UC-INV-002 6a），单价按该供应商最近供货价带出并保留建议原值")
+    void generateHonoursSupplierOverrideAndKeepsSuggestedValues() {
+        SuggestItemVO row = row("10", "28", "5", "3", false, 1L); // 默认供应商 1
+        when(suggestMapper.selectSuggestByGoodsIds(anyList(), eq(28))).thenReturn(List.of(row));
+        stubConfig();
+        Supplier other = supplier(5);
+        other.setId(2L);
+        other.setName("南方食品");
+        when(supplierMapper.selectBatchIds(anyList())).thenReturn(List.of(supplier(5)));
+        when(supplierMapper.selectById(2L)).thenReturn(other);
+        SupplierGoods relation = new SupplierGoods();
+        relation.setSupplierId(2L);
+        relation.setGoodsId(101L);
+        relation.setSupplyPrice(new BigDecimal("9.00"));
+        relation.setLastSupplyPrice(new BigDecimal("8.66"));
+        when(supplierGoodsMapper.selectList(any(Wrapper.class))).thenReturn(List.of(relation));
+        when(purchaseOrderService.create(any(), eq("张店长"))).thenReturn(detailVO());
+
+        SuggestGenerateRequest req = new SuggestGenerateRequest();
+        SuggestGenerateRequest.ItemRequest item = new SuggestGenerateRequest.ItemRequest();
+        item.setGoodsId(101L);
+        item.setSupplierId(2L); // 改供应商
+        req.setItems(List.of(item));
+
+        SuggestGenerateResultVO result = service.generate(req, "张店长");
+
+        assertThat(result.skippedGoods()).isEmpty();
+        ArgumentCaptor<PurchaseSaveRequest> captor = ArgumentCaptor.forClass(PurchaseSaveRequest.class);
+        verify(purchaseOrderService).create(captor.capture(), eq("张店长"));
+        PurchaseSaveRequest saved = captor.getValue();
+        assertThat(saved.getSupplierId()).isEqualTo(2L);
+        // 改供应商后单价取该供应商最近供货价 8.66（而非默认供应商的 9.8）
+        assertThat(saved.getItems().get(0).getPrice()).isEqualByComparingTo("8.66");
+        assertThat(saved.getItems().get(0).getSuggestedQty()).isEqualByComparingTo("12");
+        assertThat(saved.getItems().get(0).getSuggestedPrice()).isEqualByComparingTo("8.66");
+    }
+
+    @Test
+    @DisplayName("一键生成：无默认供应商且未指定 → 跳过并提示待指定（UC-INV-002 6a）")
+    void generateSkipsWhenNoSupplierAnywhere() {
+        SuggestItemVO row = row("10", "28", "5", "3", false, null);
+        when(suggestMapper.selectSuggestByGoodsIds(anyList(), eq(28))).thenReturn(List.of(row));
+        stubConfig();
+
+        SuggestGenerateRequest req = new SuggestGenerateRequest();
+        SuggestGenerateRequest.ItemRequest item = new SuggestGenerateRequest.ItemRequest();
+        item.setGoodsId(101L);
+        req.setItems(List.of(item));
+
+        SuggestGenerateResultVO result = service.generate(req, "张店长");
+
+        assertThat(result.orders()).isEmpty();
+        assertThat(result.skippedGoods().get(0).reason()).contains("待指定供应商");
     }
 
     @Test
@@ -222,7 +285,7 @@ class SuggestPurchaseServiceTest {
         PurchaseOrderDetailVO.ItemVO item = new PurchaseOrderDetailVO.ItemVO(
                 600L, 101L, "SP0001", "可乐 330ml", "330ml", "罐",
                 new BigDecimal("12"), new BigDecimal("9.8"), new BigDecimal("117.60"),
-                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("12"), null);
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("12"), null, null, null);
         return new PurchaseOrderDetailVO(500L, "PO202601010005", 1L, "华东饮品",
                 "DRAFT", "张店长", null, null, null, null, null,
                 LocalDate.now().plusDays(5), new BigDecimal("117.60"),

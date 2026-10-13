@@ -110,6 +110,10 @@ export interface SupplierGoodsVO {
   /** 是否默认供应商：1是 0否（一商品至多一个默认） */
   isDefault: number
   lastSupplyTime: string | null
+  /** 最近供货价（最近一次入库实收单价，FR-SUP-04） */
+  lastSupplyPrice: number | null
+  /** 商品状态：1启用 0停用 */
+  goodsStatus: number | null
 }
 
 export interface SupplierGoodsItemPayload {

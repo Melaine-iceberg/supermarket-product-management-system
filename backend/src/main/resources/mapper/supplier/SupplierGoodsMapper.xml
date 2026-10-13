@@ -14,7 +14,9 @@
                u.name              AS unitName,
                sg.supply_price     AS supplyPrice,
                sg.is_default       AS isDefault,
-               sg.last_supply_time AS lastSupplyTime
+               sg.last_supply_time AS lastSupplyTime,
+               sg.last_supply_price AS lastSupplyPrice,
+               g.status            AS goodsStatus
         FROM supplier_goods sg
         JOIN goods g ON g.id = sg.goods_id
         LEFT JOIN category c ON c.id = g.category_id

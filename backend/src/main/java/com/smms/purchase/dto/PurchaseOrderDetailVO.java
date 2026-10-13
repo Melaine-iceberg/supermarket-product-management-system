@@ -54,6 +54,10 @@ public record PurchaseOrderDetailVO(
             BigDecimal returnedQty,
             /** 待入库数量 = 订购 − 已入库（超收判断基数） */
             BigDecimal pendingQty,
+            /** 建议采购量原值（建议采购生成时记录，UC-INV-002 6a；手工建单为空） */
+            BigDecimal suggestedQty,
+            /** 建议单价原值（同上） */
+            BigDecimal suggestedPrice,
             String remark
     ) {
     }

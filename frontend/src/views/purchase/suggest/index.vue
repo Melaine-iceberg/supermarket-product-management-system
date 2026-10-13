@@ -8,6 +8,7 @@ import {
   type SuggestItemVO,
 } from '@/api/purchase'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
+import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
 
 const auth = useAuthStore()
 
@@ -20,6 +21,7 @@ const loading = ref(false)
 const list = ref<SuggestItemVO[]>([])
 const total = ref(0)
 const categoryTree = ref<CategoryNode[]>([])
+const suppliers = ref<SupplierListVO[]>([])
 const query = reactive({
   name: '',
   goodsCode: '',
@@ -29,9 +31,9 @@ const query = reactive({
   size: 20,
 })
 
-/** 行可选条件：建议量 > 0 且已维护默认供应商（FR-SUP-04） */
+/** 行可选条件：建议量 > 0（无默认供应商也可勾选，生成时须在弹窗中指定供应商，UC-INV-002 6a） */
 function selectable(row: SuggestItemVO) {
-  return row.suggestQty > 0 && row.supplierId != null
+  return row.suggestQty > 0
 }
 
 async function load() {
@@ -74,6 +76,8 @@ interface GenerateItem {
   suggestQty: number
   quantity: number | null
   price: number | null
+  /** 供应商（可改，UC-INV-002 6a）：默认取建议的默认供应商，未维护则须手动指定 */
+  supplierId: number | null
   supplierName: string
 }
 
@@ -106,6 +110,7 @@ function openGenerate() {
     quantity: row.suggestQty,
     // 单价默认链：最近采购价 → 供货价（BR-INV-07 建议展示）
     price: row.lastPurchasePrice ?? row.supplyPrice ?? 0,
+    supplierId: row.supplierId,
     supplierName: row.supplierName ?? '',
   }))
   generateDialog.visible = true
@@ -116,6 +121,10 @@ async function submitGenerate() {
     ElMessage.warning('采购数量必须大于 0')
     return
   }
+  if (generateDialog.items.some((i) => i.supplierId == null)) {
+    ElMessage.warning('存在未指定供应商的行，请在弹窗中为每行选择供应商（FR-SUP-04）')
+    return
+  }
   generateDialog.saving = true
   try {
     const result = await generateSuggestOrders(
@@ -123,6 +132,7 @@ async function submitGenerate() {
         goodsId: i.goodsId,
         quantity: Number(i.quantity),
         price: i.price != null ? Number(i.price) : undefined,
+        supplierId: i.supplierId ?? undefined,
       })),
     )
     generateDialog.visible = false
@@ -138,6 +148,8 @@ async function submitGenerate() {
 onMounted(() => {
   load()
   getCategoryTree().then((tree) => (categoryTree.value = tree))
+  // 供应商下拉（生成草稿时可改供应商，UC-INV-002 6a）
+  pageSuppliers({ status: 1, page: 1, size: 200 }).then((data) => (suppliers.value = data.list))
 })
 </script>
 
@@ -222,7 +234,7 @@ onMounted(() => {
         <el-table-column label="默认供应商" width="120" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.supplierName">{{ row.supplierName }}</span>
-            <el-tag v-else type="info" size="small">未维护</el-tag>
+            <el-tag v-else type="warning" size="small">待指定供应商</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="供货价" width="80" align="right">
@@ -253,22 +265,34 @@ onMounted(() => {
 
     <!-- ==================== 生成草稿确认（FR-PUR-02） ==================== -->
     <el-dialog v-model="generateDialog.visible" title="生成草稿采购单" width="760px">
-      <el-alert type="info" :closable="false" show-icon title="按默认供应商自动分组生成草稿采购单（预计到货日期 = 今日 + 供应商提前期）；数量与单价可调整，保存后可在采购单列表继续编辑" class="dialog-alert" />
+      <el-alert type="info" :closable="false" show-icon title="按供应商自动分组生成草稿采购单（预计到货日期 = 今日 + 供应商提前期）；供应商可修改，未维护默认供应商的行须手动指定；数量与单价可调整，保存后可在采购单列表继续编辑" class="dialog-alert" />
       <el-table :data="generateDialog.items" size="small" stripe max-height="360">
-        <el-table-column prop="goodsName" label="商品" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="supplierName" label="默认供应商" width="120" show-overflow-tooltip />
-        <el-table-column label="建议量" width="80" align="right" prop="suggestQty" />
-        <el-table-column label="采购数量" width="130">
+        <el-table-column prop="goodsName" label="商品" min-width="170" show-overflow-tooltip />
+        <el-table-column label="供应商（可改）" width="170">
           <template #default="{ row }">
-            <el-input-number v-model="row.quantity" :min="0.001" :precision="3" :controls="false" style="width: 110px" />
+            <el-select
+              v-model="row.supplierId"
+              filterable
+              size="small"
+              placeholder="待指定供应商"
+              style="width: 100%"
+            >
+              <el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
+            </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="采购单价" width="130">
+        <el-table-column label="建议量" width="75" align="right" prop="suggestQty" />
+        <el-table-column label="采购数量" width="125">
           <template #default="{ row }">
-            <el-input-number v-model="row.price" :min="0" :precision="2" :controls="false" style="width: 110px" />
+            <el-input-number v-model="row.quantity" :min="0.001" :precision="3" :controls="false" style="width: 105px" />
           </template>
         </el-table-column>
-        <el-table-column prop="unitName" label="单位" width="55" />
+        <el-table-column label="采购单价" width="125">
+          <template #default="{ row }">
+            <el-input-number v-model="row.price" :min="0" :precision="2" :controls="false" style="width: 105px" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="unitName" label="单位" width="50" />
       </el-table>
       <template #footer>
         <el-button @click="generateDialog.visible = false">取消</el-button>

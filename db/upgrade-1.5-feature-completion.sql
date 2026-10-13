@@ -7,10 +7,11 @@
 --   ① 定时任务执行日志 scheduled_task_log（IR-SW-06 / GAP-P1-03）
 --   ② 数据备份记录 sys_backup_record（FR-SYS-10 / GAP-P2-23）
 --   ③ 新菜单与权限点：定时任务 sys:sched:list/run、数据备份 sys:backup:list/run（仅授予超管）
---   ④ 供应商最近供货价 supplier_goods.last_supply_price（FR-SUP-04 / GAP-P2-13）
---   ⑤ 建议采购原值 purchase_order_item.suggested_qty/suggested_price（UC-INV-002 / GAP-P2-14）
---   ⑥ 17 张业务表补齐审计四字段（DR-C-08 / GAP-P2-28）
---   ⑦ 成本精度 receipt_order_item.received_price、purchase_return_item.return_price 12,2 → 12,4（DR-C-07 / GAP-P2-29）
+--   ④ 系统参数：无结束符扫码自动查询 barcode_auto_query（IR-HW-01③ / GAP-P1-13）
+--   ⑤ 供应商最近供货价 supplier_goods.last_supply_price（FR-SUP-04 / GAP-P2-13）
+--   ⑥ 建议采购原值 purchase_order_item.suggested_qty/suggested_price（UC-INV-002 / GAP-P2-14）
+--   ⑦ 17 张业务表补齐审计四字段（DR-C-08 / GAP-P2-28）
+--   ⑧ 成本精度 receipt_order_item.received_price、purchase_return_item.return_price 12,2 → 12,4（DR-C-07 / GAP-P2-29）
 -- 说明：CREATE TABLE 使用 IF NOT EXISTS、权限使用 INSERT IGNORE 可重复执行；
 --       ALTER ADD COLUMN 重复执行报 1060（列已存在）可忽略，勿重复执行。
 -- =====================================================================
@@ -71,6 +72,14 @@ INSERT IGNORE INTO sys_permission (id, parent_id, name, perm_type, perm_code, ro
 
 INSERT IGNORE INTO sys_role_permission (role_id, perm_id) VALUES
 (1, 16), (1, 161), (1, 17), (1, 171);
+
+ALTER TABLE supplier_goods ADD COLUMN last_supply_price DECIMAL(12,4) DEFAULT NULL COMMENT '最近供货价（最近一次入库实收单价，入库回写，FR-SUP-04）' AFTER last_supply_time;
+
+-- ---------------------------------------------------------------------
+-- ⑤ 建议采购原值（UC-INV-002 6a / GAP-P2-14）：草稿保留生成时的建议量与建议价
+-- ---------------------------------------------------------------------
+ALTER TABLE purchase_order_item ADD COLUMN suggested_qty DECIMAL(10,3) DEFAULT NULL COMMENT '生成草稿时的建议采购量（UC-INV-002 6a；手工建单为空）' AFTER returned_qty;
+ALTER TABLE purchase_order_item ADD COLUMN suggested_price DECIMAL(12,2) DEFAULT NULL COMMENT '生成草稿时的建议单价（同上）' AFTER suggested_qty;
 
 -- ---------------------------------------------------------------------
 -- ④ 系统参数：无结束符扫码自动查询（IR-HW-01③ / GAP-P1-13）

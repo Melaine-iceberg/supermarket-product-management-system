@@ -78,6 +78,10 @@ export interface PurchaseOrderItemVO {
   receivedQty: number
   returnedQty: number
   pendingQty: number
+  /** 建议采购量原值（建议采购生成时记录，UC-INV-002 6a；手工建单为空） */
+  suggestedQty: number | null
+  /** 建议单价原值（同上） */
+  suggestedPrice: number | null
   remark: string | null
 }
 
@@ -408,8 +412,10 @@ export function pageSuggestPurchase(params: SuggestPageQuery) {
   return http.get<PageResult<SuggestItemVO>>('/suggest-purchase', params)
 }
 
-/** 一键生成草稿（FR-PUR-02）：按默认供应商分组；跳过商品返回原因 */
-export function generateSuggestOrders(items: { goodsId: number; quantity?: number; price?: number }[]) {
+/** 一键生成草稿（FR-PUR-02）：按供应商分组（可改供应商，UC-INV-002 6a）；跳过商品返回原因 */
+export function generateSuggestOrders(
+  items: { goodsId: number; quantity?: number; price?: number; supplierId?: number }[],
+) {
   return http.post<{ orders: { orderId: number; orderNo: string; supplierName: string; itemCount: number; totalAmount: number }[]; skippedGoods: { goodsId: number; goodsName: string; reason: string }[] }>(
     '/suggest-purchase/generate',
     { items },

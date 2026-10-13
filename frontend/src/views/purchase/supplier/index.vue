@@ -621,6 +621,11 @@ async function saveGoods() {
             <el-switch v-model="row.isDefault" :active-value="1" :inactive-value="0" />
           </template>
         </el-table-column>
+        <el-table-column label="最近供货价" width="90" align="right">
+          <template #default="{ row }">
+            {{ row.lastSupplyPrice != null ? Number(row.lastSupplyPrice).toFixed(2) : '—' }}
+          </template>
+        </el-table-column>
         <el-table-column label="最近供货" width="150">
           <template #default="{ row }">{{ fmtTime(row.lastSupplyTime) }}</template>
         </el-table-column>

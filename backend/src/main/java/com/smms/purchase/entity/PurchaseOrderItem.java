@@ -37,5 +37,11 @@ public class PurchaseOrderItem {
     /** 已退货数量 */
     private BigDecimal returnedQty;
 
+    /** 生成草稿时的建议采购量（建议采购生成时记录，UC-INV-002 6a；手工建单为空） */
+    private BigDecimal suggestedQty;
+
+    /** 生成草稿时的建议单价（同上） */
+    private BigDecimal suggestedPrice;
+
     private String remark;
 }

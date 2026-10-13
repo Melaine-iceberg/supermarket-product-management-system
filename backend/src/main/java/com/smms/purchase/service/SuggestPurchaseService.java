@@ -12,8 +12,11 @@ import com.smms.purchase.dto.PurchaseSaveRequest;
 import com.smms.purchase.dto.SuggestGenerateRequest;
 import com.smms.purchase.dto.SuggestGenerateResultVO;
 import com.smms.purchase.dto.SuggestItemVO;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.smms.purchase.mapper.SuggestPurchaseMapper;
 import com.smms.supplier.entity.Supplier;
+import com.smms.supplier.entity.SupplierGoods;
+import com.smms.supplier.mapper.SupplierGoodsMapper;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +55,7 @@ public class SuggestPurchaseService {
 
     private final SuggestPurchaseMapper suggestMapper;
     private final SupplierMapper supplierMapper;
+    private final SupplierGoodsMapper supplierGoodsMapper;
     private final CategoryMapper categoryMapper;
     private final SysConfigService configService;
     private final PurchaseOrderService purchaseOrderService;
@@ -83,7 +89,8 @@ public class SuggestPurchaseService {
                 .collect(Collectors.toMap(SuggestGenerateRequest.ItemRequest::getGoodsId,
                         v -> v, (a, b) -> a));
 
-        // 按默认供应商分组
+        // 解析供应商（UC-INV-002 6a）：请求覆盖（改供应商）优先，否则默认供应商；均缺失进入跳过清单
+        Map<Long, Long> resolvedSupplier = new LinkedHashMap<>();
         Map<Long, List<SuggestItemVO>> bySupplier = new LinkedHashMap<>();
         List<SuggestGenerateResultVO.SkippedGoodsVO> skipped = new ArrayList<>();
         for (Long goodsId : goodsIds) {
@@ -93,12 +100,20 @@ public class SuggestPurchaseService {
                         goodsId, "商品 " + goodsId, "商品不存在或已停用"));
                 continue;
             }
-            if (row.supplierId() == null) {
+            SuggestGenerateRequest.ItemRequest itemReq = requestMap.get(goodsId);
+            Long supplierId = itemReq != null && itemReq.getSupplierId() != null
+                    ? itemReq.getSupplierId() : row.supplierId();
+            if (supplierId == null) {
                 skipped.add(new SuggestGenerateResultVO.SkippedGoodsVO(
-                        goodsId, row.goodsName(), "未维护默认供应商（FR-SUP-04）"));
+                        goodsId, row.goodsName(), "待指定供应商（未选择且无默认供应商，FR-SUP-04）"));
                 continue;
             }
-            SuggestGenerateRequest.ItemRequest itemReq = requestMap.get(goodsId);
+            Supplier supplier = supplierMapper.selectById(supplierId);
+            if (supplier == null || supplier.getStatus() == null || supplier.getStatus() != 1) {
+                skipped.add(new SuggestGenerateResultVO.SkippedGoodsVO(
+                        goodsId, row.goodsName(), "所选供应商不存在或已停用（FR-SUP-03）"));
+                continue;
+            }
             BigDecimal qty = itemReq != null && itemReq.getQuantity() != null
                     ? itemReq.getQuantity() : row.suggestQty();
             if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
@@ -106,7 +121,18 @@ public class SuggestPurchaseService {
                         goodsId, row.goodsName(), "建议采购量 ≤ 0，不建议采购（BR-INV-07）"));
                 continue;
             }
-            bySupplier.computeIfAbsent(row.supplierId(), k -> new ArrayList<>()).add(row);
+            resolvedSupplier.put(goodsId, supplierId);
+            bySupplier.computeIfAbsent(supplierId, k -> new ArrayList<>()).add(row);
+        }
+
+        // 供货关系与建议单价（FR-SUP-04）：改供应商后按该供应商的最近供货价/供货价带出
+        Map<String, SupplierGoods> relationMap = new HashMap<>();
+        if (!resolvedSupplier.isEmpty()) {
+            for (SupplierGoods sg : supplierGoodsMapper.selectList(Wrappers.<SupplierGoods>lambdaQuery()
+                    .in(SupplierGoods::getSupplierId, new HashSet<>(resolvedSupplier.values()))
+                    .in(SupplierGoods::getGoodsId, resolvedSupplier.keySet()))) {
+                relationMap.put(sg.getSupplierId() + ":" + sg.getGoodsId(), sg);
+            }
         }
 
         List<SuggestGenerateResultVO.GeneratedOrderVO> orders = new ArrayList<>();
@@ -126,13 +152,17 @@ public class SuggestPurchaseService {
                 PurchaseSaveRequest.ItemRequest item = new PurchaseSaveRequest.ItemRequest();
                 item.setGoodsId(row.goodsId());
                 SuggestGenerateRequest.ItemRequest itemReq = requestMap.get(row.goodsId());
+                BigDecimal suggestedQty = row.suggestQty();
+                BigDecimal suggestedPrice = suggestedPrice(supplierId, row,
+                        relationMap.get(supplierId + ":" + row.goodsId()));
                 item.setQuantity(itemReq != null && itemReq.getQuantity() != null
-                        ? itemReq.getQuantity() : row.suggestQty());
-                // 单价默认：请求覆盖 → 最近采购价 → 供货价 → 0
-                BigDecimal price = itemReq != null && itemReq.getPrice() != null ? itemReq.getPrice()
-                        : row.lastPurchasePrice() != null ? row.lastPurchasePrice()
-                        : row.supplyPrice() != null ? row.supplyPrice() : BigDecimal.ZERO;
-                item.setPrice(price);
+                        ? itemReq.getQuantity() : suggestedQty);
+                // 单价默认：请求覆盖 → 该供应商最近供货价/供货价（无关联回退默认供应商建议价）
+                item.setPrice(itemReq != null && itemReq.getPrice() != null
+                        ? itemReq.getPrice() : suggestedPrice);
+                // 保留原建议值（UC-INV-002 6a：事后可评估建议准确度）
+                item.setSuggestedQty(suggestedQty);
+                item.setSuggestedPrice(suggestedPrice);
                 return item;
             }).toList());
 
@@ -143,6 +173,27 @@ public class SuggestPurchaseService {
                     created.items().size(), created.totalAmount(), created.expectDate()));
         }
         return new SuggestGenerateResultVO(orders, skipped);
+    }
+
+    /** 建议单价（FR-SUP-04）：优先该供应商供货关系的最近供货价，其次供货价；默认供应商可回退最近采购价 */
+    private BigDecimal suggestedPrice(Long supplierId, SuggestItemVO row, SupplierGoods relation) {
+        if (relation != null) {
+            if (relation.getLastSupplyPrice() != null) {
+                return relation.getLastSupplyPrice();
+            }
+            if (relation.getSupplyPrice() != null) {
+                return relation.getSupplyPrice();
+            }
+        }
+        if (Objects.equals(supplierId, row.supplierId())) {
+            if (row.lastPurchasePrice() != null) {
+                return row.lastPurchasePrice();
+            }
+            if (row.supplyPrice() != null) {
+                return row.supplyPrice();
+            }
+        }
+        return BigDecimal.ZERO;
     }
 
     // ==================== 建议量计算（BR-INV-07） ====================

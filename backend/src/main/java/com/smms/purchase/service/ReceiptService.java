@@ -26,6 +26,8 @@ import com.smms.purchase.mapper.ReceiptOrderItemMapper;
 import com.smms.purchase.mapper.ReceiptOrderMapper;
 import com.smms.security.LoginUser;
 import com.smms.supplier.entity.Supplier;
+import com.smms.supplier.entity.SupplierGoods;
+import com.smms.supplier.mapper.SupplierGoodsMapper;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
@@ -79,6 +81,7 @@ public class ReceiptService {
     private final ReceiptOrderMapper receiptMapper;
     private final ReceiptOrderItemMapper receiptItemMapper;
     private final SupplierMapper supplierMapper;
+    private final SupplierGoodsMapper supplierGoodsMapper;
     private final GoodsMapper goodsMapper;
     private final UnitMapper unitMapper;
     private final InventoryService inventoryService;
@@ -267,6 +270,17 @@ public class ReceiptService {
 
         // 5. 供应商累计采购额更新（DR-C-04 派生数据一致性）
         supplierMapper.addTotalPurchaseAmount(order.getSupplierId(), total);
+
+        // 6. 供货关系回写最近供货时间/价格（FR-SUP-04，GAP-P2-13；未维护关联的商品不自动建档）
+        for (Line line : lines) {
+            supplierGoodsMapper.update(null, Wrappers.<SupplierGoods>lambdaUpdate()
+                    .eq(SupplierGoods::getSupplierId, order.getSupplierId())
+                    .eq(SupplierGoods::getGoodsId, line.item().getGoodsId())
+                    .set(SupplierGoods::getLastSupplyTime, receipt.getReceiptTime())
+                    .set(SupplierGoods::getLastSupplyPrice, line.price())
+                    .set(SupplierGoods::getUpdateBy, operator.realName())
+                    .set(SupplierGoods::getUpdateTime, LocalDateTime.now()));
+        }
 
         // 关键业务日志（IR-SW-07）：含入库单号、采购单号与验收人
         log.info("入库验收完成: receiptNo={}, 采购单={}, 验收人={}, 入库金额={}",

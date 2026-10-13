@@ -26,6 +26,8 @@ import com.smms.purchase.service.PurchaseOrderService;
 import com.smms.purchase.service.ReceiptService;
 import com.smms.security.LoginUser;
 import com.smms.supplier.entity.Supplier;
+import com.smms.supplier.entity.SupplierGoods;
+import com.smms.supplier.mapper.SupplierGoodsMapper;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
@@ -75,6 +77,7 @@ class ReceiptServiceTest {
     @Mock private ReceiptOrderMapper receiptMapper;
     @Mock private ReceiptOrderItemMapper receiptItemMapper;
     @Mock private SupplierMapper supplierMapper;
+    @Mock private SupplierGoodsMapper supplierGoodsMapper;
     @Mock private GoodsMapper goodsMapper;
     @Mock private UnitMapper unitMapper;
     @Mock private InventoryService inventoryService;
@@ -93,8 +96,9 @@ class ReceiptServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Goods.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Unit.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SupplierGoods.class);
         service = new ReceiptService(orderMapper, orderItemMapper, purchaseOrderService,
-                receiptMapper, receiptItemMapper, supplierMapper, goodsMapper, unitMapper,
+                receiptMapper, receiptItemMapper, supplierMapper, supplierGoodsMapper, goodsMapper, unitMapper,
                 inventoryService, configService, new BusinessDayService(configService),
                 new DutySeparationService(configService, operationLogService), sensitiveAuthService);
     }
@@ -129,6 +133,8 @@ class ReceiptServiceTest {
         // 供应商累计采购额增加（DR-C-04）
         verify(supplierMapper).addTotalPurchaseAmount(eq(1L), eq(new BigDecimal("98.00")));
         verify(orderMapper).addReceivedQty(200L, new BigDecimal("10"));
+        // 供货关系回写最近供货时间/价格（FR-SUP-04/GAP-P2-13）
+        verify(supplierGoodsMapper).update(isNull(), any());
     }
 
     @Test

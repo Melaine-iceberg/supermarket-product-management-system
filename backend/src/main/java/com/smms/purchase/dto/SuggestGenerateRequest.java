@@ -33,5 +33,8 @@ public class SuggestGenerateRequest {
         /** 采购单价（默认取最近采购价，其次供货价） */
         @DecimalMin(value = "0", message = "采购单价不能为负")
         private BigDecimal price;
+
+        /** 供应商（可改，UC-INV-002 6a）：为空时取默认供应商；均无则须先指定 */
+        private Long supplierId;
     }
 }

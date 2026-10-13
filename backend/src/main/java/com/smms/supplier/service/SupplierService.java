@@ -217,11 +217,13 @@ public class SupplierService {
             throw new BusinessException(ErrorCode.SUPPLIER_GOODS_INVALID);
         }
 
-        // 保留最近供货时间（业务派生，人工维护不可见也不可清）
+        // 保留最近供货时间/价格（业务派生，人工维护不可见也不可清）
         Map<Long, java.time.LocalDateTime> lastSupplyMap = new HashMap<>();
+        Map<Long, java.math.BigDecimal> lastSupplyPriceMap = new HashMap<>();
         for (SupplierGoods sg : supplierGoodsMapper.selectList(Wrappers.<SupplierGoods>lambdaQuery()
                 .eq(SupplierGoods::getSupplierId, supplierId))) {
             lastSupplyMap.put(sg.getGoodsId(), sg.getLastSupplyTime());
+            lastSupplyPriceMap.put(sg.getGoodsId(), sg.getLastSupplyPrice());
         }
 
         // 全量覆盖：先删后插
@@ -234,6 +236,7 @@ public class SupplierService {
             sg.setSupplyPrice(item.getSupplyPrice());
             sg.setIsDefault(isDefault(item) ? 1 : 0);
             sg.setLastSupplyTime(lastSupplyMap.get(item.getGoodsId()));
+            sg.setLastSupplyPrice(lastSupplyPriceMap.get(item.getGoodsId()));
             sg.setCreateBy(operatorRealName);
             supplierGoodsMapper.insert(sg);
         }

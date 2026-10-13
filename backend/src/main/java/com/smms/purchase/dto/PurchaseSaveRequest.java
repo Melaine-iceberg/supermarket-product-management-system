@@ -50,6 +50,13 @@ public class PurchaseSaveRequest {
         @Min(value = 0, message = "采购单价不能为负（BR-PUR-03）")
         private BigDecimal price;
 
+        /** 建议采购原值：建议量与建议价（建议采购生成时记录，UC-INV-002 6a；手工建单为空） */
+        @DecimalMin(value = "0", message = "建议量不能为负")
+        private BigDecimal suggestedQty;
+
+        @DecimalMin(value = "0", message = "建议价不能为负")
+        private BigDecimal suggestedPrice;
+
         private String remark;
     }
 }
