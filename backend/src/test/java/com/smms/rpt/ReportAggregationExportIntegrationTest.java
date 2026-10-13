@@ -17,6 +17,7 @@ import com.smms.rpt.dto.PurchSummaryRow;
 import com.smms.rpt.dto.ReportRange;
 import com.smms.rpt.dto.SalesReportRow;
 import com.smms.rpt.dto.SalesReportVO;
+import com.smms.rpt.dto.WarningRptRow;
 import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.GoodsReportService;
 import com.smms.rpt.service.InventoryReportService;
@@ -313,6 +314,13 @@ class ReportAggregationExportIntegrationTest {
         assertThat(drillDownService.inventoryRecords(
                         new DrillInvRecordQuery(day, day, "PURCHASE_IN", goodsId, 1, 20), MANAGER)
                 .list().get(0).unitCost()).isEqualByComparingTo("10.0000");
+
+        // 预警建议采购量：近 N 营业日销量子查询（business_date）在真实 SQL 下可执行
+        jdbcTemplate.update("UPDATE goods SET safety_stock_lower = 10 WHERE id = ?", goodsId);
+        WarningRptRow warning = inventoryReportService.warnings("WARNING", 1, 50).list().stream()
+                .filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
+        assertThat(warning.stockQty()).isEqualByComparingTo("5");
+        assertThat(warning.suggestQty()).isNotNull();
     }
 
     // ==================== GAP-P1-05：报表按营业日聚合 ====================
