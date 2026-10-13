@@ -10,6 +10,11 @@ node_modules/
 dist/
 *.local
 
+#### 浏览器 E2E（Playwright）####
+frontend/playwright-report/
+frontend/test-results/
+frontend/e2e/.auth/
+
 #### 敏感本地配置（不入库，见 NFR-SEC-11 / IR-SW-02）####
 .env
 .env.*
