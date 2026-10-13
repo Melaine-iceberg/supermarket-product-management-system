@@ -136,27 +136,13 @@
         SELECT COUNT(*) FROM stock_check_order WHERE status = 'PENDING_AUDIT'
     </select>
 
-    <!-- 缺货商品：结存 ≤ 0 且商品启用（FR-INV-05） -->
-    <select id="countStockoutGoods" resultType="long">
-        SELECT COUNT(*)
-        FROM inventory i
-        JOIN goods g ON g.id = i.goods_id
-        WHERE g.status = 1 AND i.quantity &lt;= 0
-    </select>
+    <!-- 缺货/预警角标改由 InventoryService.alertSummary 提供（GAP-P2-11：与预警页同源同口径） -->
 
     <!-- 超期未到货：已审核/部分入库且预计到货日早于今日 -->
     <select id="countOverduePurchase" resultType="long">
         SELECT COUNT(*)
         FROM purchase_order
         WHERE status IN ('APPROVED', 'PARTIAL') AND expect_date &lt; CURDATE()
-    </select>
-
-    <!-- 库存预警数：结存 ≤ 安全库存下限（含缺货，FR-INV-05 角标） -->
-    <select id="countWarningGoods" resultType="long">
-        SELECT COUNT(*)
-        FROM inventory i
-        JOIN goods g ON g.id = i.goods_id
-        WHERE g.status = 1 AND i.quantity &lt;= g.safety_stock_lower
     </select>
 
     <select id="countNewMembers" resultType="long">

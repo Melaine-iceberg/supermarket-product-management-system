@@ -179,10 +179,20 @@ export function deleteGoods(id: number) {
   return http.delete<void>(`/goods/${id}`)
 }
 
-/** 清单导出（FR-GOODS-12）：与列表同一筛选条件，返回 xlsx blob */
-export function exportGoods(params: Omit<GoodsListQuery, 'page' | 'size'>) {
+/** 清单导出（FR-GOODS-12）：与列表同一筛选条件，fields 逗号分隔（空=全部），返回 xlsx blob */
+export function exportGoods(params: Omit<GoodsListQuery, 'page' | 'size'> & { fields?: string }) {
   // 异步任务：提交后轮询进度，完成后返回结果文件（FR-GOODS-12）
   return runExportTask('/goods/export', params)
+}
+
+/** 导出字段白名单（FR-GOODS-12）：与后端 EXPORT_FIELDS 同源，前端列选择用 */
+export interface GoodsExportFieldVO {
+  key: string
+  label: string
+}
+
+export function listGoodsExportFields() {
+  return http.get<GoodsExportFieldVO[]>('/goods/export-fields')
 }
 
 /** 商品档案完整记录（详情接口内嵌，含列表没有的 remark/image 等） */
@@ -450,9 +460,13 @@ export function validateGoodsImport(file: File, onProgress?: (percent: number) =
 }
 
 /** 确认提交：单事务内仅导入校验通过的行，失败行返回明细供修正重传 */
-export function commitGoodsImport(file: File, onProgress?: (percent: number) => void) {
-  // 异步任务：上传后后台单事务导入，轮询完成后返回导入结果
-  return runImportTask<GoodsImportResultVO>('/goods/import/commit', file, onProgress)
+export function commitGoodsImport(
+  file: File,
+  onProgress?: (percent: number) => void,
+  onTaskProgress?: (percent: number, phase: string) => void,
+) {
+  // 异步任务：上传后后台单事务导入，轮询完成后返回导入结果（后台真实进度经 onTaskProgress 回调）
+  return runImportTask<GoodsImportResultVO>('/goods/import/commit', file, onProgress, onTaskProgress)
 }
 
 /** 失败行导出：重新上传同一文件，返回仅含失败行的 xlsx（末列附失败原因，修正后可直接重传） */

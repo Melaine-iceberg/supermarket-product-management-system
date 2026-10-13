@@ -79,8 +79,9 @@ public class GoodsExcelController {
     public ApiResponse<AsyncTaskVO> commit(@RequestParam("file") MultipartFile file) {
         return ApiResponse.ok(taskService.submitImport(BIZ_IMPORT, "商品导入提交",
                 TaskParams.of("fileName", file.getOriginalFilename()), file, ctx -> {
+                    ctx.progress(5, "已接收文件，开始导入");
                     try (InputStream in = Files.newInputStream(ctx.uploadFile())) {
-                        ctx.result(goodsExcelService.commit(in, ctx.user().username()));
+                        ctx.result(goodsExcelService.commit(in, ctx.user().username(), ctx::progress));
                     }
                     return null;
                 }));
@@ -92,6 +93,13 @@ public class GoodsExcelController {
     @OpLog(module = "商品管理", action = "导出导入失败行")
     public ResponseEntity<byte[]> failedExport(@RequestParam("file") MultipartFile file) {
         return xlsx(goodsExcelService.failedRowsExport(open(file)), "goods-import-failed.xlsx");
+    }
+
+    /** 导出字段白名单（FR-GOODS-12 / GAP-P2-07）：前端列选择对话框数据源 */
+    @GetMapping("/export-fields")
+    @RequirePerm("sys:goods:export")
+    public ApiResponse<List<com.smms.goods.dto.GoodsExportFieldVO>> exportFields() {
+        return ApiResponse.ok(goodsExcelService.exportFields());
     }
 
     /** 清单导出（FR-GOODS-12）：与列表同一筛选条件；fields 逗号分隔，空为全部字段。后台异步生成 */

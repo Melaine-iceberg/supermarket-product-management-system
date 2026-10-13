@@ -1,5 +1,7 @@
 package com.smms.rpt.service;
 
+import com.smms.inv.dto.AlertSummaryVO;
+import com.smms.inv.service.InventoryService;
 import com.smms.rpt.dto.DashboardVO;
 import com.smms.rpt.dto.PeriodAggRow;
 import com.smms.rpt.dto.ReportRange;
@@ -33,6 +35,7 @@ public class DashboardService {
 
     private final ReportMapper reportMapper;
     private final BusinessDayService businessDayService;
+    private final InventoryService inventoryService;
 
     /** 看板汇总：今日 KPI + 待办 + 近 N 日趋势 + TOP10 热销（trendDays 支持 7/30） */
     public DashboardVO summary(int trendDays, LoginUser user) {
@@ -40,9 +43,11 @@ public class DashboardService {
         // GAP-P1-05：看板"今日"取当前营业日（business_day_start 起算），与销售报表 business_date 口径一致
         LocalDate today = businessDayService.today();
         boolean canProfit = RptRoles.canViewProfit(user);
+        // GAP-P2-11：预警/缺货角标与预警页同源（InventoryService.alertSummary），口径逐项一致
+        AlertSummaryVO alertSummary = inventoryService.alertSummary();
 
-        DashboardVO.KpiVO kpi = kpi(today, canProfit);
-        List<DashboardVO.TodoVO> todos = todos(user);
+        DashboardVO.KpiVO kpi = kpi(today, canProfit, alertSummary);
+        List<DashboardVO.TodoVO> todos = todos(user, alertSummary);
         List<DashboardVO.TrendPointVO> trend = trend(today, days);
         List<DashboardVO.TopGoodsVO> topGoods =
                 reportMapper.selectTopGoods(today.minusDays((long) days - 1), today, 10);
@@ -50,7 +55,7 @@ public class DashboardService {
     }
 
     /** 今日 KPI：销售额、订单数、毛利额与毛利率、新增会员数、库存预警数 */
-    private DashboardVO.KpiVO kpi(LocalDate today, boolean canProfit) {
+    private DashboardVO.KpiVO kpi(LocalDate today, boolean canProfit, AlertSummaryVO alertSummary) {
         PeriodAggRow sales = reportMapper.selectSalesAgg(today, today);
         PeriodAggRow returns = reportMapper.selectReturnAgg(today, today);
         SalesMetrics m = new SalesMetrics(sales.orderCount(),
@@ -60,11 +65,11 @@ public class DashboardService {
         BigDecimal profitRate = canProfit ? m.profitRate() : null;
         return new DashboardVO.KpiVO(m.salesAmount(), m.orderCount(), profitAmount, profitRate,
                 reportMapper.countNewMembers(businessDayService.dayBegin(today), businessDayService.dayEnd(today)),
-                reportMapper.countWarningGoods());
+                alertSummary.totalCount());
     }
 
     /** 待办事项：各角色按其权限过滤（FR-RPT-01） */
-    private List<DashboardVO.TodoVO> todos(LoginUser user) {
+    private List<DashboardVO.TodoVO> todos(LoginUser user, AlertSummaryVO alertSummary) {
         List<DashboardVO.TodoVO> todos = new ArrayList<>();
         if (hasPerm(user, "sys:pur:list")) {
             todos.add(new DashboardVO.TodoVO("PENDING_PURCHASE", "待审核采购单",
@@ -78,7 +83,7 @@ public class DashboardService {
         }
         if (hasPerm(user, "sys:inv-warning:list")) {
             todos.add(new DashboardVO.TodoVO("STOCKOUT", "缺货商品",
-                    reportMapper.countStockoutGoods(), "/inventory/warning"));
+                    alertSummary.outCount(), "/inventory/warning"));
         }
         return todos;
     }

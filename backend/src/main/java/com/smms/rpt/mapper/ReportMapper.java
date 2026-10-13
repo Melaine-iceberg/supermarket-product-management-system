@@ -50,14 +50,8 @@ public interface ReportMapper {
     /** 待审核盘点单数（看板待办） */
     long countPendingCheck();
 
-    /** 缺货商品数：结存 ≤ 0 且商品启用（看板待办/KPI） */
-    long countStockoutGoods();
-
     /** 超期未到货采购单数：已审核待入库且预计到货日早于今日 */
     long countOverduePurchase();
-
-    /** 库存预警数：结存 ≤ 安全库存下限且商品启用（FR-INV-05 角标） */
-    long countWarningGoods();
 
     /** 今日新增会员数（营业日窗口由服务层计算，BR-RPT-02） */
     long countNewMembers(@Param("beginTime") LocalDateTime beginTime,

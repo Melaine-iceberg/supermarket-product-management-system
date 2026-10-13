@@ -12,6 +12,7 @@ import {
   updateGoodsStatus,
   deleteGoods,
   exportGoods,
+  listGoodsExportFields,
   getGoodsDetail,
   createGoods,
   updateGoods,
@@ -34,6 +35,7 @@ import {
   type GoodsImportReportVO,
   type GoodsImportResultVO,
   type GoodsDetailVO,
+  type GoodsExportFieldVO,
   type PromotionVO,
   type PriceHistoryVO,
 } from '@/api/goods'
@@ -510,11 +512,45 @@ async function handleDelete(row: GoodsListVO) {
   load()
 }
 
-// ---------- 导出（FR-GOODS-12：与当前筛选一致） ----------
-const exporting = ref(false)
+// ---------- 导出（FR-GOODS-12：与当前筛选一致；字段可选 GAP-P2-07） ----------
+const exportDialog = reactive({
+  visible: false,
+  loadingFields: false,
+  exporting: false,
+  options: [] as GoodsExportFieldVO[],
+  fields: [] as string[],
+})
 
-async function handleExport() {
-  exporting.value = true
+/** 全选（含半选态展示） */
+const allExportFields = computed({
+  get: () => exportDialog.options.length > 0 && exportDialog.fields.length === exportDialog.options.length,
+  set: (v: boolean) => {
+    exportDialog.fields = v ? exportDialog.options.map((f) => f.key) : []
+  },
+})
+const exportFieldsIndeterminate = computed(
+  () => exportDialog.fields.length > 0 && exportDialog.fields.length < exportDialog.options.length,
+)
+
+async function openExportDialog() {
+  exportDialog.visible = true
+  if (exportDialog.options.length === 0) {
+    exportDialog.loadingFields = true
+    try {
+      exportDialog.options = await listGoodsExportFields()
+      exportDialog.fields = exportDialog.options.map((f) => f.key)
+    } finally {
+      exportDialog.loadingFields = false
+    }
+  }
+}
+
+async function confirmExport() {
+  if (exportDialog.fields.length === 0) {
+    ElMessage.warning('请至少勾选一个导出字段')
+    return
+  }
+  exportDialog.exporting = true
   try {
     const blob = await exportGoods({
       name: query.name.trim() || undefined,
@@ -528,12 +564,14 @@ async function handleExport() {
       allowReturn: query.allowReturn === '' ? undefined : query.allowReturn,
       sortBy: sort.by,
       sortDir: sort.dir,
+      fields: exportDialog.fields.join(','),
     })
     const ts = new Date().toISOString().slice(0, 19).replace(/[-T:]/g, '')
     saveBlob(blob, `商品清单_${ts}.xlsx`)
     ElMessage.success('导出成功')
+    exportDialog.visible = false
   } finally {
-    exporting.value = false
+    exportDialog.exporting = false
   }
 }
 
@@ -546,6 +584,8 @@ const importDialog = reactive({
   committing: false,
   /** 当前长任务的文件上传进度（0~100） */
   percent: 0,
+  /** 后台导入任务的真实阶段描述（GAP-P2-06：进度条/文案由任务轮询驱动） */
+  taskPhase: '',
   report: null as GoodsImportReportVO | null,
   result: null as GoodsImportResultVO | null,
   /** 校验通过后预取的失败行文件：提交后再重新校验会因库内已有数据而失真，故此时取回缓存 */
@@ -562,6 +602,7 @@ function openImport() {
     validating: false,
     committing: false,
     percent: 0,
+    taskPhase: '',
     report: null,
     result: null,
     failedBlob: null,
@@ -579,7 +620,10 @@ function onImportProgress(percent: number) {
 
 const importProgressText = computed(() => {
   if (importDialog.percent < 100) return '文件上传中…'
-  return importDialog.committing ? '服务器导入中，请稍候…' : '服务器校验中，请稍候…'
+  if (importDialog.committing) {
+    return importDialog.taskPhase ? `服务器导入中：${importDialog.taskPhase}` : '服务器导入中，请稍候…'
+  }
+  return '服务器校验中，请稍候…'
 })
 
 async function doValidate() {
@@ -611,9 +655,18 @@ async function doCommit() {
   if (!importDialog.file) return
   importDialog.committing = true
   importDialog.percent = 0
+  importDialog.taskPhase = ''
   try {
     const file = importDialog.file
-    importDialog.result = await commitGoodsImport(file, onImportProgress)
+    // 后台任务真实进度（GAP-P2-06）：百分比与阶段同步到对话框进度条
+    importDialog.result = await commitGoodsImport(
+      file,
+      onImportProgress,
+      (percent, phase) => {
+        importDialog.percent = percent
+        importDialog.taskPhase = phase
+      },
+    )
     importDialog.step = 'done'
     if (importDialog.result.imported > 0) {
       ElMessage.success(`成功导入 ${importDialog.result.imported} 个商品`)
@@ -914,8 +967,8 @@ async function handleDisablePromotion(promo: PromotionVO) {
             </el-button>
             <el-button
               v-if="auth.hasPerm('sys:goods:export')"
-              :loading="exporting"
-              @click="handleExport"
+              :loading="exportDialog.exporting"
+              @click="openExportDialog"
             >
               <el-icon><Download /></el-icon>导出清单
             </el-button>
@@ -972,7 +1025,7 @@ async function handleDisablePromotion(promo: PromotionVO) {
         </el-table-column>
         <el-table-column prop="quantity" label="库存" width="110" align="right" sortable="custom">
           <template #default="{ row }">
-            <span class="qty">{{ row.quantity }} {{ row.unitName }}</span>
+            <span class="qty" :class="{ 'qty-negative': Number(row.quantity) < 0 }">{{ row.quantity }} {{ row.unitName }}</span>
             <el-tag
               v-if="row.stockStatus !== 'NORMAL'"
               :type="stockStatusMap[row.stockStatus]?.type ?? 'info'"
@@ -1446,6 +1499,29 @@ async function handleDisablePromotion(promo: PromotionVO) {
       </template>
     </el-dialog>
 
+    <!-- 导出字段选择（FR-GOODS-12 / GAP-P2-07） -->
+    <el-dialog v-model="exportDialog.visible" title="导出商品清单" width="560px">
+      <div v-loading="exportDialog.loadingFields">
+        <el-checkbox v-model="allExportFields" :indeterminate="exportFieldsIndeterminate">全选</el-checkbox>
+        <el-divider class="export-divider" />
+        <el-checkbox-group v-model="exportDialog.fields" class="export-fields">
+          <el-checkbox v-for="f in exportDialog.options" :key="f.key" :value="f.key">{{ f.label }}</el-checkbox>
+        </el-checkbox-group>
+        <div class="export-tip">
+          仅导出勾选字段；导出范围与当前筛选条件一致；行数上限 50000（系统参数 export_max_rows，超限将提示缩小范围）
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="exportDialog.visible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="exportDialog.exporting"
+          :disabled="exportDialog.fields.length === 0"
+          @click="confirmExport"
+        >导出</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 商品详情抽屉（FR-GOODS-04 / FR-GOODS-09 促销记录 / FR-GOODS-10 调价历史） -->
     <el-drawer
       v-model="detailDrawer.visible"
@@ -1861,8 +1937,31 @@ async function handleDisablePromotion(promo: PromotionVO) {
     color: #909399;
   }
 
+  /* 导出字段选择（GAP-P2-07） */
+  .export-divider {
+    margin: 10px 0;
+  }
+
+  .export-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .export-tip {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #909399;
+  }
+
   .qty-in {
     color: var(--el-color-success);
+  }
+
+  /* 负库存高亮（GAP-P2-11） */
+  .qty-negative {
+    color: var(--el-color-danger);
+    font-weight: 600;
   }
 
   .qty-out {

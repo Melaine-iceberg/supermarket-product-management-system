@@ -249,7 +249,7 @@ async function saveCategoryThreshold() {
         <el-table-column prop="unitName" label="单位" width="60" align="center" />
         <el-table-column prop="quantity" label="结存数量" width="110" align="right" sortable="custom">
           <template #default="{ row }">
-            <span class="qty">{{ qty(row.quantity) }}</span>
+            <span class="qty" :class="{ 'qty-negative': Number(row.quantity) < 0 }">{{ qty(row.quantity) }}</span>
             <el-tag
               v-if="row.stockStatus !== 'NORMAL'"
               :type="stockStatusMap[row.stockStatus]?.type ?? 'info'"
@@ -421,6 +421,12 @@ async function saveCategoryThreshold() {
 
   .qty {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* 负库存高亮（BR-INV-02 / GAP-P2-11）：欠账醒目提示 */
+  .qty-negative {
+    color: var(--el-color-danger);
+    font-weight: 600;
   }
 
   .stock-tag {

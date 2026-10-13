@@ -185,6 +185,15 @@ public class InventoryService {
         return inventoryMapper.selectAlertSummary(withoutAlertType(q), categoryIds);
     }
 
+    /**
+     * 全量预警数量汇总（无筛选）：首页看板口径（FR-RPT-01 / GAP-P2-11），
+     * 与预警页「全部」逐项一致（含无结存行按 0 计缺货、含积压）。
+     */
+    public AlertSummaryVO alertSummary() {
+        return inventoryMapper.selectAlertSummary(
+                new AlertQuery(null, null, null, null, 1, 20, null, null), null);
+    }
+
     /** 预警导出查询（FR-INV-05）：与列表同一筛选口径，不分页、不查 count；行数上限由调用方控制（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<AlertItemVO> listForAlertExport(AlertQuery q, int maxSize) {
         List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());

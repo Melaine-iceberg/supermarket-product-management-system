@@ -92,10 +92,15 @@ function progressText(task: AsyncTaskVO) {
  * 等待任务结束（轮询），期间展示进度浮层。
  * 成功返回最终任务；失败抛出错误并已提示。
  */
-async function waitTask(task: AsyncTaskVO, loading: LoadingInstance): Promise<AsyncTaskVO> {
+async function waitTask(
+  task: AsyncTaskVO,
+  loading: LoadingInstance,
+  onUpdate?: (task: AsyncTaskVO) => void,
+): Promise<AsyncTaskVO> {
   const deadline = Date.now() + POLL_TIMEOUT
   let current = task
   loading.setText(progressText(current))
+  onUpdate?.(current)
   while (current.status === 'QUEUED' || current.status === 'RUNNING') {
     if (Date.now() > deadline) {
       loading.close()
@@ -105,6 +110,7 @@ async function waitTask(task: AsyncTaskVO, loading: LoadingInstance): Promise<As
     await sleep(POLL_INTERVAL)
     current = await getAsyncTask(current.taskNo)
     loading.setText(progressText(current))
+    onUpdate?.(current)
   }
   if (current.status === 'FAILED') {
     loading.close()
@@ -141,16 +147,20 @@ export async function runExportTask(
 
 /**
  * 导入提交：上传文件 → 后台执行 → 返回导入结果对象（失败行明细等）。
+ * onTaskProgress：后台任务真实进度回调（GAP-P2-06），可用于页面进度条同步。
  */
 export async function runImportTask<T>(
   url: string,
   file: File,
   onProgress?: (percent: number) => void,
+  onTaskProgress?: (percent: number, phase: string) => void,
 ): Promise<T> {
   const task = await submitImportTask(url, file, onProgress)
   const loading = ElLoading.service({ lock: true, text: `${task.bizName}：正在提交任务…` })
   try {
-    const done = await waitTask(task, loading)
+    const done = await waitTask(task, loading, (t) =>
+      onTaskProgress?.(t.progress, t.phase ?? ''),
+    )
     loading.close()
     ElMessage.success(`${done.bizName}完成`)
     return done.result as T

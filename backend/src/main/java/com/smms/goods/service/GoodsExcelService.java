@@ -73,8 +73,7 @@ public class GoodsExcelService {
     static final Map<String, String> EXPORT_FIELDS = new LinkedHashMap<>();
 
     static {
-        EXPORT_FIELDS.put("goodsCode", "商品编码");
-        EXPORT_FIELDS.put("barcode", "商品条码");
+        EXPORT_FIELDS.put("goodsCode", "商品编码");        EXPORT_FIELDS.put("barcode", "商品条码");
         EXPORT_FIELDS.put("name", "商品名称");
         EXPORT_FIELDS.put("category", "分类");
         EXPORT_FIELDS.put("brand", "品牌");
@@ -183,20 +182,43 @@ public class GoodsExcelService {
      */
     @Transactional(rollbackFor = Exception.class)
     public GoodsImportResultVO commit(InputStream in, String operator) {
+        return commit(in, operator, null);
+    }
+
+    /** 带进度回调的导入提交（GAP-P2-06）：导入过程分阶段上报，前端进度条/浮层展示真实进度 */
+    @Transactional(rollbackFor = Exception.class)
+    public GoodsImportResultVO commit(InputStream in, String operator,
+                                      java.util.function.BiConsumer<Integer, String> progress) {
+        report(progress, 10, "正在校验导入文件");
         List<CheckedRow> checked = parseAndCheck(in);
         List<GoodsCreateRequest> pass = checked.stream()
                 .filter(c -> c.errors().isEmpty())
                 .map(CheckedRow::request)
                 .toList();
+        report(progress, 25, "校验完成，准备写入 " + pass.size() + " 行");
+        int done = 0;
         for (GoodsCreateRequest req : pass) {
             // 复用新增逻辑（编码/条码生成、期初建账），校验兜底重复执行无害
             goodsService.create(req, operator);
+            done++;
+            if (done % 50 == 0 || done == pass.size()) {
+                int percent = 25 + (int) Math.round(done * 65.0 / Math.max(pass.size(), 1));
+                report(progress, percent, "正在写入第 " + done + "/" + pass.size() + " 行");
+            }
         }
+        report(progress, 95, "正在汇总导入结果");
         List<GoodsImportRowVO> failedRows = checked.stream()
                 .filter(c -> !c.errors().isEmpty())
                 .map(c -> new GoodsImportRowVO(c.row().rowNum(), false, c.errors(), c.row().data()))
                 .toList();
         return new GoodsImportResultVO(pass.size(), failedRows.size(), failedRows);
+    }
+
+    private static void report(java.util.function.BiConsumer<Integer, String> progress,
+                               int percent, String phase) {
+        if (progress != null) {
+            progress.accept(percent, phase);
+        }
     }
 
     // ==================== 失败行导出（FR-GOODS-11：修正后重传） ====================
@@ -248,6 +270,13 @@ public class GoodsExcelService {
     }
 
     // ==================== 导出（FR-GOODS-12） ====================
+
+    /** 导出字段白名单（GAP-P2-07）：前端列选择的数据源，与导出校验同源 */
+    public List<com.smms.goods.dto.GoodsExportFieldVO> exportFields() {
+        return EXPORT_FIELDS.entrySet().stream()
+                .map(e -> new com.smms.goods.dto.GoodsExportFieldVO(e.getKey(), e.getValue()))
+                .toList();
+    }
 
     /** 按筛选条件导出，fields 为空时导出全部白名单字段；行数上限 export_max_rows（超限提示缩小范围，FR-RPT-08；GAP-P0-01） */
     public byte[] export(GoodsQuery query, List<String> fields) {
