@@ -365,6 +365,8 @@ export interface GoodsCreatePayload {
   /** >0 时生成"期初建账"流水（BR-INV-01），仅创建时可设 */
   initialStock?: number
   remark?: string
+  /** 商品图片相对路径（IR-SW-05，由上传接口返回） */
+  image?: string
 }
 
 /** 编辑商品请求（FR-GOODS-02）：编码/初始库存不可改；条码变更须 barcodeConfirmed */
@@ -393,6 +395,19 @@ export function createGoods(data: GoodsCreatePayload) {
 /** 编辑商品（FR-GOODS-02）：调价留痕 */
 export function updateGoods(id: number, data: GoodsUpdatePayload) {
   return http.put<void>(`/goods/${id}`, data)
+}
+
+// ---------- 商品图片（IR-SW-05） ----------
+
+/** 上传商品图片：jpg/png、≤2MB；返回存储相对路径（UUID 重命名） */
+export function uploadGoodsImage(file: File) {
+  return http.upload<{ path: string }>('/goods/images', file, 'file')
+}
+
+/** 读取商品图片（受控接口，需登录态）：返回可预览的 blob URL，调用方负责 revokeObjectURL */
+export async function fetchGoodsImageUrl(path: string): Promise<string> {
+  const blob = await http.download(`/goods/images/${encodeURIComponent(path)}`)
+  return URL.createObjectURL(blob)
 }
 
 /** 店内码预览（FR-GOODS-07）：EAN-13 前缀20~29 + 序号 + 校验位，不落库 */

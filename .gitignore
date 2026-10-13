@@ -28,6 +28,7 @@ db/backup/
 logs/
 *.log
 dev-data/
+uploads/
 
 #### IDE / 编辑器 ###
 .idea

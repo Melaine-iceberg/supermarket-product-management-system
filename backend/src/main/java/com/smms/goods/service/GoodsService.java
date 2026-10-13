@@ -43,6 +43,7 @@ import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.OperationLogService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,7 @@ import java.util.List;
  * 不可物理删除（BR-GOODS-06）；初始库存生成"期初建账"流水（BR-INV-01）。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class GoodsService {
 
@@ -236,6 +238,9 @@ public class GoodsService {
         if (initialStock.compareTo(BigDecimal.ZERO) > 0) {
             initInventory(goods, initialStock, req.purchasePrice(), operator);
         }
+        // 关键业务日志（IR-SW-07）：单据痕迹含编码与操作人
+        log.info("商品建档: id={}, goodsCode={}, name={}, 操作人={}",
+                goods.getId(), goods.getGoodsCode(), goods.getName(), operator);
         return new GoodsCreatedVO(goods.getId(), goods.getGoodsCode(), goods.getBarcode());
     }
 
@@ -295,6 +300,8 @@ public class GoodsService {
         recordPriceChange(goods.getId(), "PURCHASE", oldPurchase, req.purchasePrice(), operator, req.priceChangeReason());
         recordPriceChange(goods.getId(), "RETAIL", oldRetail, req.retailPrice(), operator, req.priceChangeReason());
         recordPriceChange(goods.getId(), "MEMBER", oldMember, req.memberPrice(), operator, req.priceChangeReason());
+        log.info("商品编辑: id={}, goodsCode={}, 条码变更={}, 操作人={}",
+                goods.getId(), goods.getGoodsCode(), barcodeChanged, operator);
     }
 
     // ==================== 停用/启用（FR-GOODS-05） ====================
@@ -308,6 +315,8 @@ public class GoodsService {
         goods.setStatus(status);
         goods.setUpdateBy(operator);
         goodsMapper.updateById(goods);
+        log.info("商品{}: id={}, goodsCode={}, 操作人={}", status == 1 ? "启用" : "停用",
+                id, goods.getGoodsCode(), operator);
     }
 
     // ==================== 删除（FR-GOODS-06、BR-GOODS-06） ====================

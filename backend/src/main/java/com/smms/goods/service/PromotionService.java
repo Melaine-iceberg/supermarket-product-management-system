@@ -9,6 +9,7 @@ import com.smms.goods.entity.Promotion;
 import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.mapper.PromotionMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,7 @@ import java.util.List;
  * 到期由定时任务自动失效（IR-SW-06），取价时同时校验时间区间，任务延迟不影响正确性。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class PromotionService {
 
@@ -113,12 +115,17 @@ public class PromotionService {
      */
     @Scheduled(cron = "*/30 * * * * ?")
     public void expireOutdated() {
+        long start = System.currentTimeMillis();
         List<Promotion> outdated = promotionMapper.selectList(Wrappers.<Promotion>lambdaQuery()
                 .eq(Promotion::getStatus, "ACTIVE")
                 .lt(Promotion::getEndTime, LocalDateTime.now()));
         for (Promotion promotion : outdated) {
             promotion.setStatus("EXPIRED");
             promotionMapper.updateById(promotion);
+        }
+        // 任务执行结果与耗时写入日志（IR-SW-06；统一任务日志见 ScheduledTaskService）
+        if (!outdated.isEmpty()) {
+            log.info("促销到期失效: 处理 {} 条, 耗时 {}ms", outdated.size(), System.currentTimeMillis() - start);
         }
     }
 }

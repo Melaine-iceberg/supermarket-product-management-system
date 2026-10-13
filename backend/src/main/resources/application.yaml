@@ -21,6 +21,11 @@ spring:
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
+  # 上传大小限制（IR-SW-04）：Excel 导入单文件 ≤10MB，超限由全局异常转业务提示（错误码 1115）
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
 
 server:
   port: ${SMMS_SERVER_PORT:8080}
@@ -38,6 +43,9 @@ smms:
   cors:
     # 前端开发服务器地址
     allowed-origins: ${SMMS_CORS_ORIGINS:http://localhost:5173}
+  # 商品图片上传（IR-SW-05）：本地可配置目录，与 Web 根隔离，经受控接口访问
+  upload:
+    dir: ${SMMS_UPLOAD_DIR:./uploads}
   # 异步任务（重导出/导入提交后台执行，规避反向代理源站超时）
   task:
     # 结果文件目录（容器内；也可用环境变量 SMMS_TASK_FILE_DIR 覆盖）
@@ -56,3 +64,8 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+# 日志（IR-SW-07）：文件按天/大小滚动、ERROR 独立文件，详见 logback-spring.xml
+logging:
+  level:
+    com.smms: info

@@ -45,6 +45,22 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(ErrorCode.PARAM_INVALID, "请求体格式不正确");
     }
 
+    /** 上传文件超限（IR-SW-04）：明确业务提示（1115），不落入 500 兜底 */
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
+    public ApiResponse<Void> handleMaxUploadSize(org.springframework.web.multipart.MaxUploadSizeExceededException e) {
+        log.warn("上传文件超出大小限制: {}", e.getMessage());
+        return ApiResponse.fail(ErrorCode.UPLOAD_SIZE_EXCEEDED);
+    }
+
+    /** 其余 multipart 异常（如临时目录不可写、边界损坏）：视为参数非法 */
+    @ExceptionHandler(org.springframework.web.multipart.MultipartException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleMultipart(org.springframework.web.multipart.MultipartException e) {
+        log.warn("文件上传失败: {}", e.getMessage());
+        return ApiResponse.fail(ErrorCode.PARAM_INVALID, "文件上传失败，请检查文件后重试");
+    }
+
     /** 参数校验异常（@RequestBody @Valid） */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

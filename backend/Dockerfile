@@ -27,10 +27,12 @@ RUN apt-get update \
 
 ENV TZ=Asia/Shanghai \
     JAVA_OPTS="-XX:MaxRAMPercentage=75 -Dfile.encoding=UTF-8" \
-    SMMS_TASK_FILE_DIR=/app/task-files
+    SMMS_TASK_FILE_DIR=/app/task-files \
+    SMMS_UPLOAD_DIR=/app/uploads
 
 # 异步任务结果目录（导出/导入，保留期默认 24h；容器重建会丢失，任务记录仍在库中）
-RUN mkdir -p /app/task-files
+# 商品图片目录与日志目录（建议经数据卷持久化，见 docker-compose.yml）
+RUN mkdir -p /app/task-files /app/uploads /app/logs
 
 COPY --from=build /app/app.jar app.jar
 

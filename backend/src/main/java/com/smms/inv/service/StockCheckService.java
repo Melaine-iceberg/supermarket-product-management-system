@@ -32,6 +32,7 @@ import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +52,7 @@ import java.util.Set;
  * 审核时以实盘数覆盖结存并生成盘盈/盘亏流水（FR-INV-09，见审核方法）。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class StockCheckService {
 
@@ -392,11 +394,13 @@ public class StockCheckService {
                     "盘点单 " + order.getOrderNo() + " 盘点人与审核人同为 " + auditor.username(),
                     ErrorCode.CHECK_AUDIT_SELF, auditor);
         }
-        return Boolean.TRUE.equals(req.approved())
+        CheckOrderVO vo = Boolean.TRUE.equals(req.approved())
                 ? auditPass(order, req.remark(), auditor.username())
                 : auditReject(order, req.remark(), auditor.username());
+        log.info("盘点单审核: checkNo={}, 结果={}, 审核人={}", order.getOrderNo(),
+                Boolean.TRUE.equals(req.approved()) ? "通过" : "驳回", auditor.username());
+        return vo;
     }
-
     /**
      * 审核通过（FR-INV-09，AC-12）：按 goodsId 升序逐行处理（与库存服务锁序一致，避免交叉死锁）——
      * 行锁读当前结存，实盘≠当前结存时写 CHECK_SURPLUS/CHECK_SHORTAGE 流水（§8.2 按当前成本单价入账/结转），

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance } from 'element-plus'
+import type { FormInstance, UploadRequestOptions } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { saveBlob } from '@/api/request'
 import {
@@ -15,6 +15,8 @@ import {
   getGoodsDetail,
   createGoods,
   updateGoods,
+  uploadGoodsImage,
+  fetchGoodsImageUrl,
   nextBarcode,
   downloadGoodsTemplate,
   validateGoodsImport,
@@ -150,6 +152,9 @@ const editingDetail = ref<{ barcode: string; prices: number[]; image: string | n
 const formRef = ref<FormInstance>()
 const saving = ref(false)
 const detailLoading = ref(false)
+/** 商品图片（IR-SW-05）：存储相对路径 + 本地/受控预览 URL */
+const imagePreview = ref('')
+const imageUploading = ref(false)
 
 const form = reactive({
   name: '',
@@ -171,6 +176,7 @@ const form = reactive({
   initialStock: null as number | null,
   remark: '',
   priceChangeReason: '',
+  image: '',
 })
 
 /** 表单用分类树：仅启用的叶子分类可选（BR-CAT-04），其余置灰 */
@@ -264,6 +270,7 @@ const rules = computed(() => ({
 function resetForm() {
   editing.value = null
   editingDetail.value = null
+  revokeImagePreview()
   formRef.value?.resetFields()
   Object.assign(form, {
     name: '',
@@ -285,7 +292,53 @@ function resetForm() {
     initialStock: null,
     remark: '',
     priceChangeReason: '',
+    image: '',
   })
+}
+
+/** 释放预览用 blob URL（IR-SW-05），避免对话框反复打开造成内存泄漏 */
+function revokeImagePreview() {
+  if (imagePreview.value.startsWith('blob:')) {
+    URL.revokeObjectURL(imagePreview.value)
+  }
+  imagePreview.value = ''
+}
+
+/** 上传前本地校验（IR-SW-05）：扩展名 + 类型 + ≤2MB，避免无效请求 */
+function beforeImageUpload(file: File) {
+  const okType = ['image/jpeg', 'image/png'].includes(file.type)
+  const okExt = /\.(jpe?g|png)$/i.test(file.name)
+  if (!okType || !okExt) {
+    ElMessage.error('商品图片仅支持 jpg/png 格式（IR-SW-05）')
+    return false
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    ElMessage.error('商品图片大小不能超过 2MB（IR-SW-05）')
+    return false
+  }
+  return true
+}
+
+/** 自定义上传：调用受控上传接口，成功后回填相对路径并用本地文件即时预览 */
+async function doUploadImage(options: UploadRequestOptions) {
+  imageUploading.value = true
+  try {
+    const { path } = await uploadGoodsImage(options.file)
+    form.image = path
+    revokeImagePreview()
+    imagePreview.value = URL.createObjectURL(options.file)
+    ElMessage.success('图片已上传，保存商品后生效')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    imageUploading.value = false
+  }
+}
+
+/** 移除图片：清空路径与预览（保存后后端置空） */
+function clearImage() {
+  form.image = ''
+  revokeImagePreview()
 }
 
 function openCreate() {
@@ -325,7 +378,21 @@ async function openEdit(row: GoodsListVO) {
       safetyStockLower: g.safetyStockLower,
       safetyStockUpper: g.safetyStockUpper,
       remark: g.remark ?? '',
+      image: g.image ?? '',
     })
+    // 图片为受控接口（需登录态），经 blob 预览；失败不阻断编辑
+    if (g.image) {
+      const path = g.image
+      fetchGoodsImageUrl(path)
+        .then((url) => {
+          if (form.image === path) {
+            imagePreview.value = url
+          } else {
+            URL.revokeObjectURL(url)
+          }
+        })
+        .catch(() => {})
+    }
     dialogVisible.value = true
   } finally {
     detailLoading.value = false
@@ -381,7 +448,7 @@ async function save() {
         ...base,
         barcode: newBarcode,
         barcodeConfirmed: confirmed,
-        image: editingDetail.value?.image ?? undefined,
+        image: form.image || undefined,
         priceChangeReason: priceChanged.value ? form.priceChangeReason.trim() || undefined : undefined,
       })
       ElMessage.success('商品已更新')
@@ -390,6 +457,7 @@ async function save() {
         ...base,
         goodsCode: form.goodsCode.trim() || undefined,
         initialStock: num(form.initialStock),
+        image: form.image || undefined,
       })
       showCreated(created)
     }
@@ -975,6 +1043,7 @@ async function handleDisablePromotion(promo: PromotionVO) {
       :title="editing ? `编辑商品：${editing.name}` : '新增商品'"
       width="720px"
       :close-on-click-modal="false"
+      @closed="revokeImagePreview"
     >
       <el-alert
         v-if="!editing"
@@ -986,6 +1055,28 @@ async function handleDisablePromotion(promo: PromotionVO) {
       />
       <el-form ref="formRef" v-loading="detailLoading" :model="form" :rules="rules" label-width="96px">
         <el-row :gutter="12">
+          <el-col :span="24">
+            <el-form-item label="商品图片">
+              <div v-loading="imageUploading" class="image-uploader">
+                <el-image v-if="imagePreview" :src="imagePreview" fit="cover" class="image-preview" />
+                <div v-else class="image-placeholder">暂无图片</div>
+                <div class="image-actions">
+                  <el-upload
+                    :show-file-list="false"
+                    accept=".jpg,.jpeg,.png"
+                    :before-upload="beforeImageUpload"
+                    :http-request="doUploadImage"
+                  >
+                    <el-button size="small">{{ form.image ? '更换图片' : '上传图片' }}</el-button>
+                  </el-upload>
+                  <el-button v-if="form.image" size="small" text type="danger" @click="clearImage">
+                    移除
+                  </el-button>
+                  <div class="image-tip">支持 jpg/png，单张不超过 2MB（IR-SW-05）</div>
+                </div>
+              </div>
+            </el-form-item>
+          </el-col>
           <el-col :span="12">
             <el-form-item label="商品名称" prop="name">
               <el-input v-model="form.name" maxlength="100" placeholder="1~100 个字符" />
@@ -1730,6 +1821,44 @@ async function handleDisablePromotion(promo: PromotionVO) {
   .detail-strong {
     font-weight: 600;
     color: var(--el-color-danger);
+  }
+
+  /* 商品图片上传（IR-SW-05） */
+  .image-uploader {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .image-preview,
+  .image-placeholder {
+    width: 96px;
+    height: 96px;
+    border-radius: 6px;
+    border: 1px solid var(--el-border-color-lighter);
+    flex: none;
+  }
+
+  .image-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #a8abb2;
+    font-size: 12px;
+    background: var(--el-fill-color-lighter);
+  }
+
+  .image-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .image-tip {
+    flex-basis: 100%;
+    font-size: 12px;
+    color: #909399;
   }
 
   .qty-in {

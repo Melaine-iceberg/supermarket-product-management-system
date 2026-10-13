@@ -42,6 +42,7 @@ public enum ErrorCode {
     AUTHORIZER_AUTH_FAILED(1112, "授权账号或密码错误"),
     AUTHORIZER_NOT_MANAGER(1113, "授权人须为店长及以上账号（FR-SALE-07/11、FR-PUR-06）"),
     MUST_CHANGE_PWD(1114, "首次登录或重置密码后须先修改密码（BR-SYS-02）"),
+    UPLOAD_SIZE_EXCEEDED(1115, "上传文件大小超出限制（单文件不超过 10MB，IR-SW-04）"),
 
     // ---------- CAT 分类模块（1200 ~ 1299，FR-CAT-01 ~ 07） ----------
     CAT_NAME_EXISTS(1201, "同级下已存在同名分类"),
@@ -61,6 +62,8 @@ public enum ErrorCode {
     GOODS_WEIGHED_PLU_REQUIRED(1306, "称重商品必须录入 PLU 码（BR-GOODS-05）"),
     GOODS_BARCODE_CONFIRM_REQUIRED(1307, "条码修改需二次确认"),
     GOODS_CODE_IMMUTABLE(1308, "商品编码创建后不可修改"),
+    GOODS_IMAGE_TYPE_INVALID(1309, "商品图片仅支持 jpg/png 格式（IR-SW-05）"),
+    GOODS_IMAGE_TOO_LARGE(1310, "商品图片大小不能超过 2MB（IR-SW-05）"),
     UNIT_NAME_EXISTS(1311, "计量单位名称已存在"),
     UNIT_HAS_GOODS(1312, "该单位已被商品使用，禁止删除，请改用停用"),
     BRAND_NAME_EXISTS(1321, "品牌名称已存在"),

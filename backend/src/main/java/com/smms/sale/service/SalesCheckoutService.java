@@ -40,6 +40,7 @@ import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,6 +66,7 @@ import java.util.stream.Collectors;
  * 销售单一经结算不可修改删除（BR-SALE-08），错误只能通过退货冲正。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class SalesCheckoutService {
 
@@ -178,13 +180,15 @@ public class SalesCheckoutService {
                     cashier.realName(), now);
         }
 
+        // 12. 关键业务日志（IR-SW-07）：含单据号与操作人，便于按单据追溯
+        log.info("收银结算完成: orderNo={}, 收银员={}, 应收={}, 实收={}, 找零={}",
+                order.getOrderNo(), cashier.realName(), lines.payable(), paid, change);
+
         return new CheckoutVO(order.getId(), order.getOrderNo(), order.getItemCount(),
                 lines.goodsAmount(), order.getMemberDiscountAmount(), order.getOrderDiscountAmount(),
                 order.getDiscountAmount(), lines.payable(), paid, change, paymentLines,
                 memberLevelUpgraded, order.getSaleTime());
-    }
-
-    // ==================== 收银台商品/会员检索（FR-SALE-02/05） ====================
+    }    // ==================== 收银台商品/会员检索（FR-SALE-02/05） ====================
 
     /** 商品关键字检索（FR-SALE-02）：条码/编码/PLU 精确与名称/拼音首字母模糊统一匹配，仅启用商品，最多 20 条 */
     public List<CashierGoodsVO> searchCashierGoods(String keyword) {

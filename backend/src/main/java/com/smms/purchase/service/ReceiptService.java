@@ -268,6 +268,9 @@ public class ReceiptService {
         // 5. 供应商累计采购额更新（DR-C-04 派生数据一致性）
         supplierMapper.addTotalPurchaseAmount(order.getSupplierId(), total);
 
+        // 关键业务日志（IR-SW-07）：含入库单号、采购单号与验收人
+        log.info("入库验收完成: receiptNo={}, 采购单={}, 验收人={}, 入库金额={}",
+                receipt.getOrderNo(), order.getOrderNo(), operator.realName(), total);
         return detail(receipt.getId());
     }
 

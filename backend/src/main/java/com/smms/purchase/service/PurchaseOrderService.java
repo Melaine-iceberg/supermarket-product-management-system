@@ -27,6 +27,7 @@ import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +53,7 @@ import java.util.stream.Collectors;
  * PO 单号 = PO+yyyyMMdd+4位流水（BR-PUR-01）。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class PurchaseOrderService {
 
@@ -105,6 +107,8 @@ public class PurchaseOrderService {
             item.setOrderId(order.getId());
             itemMapper.insert(item);
         }
+        log.info("采购单创建: orderNo={}, 供应商={}, 金额={}, 操作人={}",
+                order.getOrderNo(), supplier.getName(), order.getTotalAmount(), operator);
         return detail(order.getId());
     }
 

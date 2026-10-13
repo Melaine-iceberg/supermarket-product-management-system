@@ -35,6 +35,7 @@ import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +62,7 @@ import java.util.stream.Collectors;
  * 超过退货有效期须店长特批（BR-SALE-05）；收银员仅可办理本人单据退货（BR-SALE-09）。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class SalesReturnService {
 
@@ -236,6 +238,8 @@ public class SalesReturnService {
                     returnOrder.getOrderNo(), operator.realName(), now);
         }
 
+        log.info("销售退货完成: returnNo={}, 原单={}, 退款={}, 经手人={}",
+                returnOrder.getOrderNo(), order.getOrderNo(), totalRefund, operator.realName());
         return detail(returnOrder.getId());
     }
 
