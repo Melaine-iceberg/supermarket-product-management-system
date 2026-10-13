@@ -13,6 +13,8 @@ public record BusinessParamsVO(
         /** 退款金额超过该阈值须店长授权（元，FR-SALE-11） */
         BigDecimal returnAuthAmount,
         /** 退货有效期（天，BR-SALE-05） */
-        Integer returnValidDays
+        Integer returnValidDays,
+        /** 无结束符扫码枪：按输入间隔 ≤50ms 判定扫码结束后自动查询（IR-HW-01③） */
+        Boolean barcodeAutoQuery
 ) {
 }

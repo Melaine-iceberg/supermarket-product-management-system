@@ -85,10 +85,64 @@ const inputRef = ref()
 const input = ref('')
 const searching = ref(false)
 
-/** 录入框回车：条码/编码/PLU 唯一精确命中直接入单；否则弹候选列表（名称/拼音模糊） */
-async function onInputEnter() {
-  const kw = input.value.trim()
+// ---------- 扫码枪保护（IR-HW-01③④⑤ / GAP-P1-13） ----------
+/** 字符间隔 ≤50ms 判定为扫码枪输入（无结束符时据此判定扫码结束并自动查询） */
+const SCAN_GAP_MS = 50
+/** 快速输入后静默该时长判定扫码结束（无结束符扫码枪兼容） */
+const SCAN_IDLE_MS = 120
+/** 扫码查询队列：前一次查询未返回时不阻塞后续扫码（IR-HW-01④） */
+const scanQueue: string[] = []
+let queueRunning = false
+let lastKeyTime = 0
+let autoQueryTimer: number | undefined
+/** 输入法组合中：不触发自动查询（IR-HW-01⑤ 录入框不受输入法状态影响） */
+let composing = false
+
+/** 回车：入队并顺序处理（扫描/手工输入等效） */
+function onInputEnter() {
+  window.clearTimeout(autoQueryTimer)
+  enqueueScan(input.value)
+}
+
+/** 扫码输入监听：按字符间隔识别扫码枪；静默后自动查询（“扫码后自动查询”参数控制） */
+function onScanInput() {
+  const now = performance.now()
+  const fast = lastKeyTime > 0 && now - lastKeyTime <= SCAN_GAP_MS
+  lastKeyTime = now
+  if (!fast || composing || !input.value.trim() || bizParams.barcodeAutoQuery === false) return
+  window.clearTimeout(autoQueryTimer)
+  autoQueryTimer = window.setTimeout(() => {
+    if (input.value.trim() && !composing) {
+      enqueueScan(input.value)
+    }
+  }, SCAN_IDLE_MS)
+}
+
+/** 立即清空录入框并入队，保证连续快速扫码不丢单 */
+function enqueueScan(raw: string) {
+  const kw = raw.trim()
   if (!kw) return
+  input.value = ''
+  scanQueue.push(kw)
+  void processQueue()
+}
+
+/** 顺序处理队列：同一时刻仅一次查询在途，但输入永不阻塞 */
+async function processQueue() {
+  if (queueRunning) return
+  queueRunning = true
+  try {
+    while (scanQueue.length) {
+      await resolveKeyword(scanQueue.shift() as string)
+    }
+  } finally {
+    queueRunning = false
+    focusInput()
+  }
+}
+
+/** 关键字解析：条码/编码/PLU 唯一精确命中直接入单；否则弹候选列表（名称/拼音模糊） */
+async function resolveKeyword(kw: string) {
   searching.value = true
   try {
     const list = await searchCashierGoods(kw)
@@ -101,7 +155,6 @@ async function onInputEnter() {
     )
     if (exact.length === 1 && list.length === 1) {
       addToCart(exact[0])
-      input.value = ''
       return
     }
     candidates.value = list
@@ -345,7 +398,7 @@ function clearMember() {
 
 // ---------- 整单折扣与单品改价（FR-SALE-07，店长现场授权） ----------
 /** 业务参数（BR-SALE-05/10：与后端校验同源，避免硬编码；读取失败按默认值展示） */
-const bizParams = reactive({ minDiscountRate: 0.7 })
+const bizParams = reactive({ minDiscountRate: 0.7, barcodeAutoQuery: true })
 
 async function loadBizParams() {
   try {
@@ -822,7 +875,14 @@ async function removeHold(hold: HoldVO) {
   }
 }
 
-// ---------- 键盘操作（NFR-USE-02：回车录入 / F2 结算 / F4 挂单） ----------
+// ---------- 键盘操作（NFR-USE-02：回车录入 / F2 结算 / F4 挂单 / Esc 收起） ----------
+/** 任一弹窗可见：Esc 交给弹窗自身处理（关闭当前弹窗） */
+const anyDialogOpen = computed(() =>
+  weightDialog.visible || browseDialog.visible || tempDialog.visible || memberDialog.visible ||
+  orderRateDialog.visible || overrideDialog.visible || payDialog.visible || doneDialog.visible ||
+  holdDialog.visible,
+)
+
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'F2') {
     e.preventDefault()
@@ -830,6 +890,12 @@ function onKeydown(e: KeyboardEvent) {
   } else if (e.key === 'F4') {
     e.preventDefault()
     holdOrder()
+  } else if (e.key === 'Escape' && !anyDialogOpen.value) {
+    // 无弹窗时 Esc 收起：清空录入与候选（IR-UI-02 收银台键盘操作）
+    input.value = ''
+    candidates.value = []
+    candidateVisible.value = false
+    focusInput()
   }
 }
 
@@ -837,8 +903,21 @@ function focusInput() {
   nextTick(() => inputRef.value?.focus())
 }
 
+/** 录入框强制英数模式（IR-HW-01⑤）：阻断输入法组合，扫码不受输入法状态影响 */
+function blockIme(e: Event) {
+  composing = true
+  e.preventDefault()
+}
+
+function onCompositionEnd() {
+  composing = false
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
+  const el = (inputRef.value as { input?: HTMLInputElement } | undefined)?.input
+  el?.addEventListener('compositionstart', blockIme)
+  el?.addEventListener('compositionend', onCompositionEnd)
   loadBizParams()
   loadPayTypes()
   refreshHoldCount()
@@ -847,6 +926,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
+  const el = (inputRef.value as { input?: HTMLInputElement } | undefined)?.input
+  el?.removeEventListener('compositionstart', blockIme)
+  el?.removeEventListener('compositionend', onCompositionEnd)
 })
 </script>
 
@@ -870,16 +952,21 @@ onUnmounted(() => {
           v-model="input"
           size="large"
           class="scan-input"
-          placeholder="扫码 / 输入条码、编码、PLU、名称或拼音首字母后回车"
+          placeholder="扫码 / 输入条码、编码、PLU、拼音（英数模式）后回车"
           clearable
+          autocomplete="off"
+          spellcheck="false"
+          inputmode="text"
           :loading="searching"
+          @input="onScanInput"
           @keyup.enter="onInputEnter"
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
         <el-button size="large" plain class="temp-btn" @click="openBrowse">分类浏览</el-button>
         <el-button size="large" plain class="temp-btn" @click="openTempDialog">无码商品</el-button>
-        <div class="hotkeys">回车 录入 ｜ F2 结算 ｜ F4 挂单</div>
+        <div class="hotkeys">回车 录入 ｜ F2 结算 ｜ F4 挂单 ｜ Esc 清空</div>
+        <el-button link size="small" class="exit-link" @click="$router.push('/home')">退出收银</el-button>
       </div>
 
       <!-- 候选列表（FR-SALE-02 关键字检索） -->
@@ -1043,6 +1130,17 @@ onUnmounted(() => {
           <div class="amount-row payable">
             <span>应收（预估）</span>
             <b>￥{{ money(estPayable) }}</b>
+          </div>
+          <!-- 实收/找零常驻汇总区（IR-UI-06：结算面板打开前也可核对，GAP-P1-12） -->
+          <el-divider class="amount-divider" />
+          <div class="amount-row">
+            <span>实收合计</span>
+            <b>￥{{ money(paidTotal) }}</b>
+          </div>
+          <div class="amount-row">
+            <span>找零</span>
+            <b v-if="estChange >= 0">￥{{ money(estChange) }}</b>
+            <b v-else class="pay-short">收款不足 ￥{{ money(-estChange) }}</b>
           </div>
           <div class="amount-note">促销价 / 会员价以后端结算取价为准（BR-GOODS-04）</div>
           <el-input v-model="remark" placeholder="单据备注（选填）" size="small" class="order-remark" />
@@ -1499,6 +1597,16 @@ onUnmounted(() => {
         color: #909399;
         white-space: nowrap;
       }
+
+      .exit-link {
+        margin-left: auto;
+        white-space: nowrap;
+      }
+    }
+
+    /* 关键按钮 ≥44px 支持触屏（IR-UI-06：收银台专项，GAP-P1-12） */
+    :deep(.el-button--large) {
+      min-height: 44px;
     }
 
     .candidates {
@@ -1664,6 +1772,14 @@ onUnmounted(() => {
             color: #f56c6c;
             font-size: 22px;
           }
+        }
+
+        .amount-divider {
+          margin: 8px 0 2px;
+        }
+
+        .pay-short {
+          color: #e6a23c;
         }
 
         .amount-note {

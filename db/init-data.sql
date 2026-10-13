@@ -221,6 +221,7 @@ INSERT INTO sys_config (config_name, config_key, config_value, value_type, confi
 ('Token有效期(小时)',     'token_expire_hours',         '8',     'NUMBER', 'security',   1, 0, 'JWT有效期，修改后对新签发Token生效（IR-SW-03）', 'system'),
 ('职责分离是否强制拒绝',  'duty_separation_strict',     'false', 'BOOLEAN', 'security',  1, 1, 'false时放行但记异常日志（BR-SYS-01）', 'system'),
 ('店内码前缀',            'barcode_prefix',             '20',    'STRING', 'goods',      1, 1, 'EAN-13店内码前缀20~29（FR-GOODS-07）', 'system'),
+('无结束符扫码自动查询',  'barcode_auto_query',         'true',  'BOOLEAN', 'sale',      1, 1, '扫码枪无结束符时按输入间隔≤50ms判定扫码结束并自动查询（IR-HW-01③）', 'system'),
 ('超市名称',              'store_name',                 '好又多超市', 'STRING', 'basic',  1, 1, '打印页眉/登录页展示（IR-UI-08）', 'system'),
 ('超市地址',              'store_address',             '',      'STRING', 'basic',     1, 1, '打印页眉', 'system'),
 ('超市电话',              'store_phone',               '',      'STRING', 'basic',     1, 1, '打印页眉', 'system'),

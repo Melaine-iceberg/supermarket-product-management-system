@@ -133,6 +133,7 @@ public class SysConfigService {
         return new BusinessParamsVO(
                 new BigDecimal(getStr("min_discount_rate", "0.7")),
                 new BigDecimal(getStr("return_auth_amount", "200")),
-                getInt("return_valid_days", 7));
+                getInt("return_valid_days", 7),
+                getBool("barcode_auto_query", true));
     }
 }

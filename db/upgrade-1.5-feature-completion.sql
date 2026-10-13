@@ -71,3 +71,10 @@ INSERT IGNORE INTO sys_permission (id, parent_id, name, perm_type, perm_code, ro
 
 INSERT IGNORE INTO sys_role_permission (role_id, perm_id) VALUES
 (1, 16), (1, 161), (1, 17), (1, 171);
+
+-- ---------------------------------------------------------------------
+-- ④ 系统参数：无结束符扫码自动查询（IR-HW-01③ / GAP-P1-13）
+-- ---------------------------------------------------------------------
+INSERT IGNORE INTO sys_config (config_name, config_key, config_value, value_type, config_group, editable, instant_effect, remark, update_by) VALUES
+('无结束符扫码自动查询', 'barcode_auto_query', 'true', 'BOOLEAN', 'sale', 1, 1,
+ '扫码枪无结束符时按输入间隔≤50ms判定扫码结束并自动查询（IR-HW-01③）', 'system');

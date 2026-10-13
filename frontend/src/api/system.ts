@@ -145,6 +145,8 @@ export interface BusinessParamsVO {
   returnAuthAmount: number
   /** 退货有效期（天，BR-SALE-05） */
   returnValidDays: number
+  /** 无结束符扫码枪：≤50ms 间隔判定扫码结束后自动查询（IR-HW-01③） */
+  barcodeAutoQuery: boolean
 }
 
 /** 折扣下限/退货阈值/退货有效期（任意已登录用户可读） */

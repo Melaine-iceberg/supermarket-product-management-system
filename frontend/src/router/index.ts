@@ -11,6 +11,13 @@ const router = createRouter({
       component: () => import('@/views/LoginView.vue'),
       meta: { public: true, title: '登录' },
     },
+    // 收银台独立全屏布局（IR-UI-02 / GAP-P1-12）：不含管理端菜单，避免误操作
+    {
+      path: '/sale/cashier',
+      name: 'sale-cashier',
+      component: () => import('@/views/sale/cashier/index.vue'),
+      meta: { perm: 'sys:cashier:enter', title: '收银台' },
+    },
     {
       path: '/',
       component: () => import('@/layouts/MainLayout.vue'),
@@ -143,12 +150,6 @@ const router = createRouter({
           meta: { perm: 'sys:inv:health', title: '库存体检' },
         },
         // 销售管理（FR-SALE）
-        {
-          path: 'sale/cashier',
-          name: 'sale-cashier',
-          component: () => import('@/views/sale/cashier/index.vue'),
-          meta: { perm: 'sys:cashier:enter', title: '收银台' },
-        },
         {
           path: 'sale/order',
           name: 'sale-order',
