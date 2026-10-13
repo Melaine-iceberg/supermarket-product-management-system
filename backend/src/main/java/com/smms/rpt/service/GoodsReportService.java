@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.mybatis.ExportPage;
 import com.smms.rpt.dto.GoodsRankRow;
 import com.smms.rpt.dto.ReportRange;
 import com.smms.rpt.dto.RptRoles;
@@ -46,13 +47,13 @@ public class GoodsReportService {
         return PageVO.of(result);
     }
 
-    /** 商品销售排行导出（FR-RPT-08）：不分页，取前 limit 行，超限由调用方校验 */
+    /** 商品销售排行导出（FR-RPT-08）：不分页，取前 limit 行，超限由调用方校验（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<GoodsRankRow> rankingForExport(ReportRange range, String orderBy, Long categoryId,
                                                int limit, LoginUser user) {
         String order = normalize(orderBy);
         boolean canProfit = RptRoles.canViewProfit(user);
         IPage<GoodsRankRow> result = reportMapper.selectGoodsRanking(
-                new Page<>(1, limit, false),
+                new ExportPage<>(limit),
                 range.beginDate(), range.endDate(), order, categoryId);
         return result.getRecords().stream()
                 .map(r -> withShare(r, null))
@@ -100,14 +101,14 @@ public class GoodsReportService {
         return PageVO.of(result);
     }
 
-    /** 滞销商品清单导出（FR-RPT-08）：不分页，取前 limit 行，超限由调用方校验 */
+    /** 滞销商品清单导出（FR-RPT-08）：不分页，取前 limit 行，超限由调用方校验（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<GoodsRankRow> slowMovingForExport(ReportRange range, BigDecimal threshold, Long categoryId,
                                                   int limit, LoginUser user) {
         BigDecimal th = threshold == null || threshold.compareTo(BigDecimal.ZERO) < 0
                 ? BigDecimal.ONE : threshold;
         boolean canProfit = RptRoles.canViewProfit(user);
         IPage<GoodsRankRow> result = reportMapper.selectSlowMoving(
-                new Page<>(1, limit, false), range.beginDate(), range.endDate(), th, categoryId);
+                new ExportPage<>(limit), range.beginDate(), range.endDate(), th, categoryId);
         return result.getRecords().stream()
                 .map(r -> mask(r, canProfit)).toList();
     }

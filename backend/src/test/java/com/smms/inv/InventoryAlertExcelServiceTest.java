@@ -1,5 +1,6 @@
 package com.smms.inv;
 
+import com.smms.common.exception.BusinessException;
 import com.smms.inv.dto.AlertItemVO;
 import com.smms.inv.dto.AlertQuery;
 import com.smms.inv.service.InventoryAlertExcelService;
@@ -19,9 +20,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -51,7 +54,7 @@ class InventoryAlertExcelServiceTest {
                 5L, "碳酸饮料", "瓶", "500ml", 0,
                 new BigDecimal("0"), new BigDecimal("10"), null, "OUT",
                 new BigDecimal("10"), LocalDateTime.of(2026, 9, 19, 10, 0, 0));
-        when(inventoryService.listForAlertExport(any(), eq(50_000))).thenReturn(List.of(vo));
+        when(inventoryService.listForAlertExport(any(), eq(50_001))).thenReturn(List.of(vo));
 
         byte[] bytes = service.export(new AlertQuery(null, null, null, "OUT", 1, 20, "gap", "desc"));
 
@@ -86,7 +89,7 @@ class InventoryAlertExcelServiceTest {
                 7L, "零食", "袋", null, 0,
                 new BigDecimal("3"), new BigDecimal("10"), null, "WARNING",
                 new BigDecimal("7"), null);
-        when(inventoryService.listForAlertExport(any(), eq(50_000))).thenReturn(List.of(overstock, warning));
+        when(inventoryService.listForAlertExport(any(), eq(50_001))).thenReturn(List.of(overstock, warning));
 
         byte[] bytes = service.export(new AlertQuery(null, null, null, null, 1, 20, null, null));
 
@@ -95,5 +98,17 @@ class InventoryAlertExcelServiceTest {
             assertThat(sheet.getRow(1).getCell(6).getStringCellValue()).isEqualTo("积压");
             assertThat(sheet.getRow(2).getCell(6).getStringCellValue()).isEqualTo("预警");
         }
+    }
+
+    @Test
+    @DisplayName("导出：超过 export_max_rows 上限时提示缩小范围（GAP-P0-01 / FR-RPT-08）")
+    void export_overLimitRejected() {
+        when(configService.getInt("export_max_rows", 50_000)).thenReturn(50_000);
+        when(inventoryService.listForAlertExport(any(), eq(50_001)))
+                .thenReturn(Collections.nCopies(50_001, (AlertItemVO) null));
+
+        assertThatThrownBy(() -> service.export(new AlertQuery(null, null, null, null, 1, 20, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("超过上限");
     }
 }

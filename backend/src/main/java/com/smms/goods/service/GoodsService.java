@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.mybatis.ExportPage;
 import com.smms.common.util.Ean13Util;
 import com.smms.common.util.PinyinUtils;
 import com.smms.goods.dto.GoodsCreateRequest;
@@ -93,10 +94,10 @@ public class GoodsService {
         return PageVO.of(result);
     }
 
-    /** 导出查询（FR-GOODS-12）：与列表同一筛选口径，不分页、不查 count，行数上限由调用方控制 */
+    /** 导出查询（FR-GOODS-12）：与列表同一筛选口径，不分页、不查 count；行数上限由调用方控制（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<GoodsListVO> listForExport(GoodsQuery q, int maxSize) {
         List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());
-        return goodsMapper.selectGoodsPage(new Page<>(1, maxSize, false), q, categoryIds).getRecords();
+        return goodsMapper.selectGoodsPage(new ExportPage<>(maxSize), q, categoryIds).getRecords();
     }
 
     /** 分类子树 id 集合（含自身）：按物化路径前缀匹配，分类量小采用全量内存过滤 */

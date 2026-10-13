@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
+import com.smms.common.mybatis.ExportPage;
 import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.mapper.CategoryMapper;
@@ -182,10 +183,10 @@ public class InventoryService {
         return inventoryMapper.selectAlertSummary(withoutAlertType(q), categoryIds);
     }
 
-    /** 预警导出查询（FR-INV-05）：与列表同一筛选口径，不分页、不查 count，行数上限由调用方控制 */
+    /** 预警导出查询（FR-INV-05）：与列表同一筛选口径，不分页、不查 count；行数上限由调用方控制（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<AlertItemVO> listForAlertExport(AlertQuery q, int maxSize) {
         List<Long> categoryIds = q.categoryId() == null ? null : resolveCategoryTree(q.categoryId());
-        return inventoryMapper.selectAlertPage(new Page<>(1, maxSize, false), q, categoryIds).getRecords();
+        return inventoryMapper.selectAlertPage(new ExportPage<>(maxSize), q, categoryIds).getRecords();
     }
 
     private AlertQuery withoutAlertType(AlertQuery q) {

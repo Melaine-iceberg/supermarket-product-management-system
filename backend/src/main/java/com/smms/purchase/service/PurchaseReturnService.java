@@ -203,11 +203,15 @@ public class PurchaseReturnService {
         }
 
         // 4. 采购单退货金额与状态更新（乐观锁，BR-PUR-06）：
-        //    全部已入库数量退完 → ALL_RETURNED；已完成/部分退货后仍有余量 → PARTIAL_RETURNED；
-        //    部分入库单据退货后仍待入库 → 保持 PARTIAL
+        //    仅“全部明细均已全量入库且已退完”才转 ALL_RETURNED（GAP-P0-04：部分入库单退完已入库量时，
+        //    剩余未入库量仍待收货，若误转 ALL_RETURNED 将导致剩余数量无法继续入库/关闭而卡死）；
+        //    部分入库单据仍待入库 → 保持 PARTIAL；
+        //    已完成/部分退货后仍有余量 → PARTIAL_RETURNED
         List<PurchaseOrderItem> poItems = orderItemMapper.selectList(
                 Wrappers.<PurchaseOrderItem>lambdaQuery().eq(PurchaseOrderItem::getOrderId, order.getId()));
-        boolean allReturned = poItems.stream()
+        boolean fullyReceived = poItems.stream()
+                .allMatch(i -> i.getReceivedQty().compareTo(i.getQuantity()) >= 0);
+        boolean allReturned = fullyReceived && poItems.stream()
                 .allMatch(i -> i.getReturnedQty().compareTo(i.getReceivedQty()) >= 0);
         String newStatus;
         if (allReturned) {

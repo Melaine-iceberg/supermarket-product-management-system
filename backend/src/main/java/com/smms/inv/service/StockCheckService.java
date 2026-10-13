@@ -400,10 +400,19 @@ public class StockCheckService {
             BigDecimal actual = item.getActualQty() == null ? item.getBookQty() : item.getActualQty();
             Inventory inv = lockInventory(item.getGoodsId());
             BigDecimal current = inv.getQuantity();
+            BigDecimal costPrice = inv.getCostPrice() == null ? BigDecimal.ZERO : inv.getCostPrice();
+            // GAP-P1-07：审核定稿本行差异金额（差异 = 实盘 − 账面快照，成本 = 审核时当前成本单价，FR-INV-08），
+            // 使损耗报表（读 diff_amount）与单头盘盈/盘亏汇总，与流水结转所用成本同口径
+            BigDecimal diff = actual.subtract(item.getBookQty());
+            itemMapper.update(null, Wrappers.<StockCheckItem>lambdaUpdate()
+                    .set(StockCheckItem::getCostPrice,
+                            costPrice.setScale(4, java.math.RoundingMode.HALF_UP))
+                    .set(StockCheckItem::getDiffAmount,
+                            diff.multiply(costPrice).setScale(2, java.math.RoundingMode.HALF_UP))
+                    .eq(StockCheckItem::getId, item.getId()));
             if (actual.compareTo(current) == 0) {
                 continue; // 期间变动恰好抵补，结存已与实盘一致，无需调整
             }
-            BigDecimal costPrice = inv.getCostPrice() == null ? BigDecimal.ZERO : inv.getCostPrice();
             boolean surplus = actual.compareTo(current) > 0;
             InventoryRecord record = new InventoryRecord();
             record.setGoodsId(item.getGoodsId());
@@ -422,6 +431,12 @@ public class StockCheckService {
             inventoryMapper.updateQuantityAndCost(item.getGoodsId(), STORE_ID, actual, costPrice,
                     actual.multiply(costPrice).setScale(2, java.math.RoundingMode.HALF_UP));
         }
+        // GAP-P1-07：明细成本/差异金额定稿后刷新单头盘盈/盘亏汇总（FR-INV-08：单头 = Σ明细），
+        // 并同步内存对象，保证审核返回 VO 与落库一致
+        CheckSummaryVO summary = refreshTotals(order);
+        order.setSurplusAmount(summary.surplusAmount());
+        order.setShortageAmount(summary.shortageAmount());
+
         String cleanRemark = isBlank(remark) ? null : remark.trim();
         int affected = orderMapper.update(null, Wrappers.<StockCheckOrder>lambdaUpdate()
                 .set(StockCheckOrder::getStatus, "AUDITED")

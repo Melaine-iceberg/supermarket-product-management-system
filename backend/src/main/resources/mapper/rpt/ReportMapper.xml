@@ -59,18 +59,29 @@
                NULL AS returnCount
         FROM sales_order
         WHERE business_date BETWEEN #{begin} AND #{end}
-        GROUP BY business_date
-        ORDER BY business_date
+        <!-- GAP-P0-02：月报按月聚合，GROUP BY 必须与 SELECT 的 DATE_FORMAT 表达式一致，否则 only_full_group_by 报错或退化为按天分组 -->
+        <choose>
+            <when test="monthly">GROUP BY DATE_FORMAT(business_date, '%Y-%m')</when>
+            <otherwise>GROUP BY business_date</otherwise>
+        </choose>
+        <choose>
+            <when test="monthly">ORDER BY DATE_FORMAT(business_date, '%Y-%m')</when>
+            <otherwise>ORDER BY business_date</otherwise>
+        </choose>
     </select>
 
-    <!-- 按营业日/月聚合退货（与 selectDailySales 按 groupKey 合并成完整日报） -->
+    <!-- 按营业日/月聚合退货（与 selectDailySales 按 groupKey 合并成完整日报）
+         GAP-P0-03：退货额/退货单数必须按“退货单”聚合后再求和——
+         ①退款额 refund_amount 为订单级字段，先 join 明细再 SUM 会被明细行数重复放大；
+         ②COUNT(*) 需为退货单数（明细 join 后是明细行数）。
+         故先对 return_order_item 按 return_id 聚合成本回冲额，再与 return_order 1:1 关联，最后按营业日/月分组 -->
     <select id="selectDailyReturns" resultType="com.smms.rpt.dto.SalesGroupRow">
         SELECT
         <choose>
-            <when test="monthly">DATE_FORMAT(ro.business_date, '%Y-%m')</when>
-            <otherwise>DATE_FORMAT(ro.business_date, '%Y-%m-%d')</otherwise>
+            <when test="monthly">DATE_FORMAT(t.business_date, '%Y-%m')</when>
+            <otherwise>DATE_FORMAT(t.business_date, '%Y-%m-%d')</otherwise>
         </choose> AS groupKey,
-        <if test="!monthly">ro.business_date AS bizDate,</if>
+        <if test="!monthly">t.business_date AS bizDate,</if>
         <if test="monthly">NULL AS bizDate,</if>
                0 AS orderCount,
                NULL AS itemCount,
@@ -78,14 +89,28 @@
                NULL AS discountAmount,
                NULL AS netSalesAmount,
                NULL AS costAmount,
-               COALESCE(SUM(ro.refund_amount), 0)  AS refundAmount,
-               COALESCE(SUM(roi.cost_amount), 0)  AS returnCostAmount,
-               COUNT(*)                            AS returnCount
-        FROM return_order ro
-        LEFT JOIN return_order_item roi ON roi.return_id = ro.id
-        WHERE ro.business_date BETWEEN #{begin} AND #{end}
-        GROUP BY ro.business_date
-        ORDER BY ro.business_date
+               COALESCE(SUM(t.refund_amount), 0)       AS refundAmount,
+               COALESCE(SUM(t.return_cost_amount), 0)  AS returnCostAmount,
+               COUNT(*)                                AS returnCount
+        FROM (
+            SELECT ro.id,
+                   ro.business_date,
+                   ro.refund_amount,
+                   COALESCE(ri.return_cost_amount, 0) AS return_cost_amount
+            FROM return_order ro
+            LEFT JOIN (SELECT return_id, SUM(cost_amount) AS return_cost_amount
+                       FROM return_order_item
+                       GROUP BY return_id) ri ON ri.return_id = ro.id
+            WHERE ro.business_date BETWEEN #{begin} AND #{end}
+        ) t
+        <choose>
+            <when test="monthly">GROUP BY DATE_FORMAT(t.business_date, '%Y-%m')</when>
+            <otherwise>GROUP BY t.business_date</otherwise>
+        </choose>
+        <choose>
+            <when test="monthly">ORDER BY DATE_FORMAT(t.business_date, '%Y-%m')</when>
+            <otherwise>ORDER BY t.business_date</otherwise>
+        </choose>
     </select>
 
     <!-- TOP N 热销商品（按销售额，FR-RPT-01） -->

@@ -249,11 +249,15 @@ public class GoodsExcelService {
 
     // ==================== 导出（FR-GOODS-12） ====================
 
-    /** 按筛选条件导出，fields 为空时导出全部白名单字段；行数上限 export_max_rows */
+    /** 按筛选条件导出，fields 为空时导出全部白名单字段；行数上限 export_max_rows（超限提示缩小范围，FR-RPT-08；GAP-P0-01） */
     public byte[] export(GoodsQuery query, List<String> fields) {
         List<String> cols = resolveExportFields(fields);
         int maxRows = configService.getInt("export_max_rows", 50000);
-        List<GoodsListVO> list = goodsService.listForExport(query, maxRows);
+        List<GoodsListVO> list = goodsService.listForExport(query, maxRows + 1);
+        if (list.size() > maxRows) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "导出数据超过上限 " + maxRows + " 行，请缩小筛选范围后重试（FR-RPT-08）");
+        }
 
         try (SXSSFWorkbook wb = new SXSSFWorkbook(200);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {

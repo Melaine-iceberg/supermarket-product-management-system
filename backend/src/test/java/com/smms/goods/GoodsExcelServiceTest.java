@@ -404,7 +404,7 @@ class GoodsExcelServiceTest {
                 new BigDecimal("10"), new BigDecimal("3.50"), new BigDecimal("35.00"),
                 "NORMAL", LocalDateTime.of(2026, 9, 19, 10, 0, 0));
         when(configService.getInt("export_max_rows", 50000)).thenReturn(50000);
-        when(goodsService.listForExport(any(), eq(50000))).thenReturn(List.of(vo));
+        when(goodsService.listForExport(any(), eq(50_001))).thenReturn(List.of(vo));
 
         byte[] bytes = service.export(new GoodsQuery(null, null, null, null, null, null,
                 null, null, null, 1, 20, null, null), List.of("goodsCode", "name", "retailPrice", "status"));
@@ -426,5 +426,18 @@ class GoodsExcelServiceTest {
                 null, null, null, null, 1, 20, null, null), List.of("hack")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("不支持的导出字段");
+    }
+
+    @Test
+    @DisplayName("导出：超过 export_max_rows 上限时提示缩小范围（GAP-P0-01 / FR-RPT-08）")
+    void export_overLimitRejected() {
+        when(configService.getInt("export_max_rows", 50000)).thenReturn(50000);
+        when(goodsService.listForExport(any(), eq(50_001)))
+                .thenReturn(Collections.nCopies(50_001, (GoodsListVO) null));
+
+        assertThatThrownBy(() -> service.export(new GoodsQuery(null, null, null, null, null,
+                null, null, null, null, 1, 20, null, null), List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("超过上限");
     }
 }

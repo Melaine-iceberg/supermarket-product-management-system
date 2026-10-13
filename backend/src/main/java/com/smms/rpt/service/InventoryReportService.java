@@ -3,6 +3,7 @@ package com.smms.rpt.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.PageVO;
+import com.smms.common.mybatis.ExportPage;
 import com.smms.rpt.dto.InvChangeRow;
 import com.smms.rpt.dto.InvSummaryRow;
 import com.smms.rpt.dto.LossRow;
@@ -50,9 +51,9 @@ public class InventoryReportService {
         return PageVO.of(mapper.selectGoodsSummary(p, categoryId));
     }
 
-    /** 库存汇总表导出（FR-RPT-08）：商品维度全量，取前 limit 行，超限由调用方校验 */
+    /** 库存汇总表导出（FR-RPT-08）：商品维度全量，取前 limit 行，超限由调用方校验（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<InvSummaryRow> summaryByGoodsForExport(Long categoryId, int limit) {
-        return mapper.selectGoodsSummary(new Page<>(1, limit, false), categoryId).getRecords();
+        return mapper.selectGoodsSummary(new ExportPage<>(limit), categoryId).getRecords();
     }
 
     /** 库存汇总表（①，分类维度） */
@@ -73,9 +74,9 @@ public class InventoryReportService {
         return PageVO.of(mapper.selectWarnings(p, alertType, suggestK(), avgDays(), leadDays()));
     }
 
-    /** 库存预警报表导出（FR-RPT-08）：取前 limit 行，超限由调用方校验 */
+    /** 库存预警报表导出（FR-RPT-08）：取前 limit 行，超限由调用方校验（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<WarningRptRow> warningsForExport(String alertType, int limit) {
-        return mapper.selectWarnings(new Page<>(1, limit, false),
+        return mapper.selectWarnings(new ExportPage<>(limit),
                 alertType, suggestK(), avgDays(), leadDays()).getRecords();
     }
 
@@ -104,20 +105,20 @@ public class InventoryReportService {
         return PageVO.of(result);
     }
 
-    /** 库存周转导出（FR-RPT-08）：商品维度，取前 limit 行，超限由调用方校验 */
+    /** 库存周转导出（FR-RPT-08）：商品维度，取前 limit 行，超限由调用方校验（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<TurnoverRow> turnoverByGoodsForExport(ReportRange range, Long categoryId, int limit) {
         Context ctx = context(range);
-        IPage<TurnoverRow> result = mapper.selectTurnoverPage(new Page<>(1, limit, false), categoryId);
+        IPage<TurnoverRow> result = mapper.selectTurnoverPage(new ExportPage<>(limit), categoryId);
         return result.getRecords().stream()
                 .map(r -> ctx.compute(r))
                 .map(r -> ctx.withRate(r))
                 .toList();
     }
 
-    /** 库存周转率与周转天数（④，分类维度汇总） */
+    /** 库存周转率与周转天数（④，分类维度汇总）：全量商品行内存聚合（ExportPage 豁免单页 500 条保护，GAP-P0-01；上限 5000 为存量设计，见差距报告 P2-20） */
     public List<TurnoverRow> turnoverByCategory(ReportRange range, Long categoryId) {
         Context ctx = context(range);
-        Page<TurnoverRow> full = new Page<>(1, 5000, false);
+        Page<TurnoverRow> full = new ExportPage<>(5000);
         full.setTotal(5000);
         IPage<TurnoverRow> base = mapper.selectTurnoverPage(full, categoryId);
         Map<Long, List<TurnoverRow>> byCat = base.getRecords().stream()

@@ -18,7 +18,8 @@ public class MybatisPlusConfig {
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
         PaginationInnerInterceptor pagination = new PaginationInnerInterceptor(DbType.MYSQL);
-        // 分页上限保护，防止超大分页拖垮数据库（IR-COM-04：单页最大 500 条）
+        // 分页上限保护，防止超大分页拖垮数据库（IR-COM-04：单页最大 500 条）。
+        // 导出查询使用 ExportPage 覆写 maxLimit() 豁免本上限（GAP-P0-01，页大小由 export_max_rows 控制）。
         pagination.setMaxLimit(500L);
         interceptor.addInnerInterceptor(pagination);
         return interceptor;

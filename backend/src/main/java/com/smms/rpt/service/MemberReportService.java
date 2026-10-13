@@ -3,6 +3,7 @@ package com.smms.rpt.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.PageVO;
+import com.smms.common.mybatis.ExportPage;
 import com.smms.common.util.MaskUtils;
 import com.smms.rpt.dto.MemberRptRow;
 import com.smms.rpt.dto.ReportRange;
@@ -110,11 +111,11 @@ public class MemberReportService {
         return PageVO.of(result);
     }
 
-    /** 沉睡会员清单导出（FR-RPT-08）：取前 limit 行，超限由调用方校验 */
+    /** 沉睡会员清单导出（FR-RPT-08）：取前 limit 行，超限由调用方校验（ExportPage 豁免单页 500 条保护，GAP-P0-01） */
     public List<MemberRptRow> sleepingForExport(int days, int limit, LoginUser user) {
         int n = days <= 0 ? 90 : Math.min(days, 3650);
         LocalDateTime deadline = LocalDateTime.now().minusDays(n);
-        IPage<MemberRptRow> result = mapper.selectSleeping(new Page<>(1, limit, false), deadline);
+        IPage<MemberRptRow> result = mapper.selectSleeping(new ExportPage<>(limit), deadline);
         return mask(result.getRecords().stream()
                 .map(r -> withSleepingDays(r, n))
                 .toList(), user);

@@ -215,6 +215,30 @@ class PurchaseReturnServiceTest {
     }
 
     @Test
+    @DisplayName("审核通过：部分入库单退完已入库数量后仍保持部分入库（剩余待入库量可继续收货，GAP-P0-04）")
+    void auditApprovePartialReceivedOrderKeepsPartialStatus() {
+        PurchaseOrder order = order(PurchaseOrder.STATUS_PARTIAL);
+        // 订购 100、已入库 40、已退 0；本次退 40 → 仍有 60 待入库。
+        // 修复前 allMatch(returned >= received) 成立会误转 ALL_RETURNED，导致剩余 60 既不能入库也不能关闭（卡死）。
+        PurchaseOrderItem item = poItem("100", "9.80", "40", "0");
+        when(returnMapper.selectById(400L)).thenReturn(returnOrder(new BigDecimal("380.00")));
+        when(purchaseOrderService.requireOrder(100L)).thenReturn(order);
+        when(returnItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(returnItem("40", "9.50")));
+        lenient().when(returnMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        when(orderMapper.addReturnedQtyIfEnough(eq(200L), any())).thenAnswer(inv -> {
+            item.setReturnedQty(item.getReturnedQty().add(inv.getArgument(1, BigDecimal.class)));
+            return 1;
+        });
+        when(orderItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(item));
+        when(orderMapper.updateReturnState(eq(100L), any(), any(), any(), any())).thenReturn(1);
+
+        service.audit(400L, new PurchaseAuditRequest(true, null, null), "王店长");
+
+        verify(orderMapper).updateReturnState(eq(100L), eq(new BigDecimal("380.00")),
+                eq(PurchaseOrder.STATUS_PARTIAL), eq("王店长"), eq(0));
+    }
+
+    @Test
     @DisplayName("审核驳回：必须填写意见（FR-PUR-08）")
     void auditRejectRequiresRemark() {
         when(returnMapper.selectById(400L)).thenReturn(returnOrder(BigDecimal.TEN));

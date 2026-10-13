@@ -36,10 +36,14 @@ public class InventoryAlertExcelService {
     private final InventoryService inventoryService;
     private final SysConfigService configService;
 
-    /** 按筛选条件导出预警清单，与列表同一口径（含缺口量排序） */
+    /** 按筛选条件导出预警清单，与列表同一口径（含缺口量排序）；行数上限 export_max_rows（超限提示缩小范围，FR-RPT-08；GAP-P0-01） */
     public byte[] export(AlertQuery query) {
         int maxRows = configService.getInt("export_max_rows", 50_000);
-        List<AlertItemVO> list = inventoryService.listForAlertExport(query, maxRows);
+        List<AlertItemVO> list = inventoryService.listForAlertExport(query, maxRows + 1);
+        if (list.size() > maxRows) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "导出数据超过上限 " + maxRows + " 行，请缩小筛选范围后重试（FR-RPT-08）");
+        }
         try (SXSSFWorkbook wb = new SXSSFWorkbook(200);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("库存预警清单");

@@ -1,6 +1,8 @@
 package com.smms.inv;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.smms.common.exception.BusinessException;
 import com.smms.goods.mapper.CategoryMapper;
@@ -35,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -227,6 +230,43 @@ class StockCheckAuditServiceTest {
         inOrder.verify(inventoryMapper).selectByGoodsIdForUpdate(9L, 1L);
         inOrder.verify(inventoryMapper).selectByGoodsIdForUpdate(10L, 1L);
         verify(inventoryRecordMapper, times(2)).insert(any(InventoryRecord.class));
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    @DisplayName("审核通过：差异金额按审核时当前成本单价定稿并刷新单头汇总（GAP-P1-07 / FR-INV-08）")
+    void auditPass_recomputesDiffAmountWithAuditTimeCost() {
+        StockCheckOrder order = pendingOrder();
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(itemMapper.countDuringChanges(eq(1L), any(), any())).thenReturn(0L);
+        // 录入时快照成本 2.5（差异金额 2×2.5=5.00）；审核时当前成本已变为 2.0（盘点期间采购改变均价）
+        StockCheckItem item = item(9L, "10", "12", "2.5", "理货补录");
+        item.setDiffQty(new BigDecimal("2"));
+        item.setDiffAmount(new BigDecimal("5.00"));
+        when(itemMapper.selectList(any())).thenReturn(List.of(item));
+        when(inventoryMapper.selectByGoodsIdForUpdate(9L, 1L)).thenReturn(inv("10", "2.0"));
+        // 模拟明细更新落库：refreshTotals 重查（同一对象）后读到定稿值
+        when(itemMapper.update(isNull(), any())).thenAnswer(inv -> {
+            item.setCostPrice(new BigDecimal("2.0000"));
+            item.setDiffAmount(new BigDecimal("4.00"));
+            return 1;
+        });
+        when(orderMapper.update(eq(null), any())).thenReturn(1);
+        when(itemMapper.selectCount(any())).thenReturn(1L, 1L);
+
+        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(true, null, null), AUDITOR);
+
+        // 明细定稿：成本单价 = 2.0000、差异金额 = (实盘 12 − 账面 10) × 2.0 = 4.00
+        ArgumentCaptor<Wrapper> captor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(itemMapper).update(isNull(), captor.capture());
+        assertThat(((AbstractWrapper) captor.getValue()).getParamNameValuePairs().values())
+                .contains(new BigDecimal("2.0000"), new BigDecimal("4.00"));
+        // 盘盈流水成本同样取审核时当前成本
+        ArgumentCaptor<InventoryRecord> recordCaptor = ArgumentCaptor.forClass(InventoryRecord.class);
+        verify(inventoryRecordMapper).insert(recordCaptor.capture());
+        assertThat(recordCaptor.getValue().getUnitCost()).isEqualByComparingTo("2.0");
+        // 单头汇总刷新为定稿口径 4.00（修复前保持录入时的 5.00）
+        assertThat(vo.surplusAmount()).isEqualByComparingTo("4.00");
     }
 
     // ---------- 审核约束（BR-SYS-01、§2.2.4） ----------
