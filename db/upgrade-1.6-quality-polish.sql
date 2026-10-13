@@ -2,7 +2,7 @@
 -- 升级脚本 V1.6：批次六（低成本高价值项收尾）数据级修订
 -- 适用：已初始化的存量数据库（全新部署由 db/schema.sql + db/init-data.sql 初始化，无需执行本脚本）
 -- 用法（仓库根目录）：
---   docker compose exec -T mysql mysql -usms -p"$SMMS_DB_PASSWORD" smms < db/upgrade-1.6-quality-polish.sql
+--   docker compose exec -T mysql mysql -usmms -p"$SMMS_DB_PASSWORD" smms < db/upgrade-1.6-quality-polish.sql
 -- 内容：
 --   GAP-P2-24（FR-SYS-06）：修正参数生效方式标注不实——instant_effect=0 的参数不强制刷缓存，
 --     最迟 60 秒（读取缓存周期）内生效，无需重启；同步列注释与 token_expire_hours 备注。
