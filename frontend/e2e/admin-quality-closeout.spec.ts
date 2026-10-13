@@ -40,17 +40,18 @@ test.describe('商品条码占用与重新生成编码（批次六）', () => {
   test('条码占用提示商品名；编码重复可重新生成（UC-GOODS-001 E1/E2）', async ({ page }) => {
     // 取种子商品的既有编码，用于触发 E2「编码重复」
     const api = await request.newContext({ baseURL: BASE_URL })
-    let existingCode = ''
-    try {
-      const res = await api.get('/api/v1/goods', {
-        params: { barcode: SEED.goods.barcode, size: 20 },
-        headers: { Authorization: `Bearer ${tokenFor('admin')}` },
-      })
-      const body = (await res.json()) as { data: { list: { goodsCode: string }[] } }
-      existingCode = body.data.list[0]?.goodsCode ?? ''
-    } finally {
-      await api.dispose()
-    }
+    const existingCode = await (async () => {
+      try {
+        const res = await api.get('/api/v1/goods', {
+          params: { barcode: SEED.goods.barcode, size: 20 },
+          headers: { Authorization: `Bearer ${tokenFor('admin')}` },
+        })
+        const body = (await res.json()) as { data: { list: { goodsCode: string }[] } }
+        return body.data.list[0]?.goodsCode ?? ''
+      } finally {
+        await api.dispose()
+      }
+    })()
     expect(existingCode).not.toBe('')
 
     await page.goto('/goods/list')
@@ -64,9 +65,9 @@ test.describe('商品条码占用与重新生成编码（批次六）', () => {
     // 填必填项（名称/分类/单位/零售价）与已占用条码
     await dialog.locator('.el-form-item', { hasText: '商品名称' }).locator('input').fill('E2E条码占用验证')
     await dialog.locator('.el-form-item', { hasText: '所属分类' }).locator('.el-select').click()
-    await page.locator('.el-tree-node__content').filter({ hasText: /^食品$/ }).first().click()
+    await page.getByRole('option', { name: '食品', exact: true }).click()
     await dialog.locator('.el-form-item', { hasText: '计量单位' }).locator('.el-select').click()
-    await page.locator('.el-select-dropdown__item:visible').first().click()
+    await page.getByRole('option', { name: '瓶（瓶）', exact: true }).click()
     await dialog.locator('.el-form-item', { hasText: '零售单价' }).locator('input').fill('9.9')
     await dialog.locator('.el-form-item', { hasText: '商品条码' }).locator('input').fill(SEED.goods.barcode)
     await dialog.getByRole('button', { name: '保存' }).click()
