@@ -909,3 +909,45 @@ CREATE TABLE IF NOT EXISTS async_task (
     KEY idx_at_expires (expires_at),
     KEY idx_at_status (status)
 ) ENGINE = InnoDB COMMENT = '异步任务（导出/导入，只增不改状态字段）';
+
+-- 定时任务执行日志（IR-SW-06，GAP-P1-03）：
+-- 统一记录各定时任务（促销失效/挂单清理/黑名单清理/异步任务清理/生日提醒/数据备份）的
+-- 触发方式、执行结果、耗时、重试次数与结果摘要；手工补跑同样落此表。
+CREATE TABLE IF NOT EXISTS scheduled_task_log (
+    id             BIGINT UNSIGNED AUTO_INCREMENT COMMENT '日志ID',
+    task_code      VARCHAR(50)   NOT NULL COMMENT '任务代码（PROMOTION_EXPIRE/...）',
+    task_name      VARCHAR(100)  NOT NULL COMMENT '任务名称',
+    trigger_type   VARCHAR(20)   NOT NULL COMMENT '触发方式：SCHEDULED定时/MANUAL手工补跑',
+    trigger_by     VARCHAR(50)   DEFAULT NULL COMMENT '手工触发人（定时触发为空）',
+    status         VARCHAR(20)   NOT NULL COMMENT '执行结果：SUCCESS成功/FAILED失败',
+    started_at     DATETIME      NOT NULL COMMENT '开始时间',
+    finished_at    DATETIME      NOT NULL COMMENT '结束时间',
+    duration_ms    BIGINT        NOT NULL COMMENT '耗时（毫秒）',
+    result_summary VARCHAR(500)  DEFAULT NULL COMMENT '结果摘要（如：处理 3 条）',
+    error_message  VARCHAR(500)  DEFAULT NULL COMMENT '失败原因（最多重试 2 次后仍失败）',
+    retry_count    INT           NOT NULL DEFAULT 0 COMMENT '失败重试次数',
+    create_time    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+    PRIMARY KEY (id),
+    KEY idx_stl_code_time (task_code, started_at),
+    KEY idx_stl_started (started_at)
+) ENGINE = InnoDB COMMENT = '定时任务执行日志（IR-SW-06）';
+
+-- 数据备份记录（FR-SYS-10，GAP-P2-23）：每日营业结束后自动全量备份（保留 30 份）+ 一键触发；
+-- 备份文件由 mysqldump 生成，存于后端备份目录（SMMS_BACKUP_DIR），本表记录执行结果便于页面查看。
+CREATE TABLE IF NOT EXISTS sys_backup_record (
+    id            BIGINT UNSIGNED AUTO_INCREMENT COMMENT '记录ID',
+    file_name     VARCHAR(200)  NOT NULL COMMENT '备份文件名',
+    file_path     VARCHAR(500)  NOT NULL COMMENT '备份文件路径',
+    file_size     BIGINT        NOT NULL DEFAULT 0 COMMENT '文件字节数',
+    trigger_type  VARCHAR(20)   NOT NULL COMMENT '触发方式：SCHEDULED定时/MANUAL手工一键',
+    trigger_by    VARCHAR(50)   DEFAULT NULL COMMENT '手工触发人（定时触发为空）',
+    status        VARCHAR(20)   NOT NULL COMMENT '执行结果：SUCCESS成功/FAILED失败',
+    started_at    DATETIME      NOT NULL COMMENT '开始时间',
+    finished_at   DATETIME      DEFAULT NULL COMMENT '结束时间',
+    duration_ms   BIGINT        DEFAULT NULL COMMENT '耗时（毫秒）',
+    error_message VARCHAR(500)  DEFAULT NULL COMMENT '失败原因',
+    create_time   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+    PRIMARY KEY (id),
+    KEY idx_sbr_started (started_at),
+    KEY idx_sbr_status (status)
+) ENGINE = InnoDB COMMENT = '数据备份记录（FR-SYS-10）';

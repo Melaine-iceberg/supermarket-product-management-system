@@ -16,7 +16,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Scheduled;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -386,22 +385,21 @@ public class AsyncTaskService {
         }
     }
 
-    /** 每小时清理过期任务记录与结果文件（保留期默认 24 小时） */
-    @Scheduled(cron = "0 17 * * * *")
-    public void cleanExpiredTasks() {
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            List<AsyncTask> expired = mapper.selectList(Wrappers.<AsyncTask>lambdaQuery()
-                    .lt(AsyncTask::getExpiresAt, now)
-                    .isNotNull(AsyncTask::getFilePath));
-            expired.forEach(task -> fileStore.deleteQuietly(task.getFilePath()));
-            int deleted = mapper.delete(Wrappers.<AsyncTask>lambdaQuery().lt(AsyncTask::getExpiresAt, now));
-            int orphan = fileStore.deleteOlderThan(Duration.ofHours(retainHours));
-            if (deleted > 0 || orphan > 0) {
-                log.info("异步任务清理：删除记录 {} 条、遗留文件 {} 个", deleted, orphan);
-            }
-        } catch (Exception e) {
-            log.error("异步任务清理失败：{}", e.getMessage());
+    /**
+     * 过期任务清理（IR-SW-06）：删除过期 async_task 记录与结果文件（保留期默认 24 小时），返回清理总数。
+     * 幂等：按 expires_at 条件删除；调度由 DynamicTaskScheduler 统一注册（GAP-P1-03）。
+     */
+    public int cleanExpiredTasks() {
+        LocalDateTime now = LocalDateTime.now();
+        List<AsyncTask> expired = mapper.selectList(Wrappers.<AsyncTask>lambdaQuery()
+                .lt(AsyncTask::getExpiresAt, now)
+                .isNotNull(AsyncTask::getFilePath));
+        expired.forEach(task -> fileStore.deleteQuietly(task.getFilePath()));
+        int deleted = mapper.delete(Wrappers.<AsyncTask>lambdaQuery().lt(AsyncTask::getExpiresAt, now));
+        int orphan = fileStore.deleteOlderThan(Duration.ofHours(retainHours));
+        if (deleted > 0 || orphan > 0) {
+            log.info("异步任务清理：删除记录 {} 条、遗留文件 {} 个", deleted, orphan);
         }
+        return deleted + orphan;
     }
 }

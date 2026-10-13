@@ -103,11 +103,15 @@
         ORDER BY COALESCE(m.last_consume_time, m.register_time), m.id
     </select>
 
-    <!-- 生日提醒清单（FR-RPT-07⑥）：当月生日 / 未来 7 天（含今日）生日 -->
+    <!-- 生日提醒清单（FR-RPT-07⑥）：当月生日 / 未来 7 天（含今日）/ 今日生日（定时任务用） -->
     <select id="selectBirthday" resultType="com.smms.rpt.dto.MemberRptRow">
         <include refid="memberSelect"/>
         WHERE m.status = 1 AND m.birthday IS NOT NULL
         <choose>
+            <when test="scope == 'day'">
+                AND MONTH(m.birthday) = MONTH(CURDATE()) AND DAY(m.birthday) = DAY(CURDATE())
+                ORDER BY m.id
+            </when>
             <when test="scope == 'week'">
                 AND (DAYOFYEAR(m.birthday) - DAYOFYEAR(CURDATE()) + 365) % 365 &lt;= 7
                 ORDER BY (DAYOFYEAR(m.birthday) - DAYOFYEAR(CURDATE()) + 365) % 365, m.id

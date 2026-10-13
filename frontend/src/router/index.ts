@@ -68,6 +68,18 @@ const router = createRouter({
           component: () => import('@/views/system/loginlog/index.vue'),
           meta: { perm: 'sys:loginlog:list', title: '登录日志' },
         },
+        {
+          path: 'system/scheduled-task',
+          name: 'system-scheduled-task',
+          component: () => import('@/views/system/scheduled-task/index.vue'),
+          meta: { perm: 'sys:sched:list', title: '定时任务' },
+        },
+        {
+          path: 'system/backup',
+          name: 'system-backup',
+          component: () => import('@/views/system/backup/index.vue'),
+          meta: { perm: 'sys:backup:list', title: '数据备份' },
+        },
         // 商品管理（FR-CAT / FR-GOODS）
         {
           path: 'goods/category',

@@ -11,7 +11,6 @@ import com.smms.sale.mapper.HoldOrderMapper;
 import com.smms.security.LoginUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
@@ -128,14 +127,17 @@ public class HoldOrderService {
 
     // ==================== 超时清理（IR-SW-06） ====================
 
-    /** 每 10 分钟删除 24 小时前的挂单（临时数据，含已取/已删终态，不保留历史） */
-    @Scheduled(cron = "0 */10 * * * ?")
-    public void cleanupExpired() {
+    /**
+     * 超时清理（IR-SW-06）：删除 24 小时前的挂单（临时数据，含已取/已删终态，不保留历史），返回删除条数。
+     * 幂等：按挂单时间条件删除，重复执行不产生副作用；调度由 DynamicTaskScheduler 统一注册（GAP-P1-03）。
+     */
+    public int cleanupExpired() {
         int removed = holdMapper.delete(Wrappers.<HoldOrder>lambdaQuery()
                 .lt(HoldOrder::getHoldTime, LocalDateTime.now().minusHours(KEEP_HOURS)));
         if (removed > 0) {
             log.info("挂单超时清理：删除 {} 条超过 {} 小时的挂单", removed, KEEP_HOURS);
         }
+        return removed;
     }
 
     // ==================== 内部 ====================

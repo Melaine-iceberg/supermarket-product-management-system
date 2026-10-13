@@ -49,6 +49,10 @@ INSERT INTO sys_permission (id, parent_id, name, perm_type, perm_code, route_pat
 (14, 1, '操作日志', 'M', 'sys:oplog:list',  '/system/oplog',    'system/oplog/index',  'Document',  5, 1, 'system'),
 (141, 14, '导出日志',     'B', 'sys:oplog:export',      NULL, NULL, NULL, 1, 1, 'system'),
 (15, 1, '登录日志', 'M', 'sys:loginlog:list','/system/loginlog', 'system/loginlog/index','Key',     6, 1, 'system'),
+(16, 1, '定时任务', 'M', 'sys:sched:list',  '/system/scheduled-task', 'system/scheduled-task/index', 'AlarmClock', 7, 1, 'system'),
+(161, 16, '手工触发任务', 'B', 'sys:sched:run',         NULL, NULL, NULL, 1, 1, 'system'),
+(17, 1, '数据备份', 'M', 'sys:backup:list', '/system/backup',   'system/backup/index',  'FolderOpened', 8, 1, 'system'),
+(171, 17, '一键触发备份', 'B', 'sys:backup:run',        NULL, NULL, NULL, 1, 1, 'system'),
 
 -- 商品管理菜单
 (20, 2, '分类管理', 'M', 'sys:cat:list',    '/goods/category',  'goods/category/index', 'Folder',   1, 1, 'system'),

@@ -268,3 +268,78 @@ export function pageLoginLogs(params: {
 export function currentToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
+
+// ---------- 定时任务（IR-SW-06 / GAP-P1-03） ----------
+
+/** 任务一览：定义 + cron + 最近一次执行结果 */
+export interface ScheduledTaskVO {
+  code: string
+  name: string
+  description: string
+  cron: string
+  lastStatus: 'SUCCESS' | 'FAILED' | null
+  lastStartedAt: string | null
+  lastDurationMs: number | null
+  lastResultSummary: string | null
+  lastError: string | null
+}
+
+/** 任务执行日志（定时触发与手工补跑共用） */
+export interface ScheduledTaskLogVO {
+  id: number
+  taskCode: string
+  taskName: string
+  triggerType: 'SCHEDULED' | 'MANUAL'
+  triggerBy: string | null
+  status: 'SUCCESS' | 'FAILED'
+  startedAt: string
+  finishedAt: string
+  durationMs: number
+  resultSummary: string | null
+  errorMessage: string | null
+  retryCount: number
+}
+
+export function listScheduledTasks() {
+  return http.get<ScheduledTaskVO[]>('/system/scheduled-tasks')
+}
+
+/** 手工触发补跑（任务幂等；返回本次执行日志） */
+export function runScheduledTask(code: string) {
+  return http.post<ScheduledTaskLogVO>(`/system/scheduled-tasks/${code}/run`)
+}
+
+export function pageScheduledTaskLogs(params: {
+  taskCode?: string
+  status?: string
+  page: number
+  size: number
+}) {
+  return http.get<PageResult<ScheduledTaskLogVO>>('/system/scheduled-tasks/logs', params)
+}
+
+// ---------- 数据备份（FR-SYS-10 / GAP-P2-23） ----------
+
+export interface BackupRecordVO {
+  id: number
+  fileName: string
+  filePath: string
+  fileSize: number
+  triggerType: 'SCHEDULED' | 'MANUAL'
+  triggerBy: string | null
+  status: 'SUCCESS' | 'FAILED'
+  startedAt: string
+  finishedAt: string | null
+  durationMs: number | null
+  errorMessage: string | null
+  createTime: string
+}
+
+export function pageBackupRecords(params: { page: number; size: number }) {
+  return http.get<PageResult<BackupRecordVO>>('/system/backups', params)
+}
+
+/** 一键触发全量备份（仅超级管理员；耗时取决于数据量） */
+export function triggerBackup() {
+  return http.post<BackupRecordVO>('/system/backups', undefined, 30 * 60 * 1000)
+}

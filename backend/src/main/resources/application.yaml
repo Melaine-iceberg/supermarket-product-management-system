@@ -46,6 +46,11 @@ smms:
   # 商品图片上传（IR-SW-05）：本地可配置目录，与 Web 根隔离，经受控接口访问
   upload:
     dir: ${SMMS_UPLOAD_DIR:./uploads}
+  # 数据备份（FR-SYS-10）：mysqldump 全量备份目录与保留份数（默认 30，与 SRS 一致）
+  backup:
+    dir: ${SMMS_BACKUP_DIR:./backups}
+    retain: ${SMMS_BACKUP_RETAIN:30}
+    mysqldump: ${SMMS_MYSQLDUMP:mysqldump}
   # 异步任务（重导出/导入提交后台执行，规避反向代理源站超时）
   task:
     # 结果文件目录（容器内；也可用环境变量 SMMS_TASK_FILE_DIR 覆盖）

@@ -27,7 +27,6 @@ import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -145,19 +144,18 @@ public class AuthService {
         return new MeResponse(user.mustChangePwd(), toUserInfo(user), menus);
     }
 
-    /** 每小时清理已过期的黑名单记录（Token 已自然过期，无需再比对，GAP-P1-11） */
-    @Scheduled(cron = "0 41 * * * *")
-    public void cleanExpiredBlacklist() {
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            int deleted = blacklistMapper.delete(Wrappers.<SysTokenBlacklist>lambdaQuery()
-                    .lt(SysTokenBlacklist::getExpireTime, now));
-            if (deleted > 0) {
-                log.info("Token 黑名单清理：删除已过期记录 {} 条", deleted);
-            }
-        } catch (Exception e) {
-            log.error("Token 黑名单清理失败：{}", e.getMessage());
+    /**
+     * 黑名单清理（IR-SW-06）：删除已过期的黑名单记录（Token 已自然过期，无需再比对，GAP-P1-11），返回删除条数。
+     * 幂等：按过期时间条件删除；调度由 DynamicTaskScheduler 统一注册（GAP-P1-03）。
+     */
+    public int cleanExpiredBlacklist() {
+        LocalDateTime now = LocalDateTime.now();
+        int deleted = blacklistMapper.delete(Wrappers.<SysTokenBlacklist>lambdaQuery()
+                .lt(SysTokenBlacklist::getExpireTime, now));
+        if (deleted > 0) {
+            log.info("Token 黑名单清理：删除已过期记录 {} 条", deleted);
         }
+        return deleted;
     }
 
     /** 修改自身密码（FR-SYS-03）：校验原密码；成功后所有端强制重新登录 */

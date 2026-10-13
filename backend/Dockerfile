@@ -20,19 +20,21 @@ RUN ./gradlew --no-daemon bootJar -x test \
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
-# curl 供 HEALTHCHECK 探活；tzdata 供 TZ=Asia/Shanghai 生效（NFR-CMP-03）
+# curl 供 HEALTHCHECK 探活；tzdata 供 TZ=Asia/Shanghai 生效（NFR-CMP-03）；
+# default-mysql-client 供 mysqldump 数据备份（FR-SYS-10）
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl tzdata \
+    && apt-get install -y --no-install-recommends curl tzdata default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Shanghai \
     JAVA_OPTS="-XX:MaxRAMPercentage=75 -Dfile.encoding=UTF-8" \
     SMMS_TASK_FILE_DIR=/app/task-files \
-    SMMS_UPLOAD_DIR=/app/uploads
+    SMMS_UPLOAD_DIR=/app/uploads \
+    SMMS_BACKUP_DIR=/app/backups
 
 # 异步任务结果目录（导出/导入，保留期默认 24h；容器重建会丢失，任务记录仍在库中）
-# 商品图片目录与日志目录（建议经数据卷持久化，见 docker-compose.yml）
-RUN mkdir -p /app/task-files /app/uploads /app/logs
+# 商品图片目录、日志目录与数据备份目录（建议经数据卷持久化，见 docker-compose.yml）
+RUN mkdir -p /app/task-files /app/uploads /app/logs /app/backups
 
 COPY --from=build /app/app.jar app.jar
 

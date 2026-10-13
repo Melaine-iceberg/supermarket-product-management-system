@@ -10,7 +10,6 @@ import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.mapper.PromotionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -110,11 +109,11 @@ public class PromotionService {
     }
 
     /**
-     * 到期自动失效（IR-SW-06）：每 30 秒将已过期的 ACTIVE 促销置为 EXPIRED。
-     * 取价侧同时校验 end_time，即使任务延迟也不会取到过期价。
+     * 到期自动失效（IR-SW-06）：将已过期的 ACTIVE 促销置为 EXPIRED，返回处理条数。
+     * 幂等：仅更新已到期且仍为 ACTIVE 的记录；取价侧同时校验 end_time，任务延迟不影响正确性。
+     * 调度注册统一由 DynamicTaskScheduler 按 ScheduledTask 定义完成（GAP-P1-03）。
      */
-    @Scheduled(cron = "*/30 * * * * ?")
-    public void expireOutdated() {
+    public int expireOutdated() {
         long start = System.currentTimeMillis();
         List<Promotion> outdated = promotionMapper.selectList(Wrappers.<Promotion>lambdaQuery()
                 .eq(Promotion::getStatus, "ACTIVE")
@@ -127,5 +126,6 @@ public class PromotionService {
         if (!outdated.isEmpty()) {
             log.info("促销到期失效: 处理 {} 条, 耗时 {}ms", outdated.size(), System.currentTimeMillis() - start);
         }
+        return outdated.size();
     }
 }
