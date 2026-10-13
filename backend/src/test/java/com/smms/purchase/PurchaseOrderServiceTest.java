@@ -66,6 +66,7 @@ class PurchaseOrderServiceTest {
     @Mock private GoodsMapper goodsMapper;
     @Mock private UnitMapper unitMapper;
     @Mock private com.smms.sys.service.SysDictService dictService;
+    @Mock private com.smms.sys.service.SysConfigService configService;
 
     private PurchaseOrderService service;
 
@@ -76,7 +77,8 @@ class PurchaseOrderServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Goods.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Unit.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
-        service = new PurchaseOrderService(orderMapper, itemMapper, supplierMapper, goodsMapper, unitMapper, dictService);
+        service = new PurchaseOrderService(orderMapper, itemMapper, supplierMapper, goodsMapper, unitMapper,
+                dictService, new com.smms.sys.service.BusinessDayService(configService));
     }
 
     // ==================== 创建草稿（FR-PUR-01 / BR-PUR-01 / BR-PUR-03） ====================
@@ -111,6 +113,8 @@ class PurchaseOrderServiceTest {
         assertThat(vo.items().get(0).pendingQty()).isEqualByComparingTo("10");
         assertThat(saved.get().getCreateBy()).isEqualTo("李采购");
         assertThat(saved.get().getVersion()).isZero();
+        // 营业日（BR-RPT-02/GAP-P1-05）：下单落库即写入，采购报表按该字段聚合
+        assertThat(saved.get().getBusinessDate()).isEqualTo(LocalDate.now());
     }
 
     @Test

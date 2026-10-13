@@ -63,6 +63,7 @@ class StockCheckServiceTest {
     @Mock private GoodsMapper goodsMapper;
     @Mock private com.smms.sys.service.SysDictService dictService;
     @Mock private com.smms.sys.service.DutySeparationService dutySeparationService;
+    @Mock private com.smms.sys.service.SysConfigService configService;
 
     private StockCheckService service;
 
@@ -73,7 +74,8 @@ class StockCheckServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckItem.class);
         service = new StockCheckService(orderMapper, itemMapper, inventoryMapper,
-                inventoryRecordMapper, categoryMapper, goodsMapper, dictService, dutySeparationService);
+                inventoryRecordMapper, categoryMapper, goodsMapper, dictService, dutySeparationService,
+                new com.smms.sys.service.BusinessDayService(configService));
     }
 
     // ---------- 造数 ----------
@@ -121,6 +123,8 @@ class StockCheckServiceTest {
         assertThat(order.getItemCount()).isEqualTo(2);
         assertThat(order.getBaseTime()).isNotNull();
         assertThat(order.getStartTime()).isEqualTo(order.getBaseTime());
+        // 营业日（BR-RPT-02/GAP-P1-05）：创建落库即写入，审核通过后改写为审核营业日
+        assertThat(order.getBusinessDate()).isEqualTo(LocalDate.now());
         assertThat(order.getScopeDesc()).contains("分类：分类5").contains("含子分类").contains("月中饮料抽盘");
         assertThat(order.getSurplusAmount()).isEqualByComparingTo("0");
         assertThat(order.getShortageAmount()).isEqualByComparingTo("0");

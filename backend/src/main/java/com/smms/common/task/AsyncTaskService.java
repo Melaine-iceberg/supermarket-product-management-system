@@ -8,6 +8,8 @@ import com.smms.common.exception.BusinessException;
 import com.smms.common.task.mapper.AsyncTaskMapper;
 import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.entity.OperationLog;
+import com.smms.sys.service.OperationLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -51,17 +53,20 @@ public class AsyncTaskService {
     private final ObjectMapper objectMapper;
     private final Executor taskExecutor;
     private final int retainHours;
+    private final OperationLogService operationLogService;
 
     public AsyncTaskService(AsyncTaskMapper mapper,
                             TaskFileStore fileStore,
                             ObjectMapper objectMapper,
                             @Qualifier("taskExecutor") Executor taskExecutor,
-                            @Value("${smms.task.retain-hours:24}") int retainHours) {
+                            @Value("${smms.task.retain-hours:24}") int retainHours,
+                            OperationLogService operationLogService) {
         this.mapper = mapper;
         this.fileStore = fileStore;
         this.objectMapper = objectMapper;
         this.taskExecutor = taskExecutor;
         this.retainHours = retainHours;
+        this.operationLogService = operationLogService;
     }
 
     // ------------------------------------------------------------------ 提交
@@ -178,12 +183,43 @@ public class AsyncTaskService {
                 task.setFinishTime(LocalDateTime.now());
             }
             log.info("异步任务完成：taskNo={}, bizType={}, type={}", taskNo, task.getBizType(), task.getTaskType());
+            logResult(task, user, true, null, startedAt);
         } catch (Exception e) {
             log.error("异步任务失败：taskNo={}, bizType={}", taskNo, task.getBizType(), e);
             markFailed(task, friendlyMessage(e));
+            // GAP-P1-06：任务失败同样写入操作日志（此前只落 async_task，提交日志无法反映真实结果）
+            logResult(task, user, false, task.getErrorMessage(), task.getStartTime());
         } finally {
             fileStore.deleteQuietly(upload == null ? null : upload.toString());
             SecurityContextHolder.clearContext();
+        }
+    }
+
+    /** 任务完成/失败写操作日志（FR-RPT-08/GAP-P1-06）：提交动作已有 @OpLog，此处补真实执行结果 */
+    private void logResult(AsyncTask task, LoginUser user, boolean success, String errorMsg, LocalDateTime startedAt) {
+        try {
+            OperationLog entity = new OperationLog();
+            if (user != null) {
+                entity.setUserId(user.userId());
+                entity.setUsername(user.username());
+                entity.setRealName(user.realName());
+                entity.setRoleNames(user.roleNames() == null ? null : String.join(",", user.roleNames()));
+            }
+            boolean export = AsyncTask.TYPE_EXPORT.equals(task.getTaskType());
+            entity.setModule("任务中心");
+            entity.setAction((export ? "导出" : "导入") + (success ? "完成" : "失败"));
+            entity.setTarget(task.getFileName() != null ? task.getFileName() : task.getTaskNo());
+            entity.setParamSummary(task.getBizName() + "（" + task.getTaskNo() + "）");
+            entity.setResult(success ? 1 : 0);
+            entity.setErrorMsg(errorMsg);
+            if (startedAt != null) {
+                entity.setCostMs((int) Math.min(Integer.MAX_VALUE,
+                        Math.max(0, Duration.between(startedAt, LocalDateTime.now()).toMillis())));
+            }
+            entity.setOperateTime(LocalDateTime.now());
+            operationLogService.recordAsync(entity);
+        } catch (Exception e) {
+            log.warn("任务结果操作日志记录失败：taskNo={}, {}", task.getTaskNo(), e.getMessage());
         }
     }
 

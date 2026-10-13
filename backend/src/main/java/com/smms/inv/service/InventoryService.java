@@ -25,6 +25,7 @@ import com.smms.inv.entity.Inventory;
 import com.smms.inv.entity.InventoryRecord;
 import com.smms.inv.mapper.InventoryMapper;
 import com.smms.inv.mapper.InventoryRecordMapper;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,7 @@ public class InventoryService {
     private final CategoryMapper categoryMapper;
     private final GoodsMapper goodsMapper;
     private final SysConfigService configService;
+    private final BusinessDayService businessDayService;
 
     // ==================== 库存变动统一入口（FR-INV-02/04） ====================
 
@@ -220,7 +222,10 @@ public class InventoryService {
         record.setBizType(cmd.bizType());
         record.setBizNo(cmd.bizNo());
         record.setOperatorName(cmd.operator());
-        record.setOperateTime(LocalDateTime.now());
+        LocalDateTime operateTime = LocalDateTime.now();
+        record.setOperateTime(operateTime);
+        // 营业日（BR-RPT-02/GAP-P1-05）：库存流水按记账时刻归属，库存变动/周转/期初报表按该字段聚合
+        record.setBusinessDate(businessDayService.businessDate(operateTime));
         record.setRemark(cmd.remark());
         inventoryRecordMapper.insert(record);
     }

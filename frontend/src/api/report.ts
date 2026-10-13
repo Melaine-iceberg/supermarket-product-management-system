@@ -231,8 +231,10 @@ export interface InvSummaryRow {
   goodsName: string | null
   goodsCount: number
   stockQty: number
+  /** 成本单价（仅店长及以上可见，BR-RPT-07） */
   costPrice: number | null
-  costAmount: number
+  /** 库存成本金额（仅店长及以上可见） */
+  costAmount: number | null
   retailValue: number
   /** NORMAL正常/OUT缺货/WARNING预警/OVERSTOCK积压 */
   stockStatus: string | null
@@ -258,7 +260,8 @@ export interface InvChangeRow {
   recordType: string
   recordCount: number
   changeQty: number
-  amount: number
+  /** 变动金额（成本口径，仅店长及以上可见） */
+  amount: number | null
 }
 
 /** 库存周转行（FR-RPT-04④） */
@@ -269,12 +272,13 @@ export interface TurnoverRow {
   categoryId: number | null
   categoryName: string | null
   stockQty: number
-  costAmount: number
-  beginAmount: number
-  avgAmount: number
-  saleCostAmount: number
-  returnCostAmount: number
-  flowAmount: number
+  /** 期末库存金额（成本口径，仅店长及以上可见，BR-RPT-07） */
+  costAmount: number | null
+  beginAmount: number | null
+  avgAmount: number | null
+  saleCostAmount: number | null
+  returnCostAmount: number | null
+  flowAmount: number | null
   turnoverRate: number | null
   turnoverDays: number | null
 }
@@ -285,18 +289,19 @@ export interface LossGoodsRow {
   goodsName: string
   categoryName: string | null
   lossQty: number
-  lossAmount: number
+  /** 金额为成本口径，仅店长及以上可见（BR-RPT-07） */
+  lossAmount: number | null
   checkQty: number
-  checkAmount: number
-  totalAmount: number
+  checkAmount: number | null
+  totalAmount: number | null
 }
 
 /** 损耗报表结果 */
 export interface LossReportVO {
   rows: LossGoodsRow[]
-  totalLossAmount: number
-  totalOverflowAmount: number
-  beginInventoryAmount: number
+  totalLossAmount: number | null
+  totalOverflowAmount: number | null
+  beginInventoryAmount: number | null
   lossRate: number | null
 }
 
@@ -425,13 +430,14 @@ export interface PurchSummaryRow {
   categoryName: string | null
   orderCount: number
   purchaseQty: number
-  purchaseAmount: number
+  /** 金额为成本口径，仅店长及以上可见（BR-RPT-07） */
+  purchaseAmount: number | null
   receivedQty: number
   inTransitQty: number
   returnQty: number
-  returnAmount: number
-  settledAmount: number
-  partialSettledAmount: number
+  returnAmount: number | null
+  settledAmount: number | null
+  partialSettledAmount: number | null
   shareRate: number | null
 }
 
@@ -443,7 +449,8 @@ export interface PriceTrendRow {
   supplierName: string
   orderTime: string
   quantity: number
-  price: number
+  /** 采购单价（成本信息，仅店长及以上可见） */
+  price: number | null
 }
 
 /** 到货及时率行（FR-RPT-06④） */
@@ -620,11 +627,12 @@ export interface DrillPurchaseRow {
   createTime: string
   auditTime: string | null
   expectDate: string | null
-  totalAmount: number
-  receivedAmount: number
-  returnAmount: number
+  /** 金额为成本口径，仅店长及以上可见（BR-RPT-07） */
+  totalAmount: number | null
+  receivedAmount: number | null
+  returnAmount: number | null
   settleStatus: string
-  settleAmount: number
+  settleAmount: number | null
 }
 
 /** 采购单下钻（BR-RPT-06）：supplierId/goodsId 与汇总行对应 */
@@ -650,7 +658,8 @@ export interface DrillReceiptRow {
   receiptTime: string
   operatorName: string | null
   deliveryOrderNo: string | null
-  totalAmount: number
+  /** 入库金额（成本口径，仅店长及以上可见） */
+  totalAmount: number | null
   expectDate: string | null
   onTime: boolean | null
 }
@@ -705,7 +714,8 @@ export interface DrillLossRow {
   goodsName: string
   qty: number
   costPrice: number | null
-  amount: number
+  /** 金额为成本口径，仅店长及以上可见（BR-RPT-07） */
+  amount: number | null
   reason: string | null
   applyName: string | null
   auditorName: string | null

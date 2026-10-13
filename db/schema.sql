@@ -378,6 +378,7 @@ CREATE TABLE IF NOT EXISTS purchase_order (
     status          VARCHAR(20)  NOT NULL DEFAULT 'DRAFT' COMMENT '状态：DRAFT草稿/SUBMITTED已提交/APPROVED已审核待入库/PARTIAL部分入库/COMPLETED已完成/TERMINATED已终止/CANCELLED已作废/PARTIAL_RETURNED部分退货/ALL_RETURNED全部退货',
     create_by       VARCHAR(30)  NOT NULL COMMENT '创建人（采购员）',
     create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    business_date   DATE         NOT NULL COMMENT '营业日（下单时刻+营业日起始时刻归属，BR-RPT-02/GAP-P1-05，报表按此聚合）',
     submit_time     DATETIME     DEFAULT NULL COMMENT '提交时间',
     audit_by        VARCHAR(30)  DEFAULT NULL COMMENT '审核人（店长）',
     audit_time      DATETIME     DEFAULT NULL COMMENT '审核时间',
@@ -400,7 +401,8 @@ CREATE TABLE IF NOT EXISTS purchase_order (
     UNIQUE KEY uk_po_no (order_no),
     KEY idx_po_supplier (supplier_id),
     KEY idx_po_status (status),
-    KEY idx_po_create_time (create_time)
+    KEY idx_po_create_time (create_time),
+    KEY idx_po_biz_date (business_date)
 ) ENGINE = InnoDB COMMENT = '采购单';
 
 -- 采购单明细（DR-08）
@@ -427,6 +429,7 @@ CREATE TABLE IF NOT EXISTS receipt_order (
     purchase_order_id BIGINT UNSIGNED NOT NULL COMMENT '采购单ID',
     supplier_id      BIGINT UNSIGNED NOT NULL COMMENT '供应商ID',
     receipt_time     DATETIME     NOT NULL COMMENT '入库时间',
+    business_date    DATE         NOT NULL COMMENT '营业日（入库时刻+营业日起始时刻归属，BR-RPT-02/GAP-P1-05，到货及时率按此聚合）',
     operator_name    VARCHAR(30)  NOT NULL COMMENT '验收操作人（库管员）',
     authorizer_name  VARCHAR(30)  DEFAULT NULL COMMENT '授权人（超收/价差授权时记录，BR-PUR-04/05）',
     delivery_order_no VARCHAR(50) DEFAULT NULL COMMENT '供应商送货单号',
@@ -438,7 +441,8 @@ CREATE TABLE IF NOT EXISTS receipt_order (
     UNIQUE KEY uk_ro_token (request_token),
     KEY idx_ro_po (purchase_order_id),
     KEY idx_ro_supplier (supplier_id),
-    KEY idx_ro_time (receipt_time)
+    KEY idx_ro_time (receipt_time),
+    KEY idx_ro_biz_date (business_date)
 ) ENGINE = InnoDB COMMENT = '采购入库单';
 
 -- 入库单明细（DR-10）
@@ -468,6 +472,7 @@ CREATE TABLE IF NOT EXISTS purchase_return_order (
     total_amount      DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '退货总额 = Σ(退货数量×入库时成本单价)',
     create_by         VARCHAR(30)  NOT NULL COMMENT '创建人（采购员）',
     create_time       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    business_date     DATE         NOT NULL COMMENT '营业日（创建时刻+营业日起始时刻归属，BR-RPT-02/GAP-P1-05）',
     audit_by          VARCHAR(30)  DEFAULT NULL COMMENT '审核人（店长）',
     audit_time        DATETIME     DEFAULT NULL COMMENT '审核时间',
     audit_remark      VARCHAR(200) DEFAULT NULL COMMENT '审核意见',
@@ -477,7 +482,8 @@ CREATE TABLE IF NOT EXISTS purchase_return_order (
     UNIQUE KEY uk_pr_no (order_no),
     KEY idx_pr_po (purchase_order_id),
     KEY idx_pr_supplier (supplier_id),
-    KEY idx_pr_status (status)
+    KEY idx_pr_status (status),
+    KEY idx_pr_biz_date (business_date)
 ) ENGINE = InnoDB COMMENT = '采购退货单';
 
 -- 采购退货单明细（FR-PUR-08）：退货数量 ≤ 已入库数量 − 已退数量
@@ -528,11 +534,13 @@ CREATE TABLE IF NOT EXISTS inventory_record (
     batch_no      VARCHAR(30)  DEFAULT NULL COMMENT '批次号（预留，本期恒空，NFR-EXT-06）',
     operator_name VARCHAR(30)  NOT NULL COMMENT '操作人',
     operate_time  DATETIME     NOT NULL COMMENT '操作时间',
+    business_date DATE         NOT NULL COMMENT '营业日（记账时刻+营业日起始时刻归属，BR-RPT-02/GAP-P1-05，变动/周转/期初报表按此聚合）',
     remark        VARCHAR(200) DEFAULT NULL COMMENT '备注',
     PRIMARY KEY (id),
     KEY idx_ir_goods_time (goods_id, operate_time),
     KEY idx_ir_biz_no (biz_no),
     KEY idx_ir_type_time (record_type, operate_time),
+    KEY idx_ir_biz_date (business_date),
     KEY idx_ir_time (operate_time)
 ) ENGINE = InnoDB COMMENT = '库存流水（不可变，审计与成本核算核心）';
 
@@ -547,6 +555,7 @@ CREATE TABLE IF NOT EXISTS stock_check_order (
     checker_name        VARCHAR(30)  NOT NULL COMMENT '盘点人',
     start_time          DATETIME     NOT NULL COMMENT '开始时间',
     base_time           DATETIME     NOT NULL COMMENT '账面快照基准时间（BR-INV-10）',
+    business_date       DATE         NOT NULL COMMENT '营业日（创建时按创建时刻、审核通过后改写为审核时刻归属，BR-RPT-02/GAP-P1-05，盘亏报表按审核营业日聚合）',
     item_count          INT          NOT NULL DEFAULT 0 COMMENT '盘点商品行数',
     surplus_amount       DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '盘盈金额',
     shortage_amount     DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '盘亏金额',
@@ -559,7 +568,8 @@ CREATE TABLE IF NOT EXISTS stock_check_order (
     update_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_sc_no (order_no),
-    KEY idx_sc_status (status)
+    KEY idx_sc_status (status),
+    KEY idx_sc_biz_date (business_date)
 ) ENGINE = InnoDB COMMENT = '库存盘点单';
 
 -- 盘点明细（DR-14）
@@ -594,13 +604,15 @@ CREATE TABLE IF NOT EXISTS loss_order (
     status       VARCHAR(10)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING待审核/AUDITED已审核/REJECTED已驳回',
     auditor_name VARCHAR(30)  DEFAULT NULL COMMENT '审核人（店长）',
     audit_time   DATETIME     DEFAULT NULL COMMENT '审核时间',
+    business_date DATE        NOT NULL COMMENT '营业日（创建时按申请时刻、审核通过后改写为审核时刻归属，BR-RPT-02/GAP-P1-05，损耗报表按审核营业日聚合）',
     audit_remark VARCHAR(200) DEFAULT NULL COMMENT '审核意见',
     create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
     remark       VARCHAR(200) DEFAULT NULL COMMENT '备注',
     PRIMARY KEY (id),
     UNIQUE KEY uk_lo_no (order_no),
     KEY idx_lo_goods (goods_id),
-    KEY idx_lo_status (status)
+    KEY idx_lo_status (status),
+    KEY idx_lo_biz_date (business_date)
 ) ENGINE = InnoDB COMMENT = '报损/报溢单（单商品，与销售退货分开统计）';
 
 -- 库存日快照（DR-38，FR-INV-12 Could）
@@ -722,7 +734,8 @@ CREATE TABLE IF NOT EXISTS return_order (
     UNIQUE KEY uk_rt_token (request_token),
     KEY idx_rt_sales (sales_order_id),
     KEY idx_rt_member (member_id),
-    KEY idx_rt_time (return_time)
+    KEY idx_rt_time (return_time),
+    KEY idx_rt_biz_date (business_date)
 ) ENGINE = InnoDB COMMENT = '销售退货单';
 
 -- 退货明细（DR-20）

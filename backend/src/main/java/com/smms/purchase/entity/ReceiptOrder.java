@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -30,6 +31,9 @@ public class ReceiptOrder {
     private Long supplierId;
 
     private LocalDateTime receiptTime;
+
+    /** 营业日（BR-RPT-02，GAP-P1-05）：按入库时刻归属 */
+    private LocalDate businessDate;
 
     /** 验收操作人（库管员） */
     private String operatorName;

@@ -28,6 +28,7 @@ import com.smms.inv.mapper.InventoryRecordMapper;
 import com.smms.inv.mapper.StockCheckItemMapper;
 import com.smms.inv.mapper.StockCheckOrderMapper;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
@@ -72,6 +73,7 @@ public class StockCheckService {
     private final GoodsMapper goodsMapper;
     private final SysDictService dictService;
     private final DutySeparationService dutySeparationService;
+    private final BusinessDayService businessDayService;
 
     // ==================== 盘点单创建（FR-INV-07） ====================
 
@@ -100,6 +102,8 @@ public class StockCheckService {
         LocalDateTime now = LocalDateTime.now();
         order.setStartTime(now);
         order.setBaseTime(now);
+        // 营业日（BR-RPT-02/GAP-P1-05）：创建时按创建时刻归属，审核通过后改写为审核时刻所属营业日
+        order.setBusinessDate(businessDayService.businessDate(now));
         order.setItemCount(goods.size());
         order.setSurplusAmount(java.math.BigDecimal.ZERO);
         order.setShortageAmount(java.math.BigDecimal.ZERO);
@@ -437,6 +441,7 @@ public class StockCheckService {
             record.setBizNo(order.getOrderNo());
             record.setOperatorName(auditorName);
             record.setOperateTime(now);
+            record.setBusinessDate(businessDayService.businessDate(now));
             record.setRemark("盘点审核调整" + (isBlank(item.getDiffReason()) ? "" : "：" + item.getDiffReason()));
             inventoryRecordMapper.insert(record);
             inventoryMapper.updateQuantityAndCost(item.getGoodsId(), STORE_ID, actual, costPrice,
@@ -453,6 +458,7 @@ public class StockCheckService {
                 .set(StockCheckOrder::getStatus, "AUDITED")
                 .set(StockCheckOrder::getAuditorName, auditorName)
                 .set(StockCheckOrder::getAuditTime, now)
+                .set(StockCheckOrder::getBusinessDate, businessDayService.businessDate(now))
                 .set(StockCheckOrder::getAuditRemark, cleanRemark)
                 .set(StockCheckOrder::getDuringChangeCount, (int) during)
                 .eq(StockCheckOrder::getId, order.getId())

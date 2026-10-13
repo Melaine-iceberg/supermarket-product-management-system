@@ -13,13 +13,13 @@ public record TurnoverRow(
         Long categoryId,
         String categoryName,
         BigDecimal stockQty,
-        /** 期末库存成本金额（当前结存） */
+        /** 期末库存成本金额（当前结存）；无权限时为空 */
         BigDecimal costAmount,
-        /** 期初库存成本金额（区间开始前，由流水倒推） */
+        /** 期初库存成本金额（区间开始前，由流水倒推）；无权限时为空 */
         BigDecimal beginAmount,
-        /** 平均库存金额 = (期初 + 期末) / 2 */
+        /** 平均库存金额 = (期初 + 期末) / 2；无权限时为空 */
         BigDecimal avgAmount,
-        /** 区间销售成本（扣除退货回冲） */
+        /** 区间销售成本（扣除退货回冲）；无权限时为空 */
         BigDecimal saleCostAmount,
         BigDecimal returnCostAmount,
         BigDecimal flowAmount,
@@ -27,13 +27,4 @@ public record TurnoverRow(
         BigDecimal turnoverRate,
         /** 周转天数 */
         BigDecimal turnoverDays) {
-
-    public TurnoverRow {
-        costAmount = costAmount == null ? BigDecimal.ZERO : costAmount;
-        beginAmount = beginAmount == null ? BigDecimal.ZERO : beginAmount;
-        avgAmount = avgAmount == null ? BigDecimal.ZERO : avgAmount;
-        saleCostAmount = saleCostAmount == null ? BigDecimal.ZERO : saleCostAmount;
-        returnCostAmount = returnCostAmount == null ? BigDecimal.ZERO : returnCostAmount;
-        flowAmount = flowAmount == null ? BigDecimal.ZERO : flowAmount;
-    }
 }

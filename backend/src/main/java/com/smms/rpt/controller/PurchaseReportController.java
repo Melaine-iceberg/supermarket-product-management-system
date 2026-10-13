@@ -128,7 +128,8 @@ public class PurchaseReportController {
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         return ApiResponse.ok(drillDownService.purchaseOrders(new DrillPurchaseQuery(
-                range.beginDate(), range.endDate(), supplierId, goodsId, page, size)));
+                range.beginDate(), range.endDate(), supplierId, goodsId, page, size),
+                SecurityUtils.getLoginUser()));
     }
 
     /** 汇总数字下钻（BR-RPT-06）：到货及时率供应商行 → 构成统计的入库单列表（含按期标记） */
@@ -142,7 +143,8 @@ public class PurchaseReportController {
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         return ApiResponse.ok(drillDownService.receipts(new DrillReceiptQuery(
-                range.beginDate(), range.endDate(), supplierId, page, size)));
+                range.beginDate(), range.endDate(), supplierId, page, size),
+                SecurityUtils.getLoginUser()));
     }
 
     /** 采购报表导出（FR-RPT-08）：view=summary-supplier|summary-goods|supplier-ranking|price-trend|arrival */
@@ -158,6 +160,7 @@ public class PurchaseReportController {
                 TaskParams.of("view", view, "beginDate", beginDate, "endDate", endDate, "goodsId", goodsId),
                 ctx -> {
             ReportRange range = new ReportRange(beginDate, endDate);
+            int limit = excelService.maxRows() + 1;
             List<String[]> rows = new ArrayList<>();
             String sheet;
             String[] columns;
@@ -165,7 +168,7 @@ public class PurchaseReportController {
                 case "summary-supplier" -> {
                     sheet = "采购汇总表（供应商）";
                     columns = SUPPLIER_COLUMNS;
-                    purchaseReportService.summary(range, "supplier", ctx.user())
+                    purchaseReportService.summaryForExport(range, "supplier", ctx.user(), limit)
                             .forEach(r -> rows.add(new String[]{
                                     text(r.supplierName()), String.valueOf(r.orderCount()),
                                     qty(r.purchaseQty()), amount(r.purchaseAmount()), qty(r.receivedQty()),
@@ -175,7 +178,7 @@ public class PurchaseReportController {
                 case "summary-goods" -> {
                     sheet = "采购汇总表（商品）";
                     columns = GOODS_COLUMNS;
-                    purchaseReportService.summary(range, "goods", ctx.user())
+                    purchaseReportService.summaryForExport(range, "goods", ctx.user(), limit)
                             .forEach(r -> rows.add(new String[]{
                                     text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()),
                                     String.valueOf(r.orderCount()), qty(r.purchaseQty()),
@@ -186,7 +189,7 @@ public class PurchaseReportController {
                 case "supplier-ranking" -> {
                     sheet = "供应商采购排行";
                     columns = SUPPLIER_COLUMNS;
-                    purchaseReportService.supplierRanking(range, ctx.user())
+                    purchaseReportService.supplierRankingForExport(range, ctx.user(), limit)
                             .forEach(r -> rows.add(new String[]{
                                     text(r.supplierName()), String.valueOf(r.orderCount()),
                                     qty(r.purchaseQty()), amount(r.purchaseAmount()), qty(r.receivedQty()),
@@ -200,7 +203,7 @@ public class PurchaseReportController {
                     if (goodsId == null) {
                         throw new BusinessException(ErrorCode.PARAM_INVALID, "请选择商品");
                     }
-                    purchaseReportService.priceTrend(goodsId, range, ctx.user())
+                    purchaseReportService.priceTrendForExport(goodsId, range, ctx.user(), limit)
                             .forEach(r -> rows.add(new String[]{
                                     text(r.orderNo()), text(r.supplierName()), time(r.orderTime()),
                                     qty(r.quantity()), amount(r.price())}));
@@ -208,13 +211,15 @@ public class PurchaseReportController {
                 case "arrival" -> {
                     sheet = "到货及时率";
                     columns = ARRIVAL_COLUMNS;
-                    purchaseReportService.arrival(range, ctx.user())
+                    purchaseReportService.arrivalForExport(range, ctx.user(), limit)
                             .forEach(r -> rows.add(new String[]{
                                     text(r.supplierName()), String.valueOf(r.receiptCount()),
                                     String.valueOf(r.onTimeCount()), percent(r.onTimeRate())}));
                 }
                 default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "导出视图不合法");
             }
+            // GAP-P1-06：全部视图统一执行导出行数上限校验（超限明确提示缩小范围，FR-RPT-08）
+            excelService.checkLimit(rows.size());
             ctx.fileName("purchase-" + view + ".xlsx");
             return excelService.build(new ReportExcelService.Table(sheet, columns, rows));
                 }));

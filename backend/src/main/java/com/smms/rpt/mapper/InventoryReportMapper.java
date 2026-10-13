@@ -15,7 +15,6 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -45,13 +44,13 @@ public interface InventoryReportMapper {
                                         @Param("avgDays") int avgDays,
                                         @Param("leadDays") int leadDays);
 
-    /** 库存变动明细汇总（按变动类型汇总数量与金额） */
-    List<InvChangeRow> selectChangeSummary(@Param("beginTime") LocalDateTime beginTime,
-                                           @Param("endTime") LocalDateTime endTime);
+    /** 库存变动明细汇总（按变动类型汇总数量与金额；营业日区间） */
+    List<InvChangeRow> selectChangeSummary(@Param("begin") java.time.LocalDate begin,
+                                           @Param("end") java.time.LocalDate end);
 
-    /** 区间流水金额合计（周转率期初库存金额推算用：期初 = 期末成本 − Σ(变动数量×单位成本)） */
-    List<TurnoverRow> selectFlowAmountByGoods(@Param("beginTime") LocalDateTime beginTime,
-                                              @Param("endTime") LocalDateTime endTime);
+    /** 区间流水金额合计（周转率期初库存金额推算用：期初 = 期末成本 − Σ(变动数量×单位成本)；营业日区间） */
+    List<TurnoverRow> selectFlowAmountByGoods(@Param("begin") java.time.LocalDate begin,
+                                              @Param("end") java.time.LocalDate end);
 
     /** 区间销售成本（按商品，周转率分子） */
     List<TurnoverRow> selectSaleCostByGoods(@Param("begin") java.time.LocalDate begin,
@@ -65,17 +64,17 @@ public interface InventoryReportMapper {
     IPage<TurnoverRow> selectTurnoverPage(Page<TurnoverRow> page,
                                           @Param("categoryId") Long categoryId);
 
-    /** 损耗报表：报损/报溢单按商品汇总（店长已审核） */
-    List<LossRow> selectLossByGoods(@Param("beginTime") LocalDateTime beginTime,
-                                    @Param("endTime") LocalDateTime endTime);
+    /** 损耗报表：报损/报溢单按商品汇总（店长已审核；营业日区间） */
+    List<LossRow> selectLossByGoods(@Param("begin") java.time.LocalDate begin,
+                                    @Param("end") java.time.LocalDate end);
 
-    /** 损耗报表：盘亏按商品汇总（已审核盘点单） */
-    List<LossRow> selectShortageByGoods(@Param("beginTime") LocalDateTime beginTime,
-                                        @Param("endTime") LocalDateTime endTime);
+    /** 损耗报表：盘亏按商品汇总（已审核盘点单；营业日区间） */
+    List<LossRow> selectShortageByGoods(@Param("begin") java.time.LocalDate begin,
+                                        @Param("end") java.time.LocalDate end);
 
-    /** 期初库存金额 = Σ当前库存成本 − Σ(区间流水变动金额)（损耗率分母） */
-    BigDecimal selectBeginInventoryAmount(@Param("beginTime") LocalDateTime beginTime,
-                                          @Param("endTime") LocalDateTime endTime);
+    /** 期初库存金额 = Σ当前库存成本 − Σ(区间营业日流水变动金额)（损耗率分母） */
+    BigDecimal selectBeginInventoryAmount(@Param("begin") java.time.LocalDate begin,
+                                          @Param("end") java.time.LocalDate end);
 
     // ==================== 下钻明细（BR-RPT-06） ====================
 

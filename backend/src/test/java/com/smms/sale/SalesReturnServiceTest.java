@@ -26,6 +26,7 @@ import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.service.SalesReturnService;
 import com.smms.security.LoginUser;
 import com.smms.sys.service.SensitiveAuthService;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -107,7 +108,8 @@ class SalesReturnServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReturnOrderItem.class);
         service = new SalesReturnService(returnOrderMapper, returnOrderItemMapper, salesOrderMapper,
                 salesOrderItemMapper, goodsMapper, memberMapper, shiftMapper, inventoryService,
-                configService, memberBusinessService, sensitiveAuthService, dictService);
+                configService, new BusinessDayService(configService), memberBusinessService,
+                sensitiveAuthService, dictService);
 
         doAnswer(inv -> {
             ReturnOrder ro = inv.getArgument(0);

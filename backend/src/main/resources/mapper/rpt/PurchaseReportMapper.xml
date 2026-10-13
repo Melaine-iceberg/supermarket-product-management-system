@@ -5,7 +5,8 @@
 
     <!-- 采购汇总（供应商维度，FR-RPT-06①②）：
          仅统计正式单据（排除草稿/作废/终止，BR-RPT-03）；
-         在途 = 订购 − 已入库；退货按已审核采购退货单汇总 -->
+         在途 = 订购 − 已入库；退货按已审核采购退货单汇总；
+         营业日维度（BR-RPT-02/GAP-P1-05）：按 business_date 聚合，不再运行时按 create_time 计算 -->
     <select id="selectSupplierSummary" resultType="com.smms.rpt.dto.PurchSummaryRow">
         SELECT po.supplier_id                  AS supplierId,
                s.name                          AS supplierName,
@@ -30,12 +31,15 @@
                    FROM purchase_return_order pt
                    JOIN purchase_return_item pri ON pri.return_id = pt.id
                    WHERE pt.status = 'APPROVED'
-                     AND pt.create_time &gt;= #{beginTime} AND pt.create_time &lt; #{endTime}
+                     AND pt.business_date BETWEEN #{begin} AND #{end}
                    GROUP BY pt.supplier_id) r ON r.sid = po.supplier_id
         WHERE po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
-          AND po.create_time &gt;= #{beginTime} AND po.create_time &lt; #{endTime}
+          AND po.business_date BETWEEN #{begin} AND #{end}
         GROUP BY po.supplier_id, s.name, r.returnQty, r.returnAmount
         ORDER BY purchaseAmount DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
     </select>
 
     <!-- 采购汇总（商品维度） -->
@@ -64,15 +68,18 @@
                    FROM purchase_return_order pt
                    JOIN purchase_return_item pri ON pri.return_id = pt.id
                    WHERE pt.status = 'APPROVED'
-                     AND pt.create_time &gt;= #{beginTime} AND pt.create_time &lt; #{endTime}
+                     AND pt.business_date BETWEEN #{begin} AND #{end}
                    GROUP BY pri.goods_id) r ON r.gid = poi.goods_id
         WHERE po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
-          AND po.create_time &gt;= #{beginTime} AND po.create_time &lt; #{endTime}
+          AND po.business_date BETWEEN #{begin} AND #{end}
         GROUP BY poi.goods_id, g.goods_code, g.name, c.name, r.returnQty, r.returnAmount
         ORDER BY purchaseAmount DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
     </select>
 
-    <!-- 采购价格波动（FR-RPT-06③）：同商品多次采购单价趋势 -->
+    <!-- 采购价格波动（FR-RPT-06③）：同商品多次采购单价趋势（按下单时间展示、按营业日筛选） -->
     <select id="selectPriceTrend" resultType="com.smms.rpt.dto.PriceTrendRow">
         SELECT po.id          AS orderId,
                po.order_no    AS orderNo,
@@ -86,16 +93,19 @@
         JOIN supplier s ON s.id = po.supplier_id
         WHERE poi.goods_id = #{goodsId}
           AND po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
-        <if test="beginTime != null">
-            AND po.create_time &gt;= #{beginTime}
+        <if test="begin != null">
+            AND po.business_date &gt;= #{begin}
         </if>
-        <if test="endTime != null">
-            AND po.create_time &lt; #{endTime}
+        <if test="end != null">
+            AND po.business_date &lt;= #{end}
         </if>
         ORDER BY po.create_time, po.id
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
     </select>
 
-    <!-- 到货及时率（FR-RPT-06④）：按期 = 实收日期 ≤ 预计到货日期 -->
+    <!-- 到货及时率（FR-RPT-06④）：按期 = 实收日期 ≤ 预计到货日期；按入库营业日筛选 -->
     <select id="selectArrival" resultType="com.smms.rpt.dto.ArrivalRow">
         SELECT po.supplier_id AS supplierId,
                s.name         AS supplierName,
@@ -106,18 +116,21 @@
         JOIN purchase_order po ON po.id = ro.purchase_order_id
         JOIN supplier s ON s.id = po.supplier_id
         WHERE po.expect_date IS NOT NULL
-          AND ro.receipt_time &gt;= #{beginTime} AND ro.receipt_time &lt; #{endTime}
+          AND ro.business_date BETWEEN #{begin} AND #{end}
         GROUP BY po.supplier_id, s.name
         ORDER BY receiptCount DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
     </select>
 
     <!-- ==================== 下钻明细（BR-RPT-06） ==================== -->
 
-    <!-- 采购汇总下钻条件：与汇总同口径（正式单据、下单时间区间、供应商/商品筛选） -->
+    <!-- 采购汇总下钻条件：与汇总同口径（正式单据、下单营业日区间、供应商/商品筛选） -->
     <sql id="purchaseDrillWhere">
         po.status NOT IN ('DRAFT', 'CANCELLED', 'TERMINATED')
-        AND po.create_time &gt;= #{q.beginDate}
-        AND po.create_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        AND po.business_date &gt;= #{q.beginDate}
+        AND po.business_date &lt;= #{q.endDate}
         <if test="q.supplierId != null">
             AND po.supplier_id = #{q.supplierId}
         </if>
@@ -155,11 +168,11 @@
         ORDER BY po.create_time DESC, po.id DESC
     </select>
 
-    <!-- 到货及时率下钻条件：与统计同口径（有预计到货日、入库时间区间） -->
+    <!-- 到货及时率下钻条件：与统计同口径（有预计到货日、入库营业日区间） -->
     <sql id="receiptDrillWhere">
         po.expect_date IS NOT NULL
-        AND ro.receipt_time &gt;= #{q.beginDate}
-        AND ro.receipt_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        AND ro.business_date &gt;= #{q.beginDate}
+        AND ro.business_date &lt;= #{q.endDate}
         <if test="q.supplierId != null">
             AND ro.supplier_id = #{q.supplierId}
         </if>

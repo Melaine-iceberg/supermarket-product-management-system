@@ -35,6 +35,7 @@ import com.smms.purchase.mapper.PurchaseOrderItemMapper;
 import com.smms.sale.entity.SalesOrderItem;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.sys.entity.OperationLog;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.OperationLogService;
 import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -98,7 +99,8 @@ class GoodsServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SalesOrderItem.class);
         service = new GoodsService(goodsMapper, categoryMapper, unitMapper, brandMapper,
                 priceHistoryMapper, promotionMapper, inventoryMapper, inventoryRecordMapper,
-                purchaseOrderItemMapper, salesOrderItemMapper, configService, operationLogService);
+                purchaseOrderItemMapper, salesOrderItemMapper, configService, operationLogService,
+                new BusinessDayService(configService));
     }
 
     // ---------- 造数 ----------

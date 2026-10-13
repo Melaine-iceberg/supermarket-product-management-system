@@ -1,5 +1,6 @@
 package com.smms.common.task;
 
+import com.smms.common.annotation.OpLog;
 import com.smms.common.api.ApiResponse;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -36,8 +37,9 @@ public class AsyncTaskController {
         return ApiResponse.ok(taskService.get(taskNo));
     }
 
-    /** 下载任务结果文件（仅提交人本人、任务成功后可用） */
+    /** 下载任务结果文件（仅提交人本人、任务成功后可用；下载行为记入操作日志，GAP-P1-06） */
     @GetMapping("/{taskNo}/download")
+    @OpLog(module = "任务中心", action = "下载任务结果", target = "#taskNo")
     public ResponseEntity<Resource> download(@PathVariable String taskNo) {
         TaskDownload download = taskService.download(taskNo);
         HttpHeaders headers = new HttpHeaders();

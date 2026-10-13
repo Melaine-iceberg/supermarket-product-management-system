@@ -27,6 +27,7 @@ import com.smms.purchase.mapper.PurchaseReturnOrderMapper;
 import com.smms.purchase.mapper.ReceiptOrderItemMapper;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.BusinessDayService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -73,6 +74,7 @@ public class PurchaseReturnService {
     private final GoodsMapper goodsMapper;
     private final UnitMapper unitMapper;
     private final InventoryService inventoryService;
+    private final BusinessDayService businessDayService;
 
     // ==================== 创建退货单（FR-PUR-08） ====================
 
@@ -99,6 +101,8 @@ public class PurchaseReturnService {
         returnOrder.setStatus(PurchaseReturnOrder.STATUS_SUBMITTED);
         returnOrder.setReturnReason(req.getReturnReason());
         returnOrder.setCreateBy(operator);
+        // 营业日（BR-RPT-02/GAP-P1-05）：采购汇总的退货侧按该字段聚合
+        returnOrder.setBusinessDate(businessDayService.businessDate(LocalDateTime.now()));
         returnOrder.setRemark(req.getRemark());
 
         List<PurchaseReturnItem> items = new java.util.ArrayList<>();

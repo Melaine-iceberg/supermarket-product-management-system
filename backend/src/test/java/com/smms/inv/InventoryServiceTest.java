@@ -24,6 +24,7 @@ import com.smms.inv.entity.InventoryRecord;
 import com.smms.inv.mapper.InventoryMapper;
 import com.smms.inv.mapper.InventoryRecordMapper;
 import com.smms.inv.service.InventoryService;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,7 +77,7 @@ class InventoryServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Inventory.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), InventoryRecord.class);
         service = new InventoryService(inventoryMapper, inventoryRecordMapper,
-                categoryMapper, goodsMapper, configService);
+                categoryMapper, goodsMapper, configService, new BusinessDayService(configService));
     }
 
     // ---------- 造数 ----------
@@ -125,6 +126,8 @@ class InventoryServiceTest {
         assertThat(r.getUnitCost()).isEqualByComparingTo("2.5");
         assertThat(r.getBizNo()).isEqualTo("XS202609190001");
         assertThat(r.getOperatorName()).isEqualTo("cashier01");
+        // 营业日（BR-RPT-02/GAP-P1-05）：库存流水按记账时刻落库，变动/周转报表按该字段聚合
+        assertThat(r.getBusinessDate()).isEqualTo(LocalDate.now());
     }
 
     @Test

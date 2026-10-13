@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -52,6 +53,9 @@ public class LossOrder {
     private String auditorName;
 
     private LocalDateTime auditTime;
+
+    /** 营业日（BR-RPT-02，GAP-P1-05）：创建时按申请时刻归属，审核通过时改写为审核时刻所属营业日（报表按审核营业日统计） */
+    private LocalDate businessDate;
 
     /** 审核意见（驳回必填） */
     private String auditRemark;

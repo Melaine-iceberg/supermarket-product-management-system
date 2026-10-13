@@ -21,6 +21,7 @@ import com.smms.rpt.dto.WarningRptRow;
 import com.smms.rpt.service.DrillDownService;
 import com.smms.rpt.service.InventoryReportService;
 import com.smms.rpt.service.ReportExcelService;
+import com.smms.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,6 +41,7 @@ import static com.smms.rpt.service.ReportExcelService.time;
 /**
  * 库存报表接口（FR-RPT-04）：库存汇总表、库存预警报表（含建议采购量）、
  * 库存变动明细、库存周转率与周转天数、损耗报表；支持导出 Excel（FR-RPT-08）。
+ * 成本类字段按角色过滤（BR-RPT-07/GAP-P0-10③）；全部导出视图执行行数上限校验（GAP-P1-06）。
  */
 @RestController
 @RequestMapping("/api/v1/report/inventory")
@@ -78,14 +80,15 @@ public class InventoryReportController {
             @RequestParam(required = false) Long categoryId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.ok(inventoryReportService.summaryByGoods(categoryId, page, size));
+        return ApiResponse.ok(inventoryReportService.summaryByGoods(
+                categoryId, page, size, SecurityUtils.getLoginUser()));
     }
 
     /** 库存汇总表（①，分类维度） */
     @GetMapping("/summary/category")
     @RequirePerm("sys:rpt:inventory")
     public ApiResponse<List<InvSummaryRow>> summaryByCategory() {
-        return ApiResponse.ok(inventoryReportService.summaryByCategory());
+        return ApiResponse.ok(inventoryReportService.summaryByCategory(SecurityUtils.getLoginUser()));
     }
 
     /** 库存预警报表（②）：alertType=OUT缺货/WARNING预警/OVERSTOCK积压 */
@@ -104,7 +107,8 @@ public class InventoryReportController {
     public ApiResponse<List<InvChangeRow>> changes(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return ApiResponse.ok(inventoryReportService.changes(new ReportRange(beginDate, endDate)));
+        return ApiResponse.ok(inventoryReportService.changes(
+                new ReportRange(beginDate, endDate), SecurityUtils.getLoginUser()));
     }
 
     /** 库存周转率与周转天数（④，商品维度） */
@@ -117,7 +121,7 @@ public class InventoryReportController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ApiResponse.ok(inventoryReportService.turnoverByGoods(
-                new ReportRange(beginDate, endDate), categoryId, page, size));
+                new ReportRange(beginDate, endDate), categoryId, page, size, SecurityUtils.getLoginUser()));
     }
 
     /** 库存周转率与周转天数（④，分类维度） */
@@ -128,7 +132,7 @@ public class InventoryReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long categoryId) {
         return ApiResponse.ok(inventoryReportService.turnoverByCategory(
-                new ReportRange(beginDate, endDate), categoryId));
+                new ReportRange(beginDate, endDate), categoryId, null, SecurityUtils.getLoginUser()));
     }
 
     /** 损耗报表（⑤）：报损 + 盘亏汇总，损耗率 = 损耗金额 / 期初库存金额 × 100% */
@@ -137,7 +141,8 @@ public class InventoryReportController {
     public ApiResponse<InventoryReportService.LossReportVO> loss(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return ApiResponse.ok(inventoryReportService.loss(new ReportRange(beginDate, endDate)));
+        return ApiResponse.ok(inventoryReportService.loss(
+                new ReportRange(beginDate, endDate), SecurityUtils.getLoginUser()));
     }
 
     /** 汇总数字下钻（BR-RPT-06）：变动类型/周转商品行 → 构成汇总的库存流水明细（含单据号回溯） */
@@ -152,7 +157,8 @@ public class InventoryReportController {
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         return ApiResponse.ok(drillDownService.inventoryRecords(new DrillInvRecordQuery(
-                range.beginDate(), range.endDate(), recordType, goodsId, page, size)));
+                range.beginDate(), range.endDate(), recordType, goodsId, page, size),
+                SecurityUtils.getLoginUser()));
     }
 
     /** 汇总数字下钻（BR-RPT-06）：损耗商品行 → 报损单（kind=loss）/盘亏差异（kind=check）明细 */
@@ -167,7 +173,8 @@ public class InventoryReportController {
             @RequestParam(defaultValue = "20") int size) {
         ReportRange range = new ReportRange(beginDate, endDate);
         return ApiResponse.ok(drillDownService.lossDocuments(new DrillLossQuery(
-                range.beginDate(), range.endDate(), kind, goodsId, page, size)));
+                range.beginDate(), range.endDate(), kind, goodsId, page, size),
+                SecurityUtils.getLoginUser()));
     }
 
     /** 库存报表导出（FR-RPT-08）：view=summary-goods|summary-category|warnings|changes|turnover-goods|turnover-category|loss */
@@ -183,6 +190,8 @@ public class InventoryReportController {
         return ApiResponse.ok(taskService.submitExport(BIZ_EXPORT, "库存报表导出",
                 TaskParams.of("view", view, "beginDate", beginDate, "endDate", endDate, "alertType", alertType, "categoryId", categoryId),
                 ctx -> {
+            ReportRange range = new ReportRange(beginDate, endDate);
+            int limit = excelService.maxRows() + 1;
             List<String[]> rows = new ArrayList<>();
             String sheet;
             String[] columns;
@@ -191,8 +200,7 @@ public class InventoryReportController {
                     sheet = "库存汇总表";
                     columns = SUMMARY_COLUMNS;
                     List<InvSummaryRow> list = inventoryReportService.summaryByGoodsForExport(
-                            categoryId, excelService.maxRows() + 1);
-                    excelService.checkLimit(list.size());
+                            categoryId, limit, ctx.user());
                     list.forEach(r -> rows.add(new String[]{
                             text(r.categoryName()), text(r.goodsCode()), text(r.goodsName()),
                             String.valueOf(r.goodsCount()), qty(r.stockQty()), amount(r.costPrice()),
@@ -201,7 +209,7 @@ public class InventoryReportController {
                 case "summary-category" -> {
                     sheet = "库存汇总表（分类）";
                     columns = SUMMARY_COLUMNS;
-                    inventoryReportService.summaryByCategory().forEach(r -> rows.add(new String[]{
+                    inventoryReportService.summaryByCategory(ctx.user()).forEach(r -> rows.add(new String[]{
                             text(r.categoryName()), "", "", String.valueOf(r.goodsCount()),
                             qty(r.stockQty()), "", amount(r.costAmount()),
                             amount(r.retailValue()), ""}));
@@ -209,19 +217,17 @@ public class InventoryReportController {
                 case "warnings" -> {
                     sheet = "库存预警报表";
                     columns = WARNING_COLUMNS;
-                    List<WarningRptRow> list = inventoryReportService.warningsForExport(
-                            alertType, excelService.maxRows() + 1);
-                    excelService.checkLimit(list.size());
-                    list.forEach(r -> rows.add(new String[]{
-                            text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()),
-                            alertLabel(r.alertType()), qty(r.stockQty()), qty(r.safetyStockLower()),
-                            qty(r.safetyStockUpper()), qty(r.gapQty()), qty(r.suggestQty()),
-                            time(r.lastChangeTime())}));
+                    inventoryReportService.warningsForExport(alertType, limit)
+                            .forEach(r -> rows.add(new String[]{
+                                    text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()),
+                                    alertLabel(r.alertType()), qty(r.stockQty()), qty(r.safetyStockLower()),
+                                    qty(r.safetyStockUpper()), qty(r.gapQty()), qty(r.suggestQty()),
+                                    time(r.lastChangeTime())}));
                 }
                 case "changes" -> {
                     sheet = "库存变动明细";
                     columns = CHANGE_COLUMNS;
-                    inventoryReportService.changes(new ReportRange(beginDate, endDate))
+                    inventoryReportService.changes(range, ctx.user())
                             .forEach(r -> rows.add(new String[]{
                                     changeLabel(r.recordType()), String.valueOf(r.recordCount()),
                                     qty(r.changeQty()), amount(r.amount())}));
@@ -229,22 +235,19 @@ public class InventoryReportController {
                 case "turnover-goods" -> {
                     sheet = "库存周转（商品）";
                     columns = TURNOVER_COLUMNS;
-                    List<TurnoverRow> list = inventoryReportService.turnoverByGoodsForExport(
-                            new ReportRange(beginDate, endDate), categoryId, excelService.maxRows() + 1);
-                    excelService.checkLimit(list.size());
-                    list.forEach(r -> rows.add(turnoverLine(r)));
+                    inventoryReportService.turnoverByGoodsForExport(range, categoryId, limit, ctx.user())
+                            .forEach(r -> rows.add(turnoverLine(r)));
                 }
                 case "turnover-category" -> {
                     sheet = "库存周转（分类）";
                     columns = TURNOVER_COLUMNS;
-                    inventoryReportService.turnoverByCategory(new ReportRange(beginDate, endDate), categoryId)
+                    inventoryReportService.turnoverByCategory(range, categoryId, limit, ctx.user())
                             .forEach(r -> rows.add(turnoverLine(r)));
                 }
                 case "loss" -> {
                     sheet = "损耗报表";
                     columns = new String[]{"商品名称", "分类", "报损数量", "报损金额", "盘亏数量", "盘亏金额", "损耗金额"};
-                    InventoryReportService.LossReportVO vo =
-                            inventoryReportService.loss(new ReportRange(beginDate, endDate));
+                    InventoryReportService.LossReportVO vo = inventoryReportService.loss(range, ctx.user());
                     vo.rows().forEach(r -> rows.add(new String[]{
                             text(r.goodsName()), text(r.categoryName()), qty(r.lossQty()),
                             amount(r.lossAmount()), qty(r.checkQty()), amount(r.checkAmount()),
@@ -252,6 +255,8 @@ public class InventoryReportController {
                 }
                 default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "导出视图不合法");
             }
+            // GAP-P1-06：全部视图统一执行导出行数上限校验（超限明确提示缩小范围，FR-RPT-08）
+            excelService.checkLimit(rows.size());
             ctx.fileName("inventory-" + view + ".xlsx");
             return excelService.build(new ReportExcelService.Table(sheet, columns, rows));
                 }));

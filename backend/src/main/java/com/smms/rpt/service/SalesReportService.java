@@ -68,8 +68,9 @@ public class SalesReportService {
 
     /** 按收款方式汇总（②） */
     public List<SalesReportRow> byPayMethod(ReportRange range, LoginUser user) {
+        boolean canProfit = canProfit(user);
         return mask(reportMapper.selectByPayMethod(range.beginDate(), range.endDate()).stream()
-                .map(r -> toRow(payLabel(r.groupKey()), null, r, null, null, false)).toList(), false);
+                .map(r -> toRow(payLabel(r.groupKey()), null, r, null, null, canProfit)).toList(), canProfit);
     }
 
     /** 按时段（小时）分布（③）：0~23 小时补零，用于排班分析 */
@@ -106,9 +107,10 @@ public class SalesReportService {
 
     /** 按收银台业绩汇总（④） */
     public List<SalesReportRow> byCounter(ReportRange range, LoginUser user) {
+        boolean canProfit = canProfit(user);
         List<SalesReportRow> rows = reportMapper.selectByCounter(range.beginDate(), range.endDate()).stream()
-                .map(r -> toRow("0" + r.groupKey() + "号台", null, r, null, null, false)).toList();
-        return mask(rows, false);
+                .map(r -> toRow("0" + r.groupKey() + "号台", null, r, null, null, canProfit)).toList();
+        return mask(rows, canProfit);
     }
 
     /** 会员单与散客单占比（⑤） */

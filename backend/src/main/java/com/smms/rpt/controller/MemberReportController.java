@@ -151,6 +151,7 @@ public class MemberReportController {
                 TaskParams.of("view", view, "beginDate", beginDate, "endDate", endDate, "topN", topN, "days", days, "scope", scope),
                 ctx -> {
             ReportRange range = new ReportRange(beginDate, endDate);
+            int limit = excelService.maxRows() + 1;
             List<String[]> rows = new ArrayList<>();
             String sheet;
             String[] columns;
@@ -182,18 +183,16 @@ public class MemberReportController {
                 case "sleeping" -> {
                     sheet = "沉睡会员清单";
                     columns = SLEEPING_COLUMNS;
-                    List<MemberRptRow> list = memberReportService.sleepingForExport(
-                            days, excelService.maxRows() + 1, ctx.user());
-                    excelService.checkLimit(list.size());
-                    list.forEach(r -> rows.add(new String[]{
-                            text(r.memberNo()), text(r.name()), text(r.phone()), text(r.levelName()),
-                            amount(r.totalConsume()), text(r.consumeTimes()),
-                            time(r.lastConsumeTime()), time(r.registerTime()), text(r.sleepingDays())}));
+                    memberReportService.sleepingForExport(days, limit, ctx.user())
+                            .forEach(r -> rows.add(new String[]{
+                                    text(r.memberNo()), text(r.name()), text(r.phone()), text(r.levelName()),
+                                    amount(r.totalConsume()), text(r.consumeTimes()),
+                                    time(r.lastConsumeTime()), time(r.registerTime()), text(r.sleepingDays())}));
                 }
                 case "birthday" -> {
                     sheet = "生日提醒清单";
                     columns = BIRTHDAY_COLUMNS;
-                    memberReportService.birthday(scope, ctx.user())
+                    memberReportService.birthdayForExport(scope, limit, ctx.user())
                             .forEach(r -> rows.add(new String[]{
                                     text(r.memberNo()), text(r.name()), text(r.phone()),
                                     text(r.levelName()), text(r.birthday())}));
@@ -201,6 +200,8 @@ public class MemberReportController {
                 default -> throw new com.smms.common.exception.BusinessException(
                         com.smms.common.api.ErrorCode.PARAM_INVALID, "导出视图不合法");
             }
+            // GAP-P1-06：全部视图统一执行导出行数上限校验（超限明确提示缩小范围，FR-RPT-08）
+            excelService.checkLimit(rows.size());
             ctx.fileName("member-" + view + ".xlsx");
             return excelService.build(new ReportExcelService.Table(sheet, columns, rows));
                 }));

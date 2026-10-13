@@ -2,7 +2,9 @@ package com.smms.sys.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.smms.common.api.ErrorCode;
 import com.smms.common.api.PageVO;
+import com.smms.common.exception.BusinessException;
 import com.smms.sys.entity.OperationLog;
 import com.smms.sys.mapper.OperationLogMapper;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +61,7 @@ public class OperationLogService {
         return PageVO.of(pager);
     }
 
-    /** 导出 CSV（UTF-8 BOM，NFR-CMP-04），上限取参数 export_max_rows */
+    /** 导出 CSV（UTF-8 BOM，NFR-CMP-04），上限取参数 export_max_rows；超限拒绝而非静默截断（FR-RPT-08/GAP-P1-06） */
     public String exportCsv(String username, String module, Integer result,
                             LocalDate beginDate, LocalDate endDate) {
         int maxRows = configService.getInt("export_max_rows", 50_000);
@@ -71,7 +73,11 @@ public class OperationLogService {
                         .ge(beginDate != null, OperationLog::getOperateTime, beginDate == null ? null : beginDate.atStartOfDay())
                         .lt(endDate != null, OperationLog::getOperateTime, endDate == null ? null : endDate.plusDays(1).atStartOfDay())
                         .orderByDesc(OperationLog::getId)
-                        .last("LIMIT " + maxRows));
+                        .last("LIMIT " + (maxRows + 1)));
+        if (rows.size() > maxRows) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "导出数据超过上限 " + maxRows + " 行，请缩小查询范围后重试（FR-RPT-08）");
+        }
         StringBuilder sb = new StringBuilder("\uFEFF"); // BOM 保证 Excel 中文不乱码
         sb.append("操作时间,操作人,真实姓名,角色,模块,动作,目标对象,请求方法,请求URL,结果,错误信息,耗时(ms),IP\r\n");
         for (OperationLog r : rows) {

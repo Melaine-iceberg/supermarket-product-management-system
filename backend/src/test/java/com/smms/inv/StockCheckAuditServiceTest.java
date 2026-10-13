@@ -19,6 +19,7 @@ import com.smms.inv.mapper.StockCheckItemMapper;
 import com.smms.inv.mapper.StockCheckOrderMapper;
 import com.smms.inv.service.StockCheckService;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.OperationLogService;
 import com.smms.sys.service.SysConfigService;
@@ -84,7 +85,8 @@ class StockCheckAuditServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckItem.class);
         service = new StockCheckService(orderMapper, itemMapper, inventoryMapper,
                 inventoryRecordMapper, categoryMapper, goodsMapper, dictService,
-                new DutySeparationService(configService, operationLogService));
+                new DutySeparationService(configService, operationLogService),
+                new BusinessDayService(configService));
     }
 
     // ---------- 造数 ----------

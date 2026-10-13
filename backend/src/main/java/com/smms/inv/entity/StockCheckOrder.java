@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -42,6 +43,9 @@ public class StockCheckOrder {
 
     /** 账面快照基准时间（BR-INV-10） */
     private LocalDateTime baseTime;
+
+    /** 营业日（BR-RPT-02，GAP-P1-05）：创建时按创建时刻归属，审核通过时改写为审核时刻所属营业日（报表按审核营业日统计） */
+    private LocalDate businessDate;
 
     /** 盘点商品行数 */
     private Integer itemCount;

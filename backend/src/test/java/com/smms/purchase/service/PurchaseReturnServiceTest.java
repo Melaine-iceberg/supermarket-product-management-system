@@ -27,6 +27,8 @@ import com.smms.purchase.service.PurchaseOrderService;
 import com.smms.purchase.service.PurchaseReturnService;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.BusinessDayService;
+import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +74,7 @@ class PurchaseReturnServiceTest {
     @Mock private GoodsMapper goodsMapper;
     @Mock private UnitMapper unitMapper;
     @Mock private InventoryService inventoryService;
+    @Mock private SysConfigService configService;
 
     private PurchaseReturnService service;
 
@@ -86,7 +89,7 @@ class PurchaseReturnServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
         service = new PurchaseReturnService(orderMapper, orderItemMapper, purchaseOrderService,
                 returnMapper, returnItemMapper, receiptItemMapper, supplierMapper,
-                goodsMapper, unitMapper, inventoryService);
+                goodsMapper, unitMapper, inventoryService, new BusinessDayService(configService));
     }
 
     // ==================== 创建退货单（FR-PUR-08） ====================
@@ -129,6 +132,8 @@ class PurchaseReturnServiceTest {
         assertThat(vo.items().get(0).returnPrice()).isEqualByComparingTo("9.50");
         // 创建阶段不动库存，待店长审核
         verify(inventoryService, never()).stockOut(any());
+        // 营业日（BR-RPT-02/GAP-P1-05）：创建落库即写入
+        assertThat(saved.get().getBusinessDate()).isEqualTo(LocalDate.now());
     }
 
     @Test

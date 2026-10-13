@@ -123,9 +123,10 @@ public class StockCheckController {
         return ApiResponse.ok(stockCheckService.submit(id));
     }
 
-    /** 实盘录入模板下载（FR-INV-08）：按盘点单明细导出，实盘数量/差异原因留空线下填写 */
+    /** 实盘录入模板下载（FR-INV-08）：按盘点单明细导出，实盘数量/差异原因留空线下填写；下载记入操作日志（GAP-P1-06） */
     @GetMapping("/{id}/items/template")
     @RequirePerm("sys:check:update")
+    @OpLog(module = "库存管理", action = "下载盘点导入模板", target = "#id")
     public ResponseEntity<byte[]> template(@PathVariable Long id) {
         return xlsx(checkExcelService.template(id), "盘点录入-" + id + ".xlsx");
     }

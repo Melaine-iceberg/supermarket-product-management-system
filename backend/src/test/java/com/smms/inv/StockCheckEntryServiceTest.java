@@ -61,6 +61,7 @@ class StockCheckEntryServiceTest {
     @Mock private GoodsMapper goodsMapper;
     @Mock private SysDictService dictService;
     @Mock private DutySeparationService dutySeparationService;
+    @Mock private com.smms.sys.service.SysConfigService configService;
 
     private StockCheckService service;
     private StockCheckExcelService excelService;
@@ -71,7 +72,8 @@ class StockCheckEntryServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckItem.class);
         service = new StockCheckService(orderMapper, itemMapper, inventoryMapper,
-                inventoryRecordMapper, categoryMapper, goodsMapper, dictService, dutySeparationService);
+                inventoryRecordMapper, categoryMapper, goodsMapper, dictService, dutySeparationService,
+                new com.smms.sys.service.BusinessDayService(configService));
         excelService = new StockCheckExcelService(itemMapper, service, dictService);
     }
 

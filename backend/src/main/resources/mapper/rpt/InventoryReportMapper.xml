@@ -117,7 +117,9 @@
                                           FROM inventory_record ir
                                          WHERE ir.goods_id = g.id
                                            AND ir.record_type = 'SALE_OUT'
-                                           AND ir.operate_time &gt;= DATE_SUB(NOW(), INTERVAL #{avgDays} DAY)), 0) * #{leadDays}
+                                           <!-- 营业日口径（BR-RPT-02）：近 N 个营业日（含今日）销售出库合计 -->
+                                           AND ir.business_date &gt;= DATE_ADD(DATE_SUB(CURDATE(), INTERVAL #{avgDays} DAY),
+                                                                             INTERVAL 1 DAY)), 0) * #{leadDays}
                             - COALESCE(i.quantity, 0)
                             - COALESCE((SELECT SUM(poi.quantity - poi.received_qty)
                                           FROM purchase_order_item poi
@@ -151,19 +153,19 @@
 
     <!-- ==================== 库存变动汇总（FR-RPT-04③） ==================== -->
 
-    <!-- 按变动类型汇总数量与金额（金额 = Σ|变动数量|×单位成本） -->
+    <!-- 按变动类型汇总数量与金额（金额 = Σ|变动数量|×单位成本；营业日维度 BR-RPT-02/GAP-P1-05） -->
     <select id="selectChangeSummary" resultType="com.smms.rpt.dto.InvChangeRow">
         SELECT ir.record_type AS recordType,
                COUNT(*)       AS recordCount,
                COALESCE(SUM(ir.change_qty), 0) AS changeQty,
                COALESCE(SUM(ABS(ir.change_qty) * ir.unit_cost), 0) AS amount
         FROM inventory_record ir
-        WHERE ir.operate_time &gt;= #{beginTime} AND ir.operate_time &lt; #{endTime}
+        WHERE ir.business_date &gt;= #{begin} AND ir.business_date &lt;= #{end}
         GROUP BY ir.record_type
         ORDER BY ir.record_type
     </select>
 
-    <!-- 区间流水金额（期初 = 期末成本 − Σ(变动数量×单位成本)）
+    <!-- 区间流水金额（期初 = 期末成本 − Σ(变动数量×单位成本)，按营业日）
          注：MyBatis 对 record 采用“按列序”构造器映射，列数必须与 TurnoverRow 参数个数一致，
          故未参与本查询的字段一律以 NULL 占位（TurnoverRow 紧凑构造器会把 null 归一为 0）。 -->
     <select id="selectFlowAmountByGoods" resultType="com.smms.rpt.dto.TurnoverRow">
@@ -182,7 +184,7 @@
                NULL AS turnoverRate,
                NULL AS turnoverDays
         FROM inventory_record ir
-        WHERE ir.operate_time &gt;= #{beginTime} AND ir.operate_time &lt; #{endTime}
+        WHERE ir.business_date &gt;= #{begin} AND ir.business_date &lt;= #{end}
         GROUP BY ir.goods_id
     </select>
 
@@ -260,7 +262,7 @@
 
     <!-- ==================== 损耗报表（FR-RPT-04⑤） ==================== -->
 
-    <!-- 报损/报溢按商品汇总（店长已审核；与销售退货分开统计） -->
+    <!-- 报损/报溢按商品汇总（店长已审核；与销售退货分开统计；营业日按审核营业日） -->
     <select id="selectLossByGoods" resultType="com.smms.rpt.dto.LossRow">
         SELECT l.goods_id   AS goodsId,
                g.name       AS goodsName,
@@ -272,11 +274,11 @@
         JOIN goods g ON g.id = l.goods_id
         LEFT JOIN category c ON c.id = g.category_id
         WHERE l.status = 'AUDITED'
-          AND l.audit_time &gt;= #{beginTime} AND l.audit_time &lt; #{endTime}
+          AND l.business_date &gt;= #{begin} AND l.business_date &lt;= #{end}
         GROUP BY l.goods_id, g.name, c.name, l.biz_type
     </select>
 
-    <!-- 盘亏按商品汇总（已审核盘点单的差异行） -->
+    <!-- 盘亏按商品汇总（已审核盘点单的差异行；营业日按审核营业日） -->
     <select id="selectShortageByGoods" resultType="com.smms.rpt.dto.LossRow">
         SELECT sci.goods_id AS goodsId,
                g.name       AS goodsName,
@@ -290,25 +292,25 @@
         LEFT JOIN category c ON c.id = g.category_id
         WHERE sco.status = 'AUDITED'
           AND sci.diff_qty &lt; 0
-          AND sco.audit_time &gt;= #{beginTime} AND sco.audit_time &lt; #{endTime}
+          AND sco.business_date &gt;= #{begin} AND sco.business_date &lt;= #{end}
         GROUP BY sci.goods_id, g.name, c.name
     </select>
 
-    <!-- 期初库存金额 = Σ当前库存成本 − Σ(区间流水变动金额)（损耗率分母） -->
+    <!-- 期初库存金额 = Σ当前库存成本 − Σ(区间营业日流水变动金额)（损耗率分母） -->
     <select id="selectBeginInventoryAmount" resultType="java.math.BigDecimal">
         SELECT COALESCE((SELECT SUM(i.cost_amount) FROM inventory i), 0)
              - COALESCE((SELECT SUM(ir.change_qty * ir.unit_cost)
                           FROM inventory_record ir
-                         WHERE ir.operate_time &gt;= #{beginTime}
-                           AND ir.operate_time &lt; #{endTime}), 0)
+                         WHERE ir.business_date &gt;= #{begin}
+                           AND ir.business_date &lt;= #{end}), 0)
     </select>
 
     <!-- ==================== 下钻明细（BR-RPT-06） ==================== -->
 
-    <!-- 变动明细下钻条件：与变动汇总同口径（操作时间区间、变动类型） -->
+    <!-- 变动明细下钻条件：与变动汇总同口径（营业日区间、变动类型） -->
     <sql id="invRecordDrillWhere">
-        ir.operate_time &gt;= #{q.beginDate}
-        AND ir.operate_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        ir.business_date &gt;= #{q.beginDate}
+        AND ir.business_date &lt;= #{q.endDate}
         <if test="q.recordType != null and q.recordType != ''">
             AND ir.record_type = #{q.recordType}
         </if>
@@ -345,11 +347,11 @@
         ORDER BY ir.operate_time DESC, ir.id DESC
     </select>
 
-    <!-- 报损下钻条件：与损耗报表同口径（已审核、审核时间区间） -->
+    <!-- 报损下钻条件：与损耗报表同口径（已审核、审核营业日区间） -->
     <sql id="lossDrillWhere">
         l.status = 'AUDITED'
-        AND l.audit_time &gt;= #{q.beginDate}
-        AND l.audit_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        AND l.business_date &gt;= #{q.beginDate}
+        AND l.business_date &lt;= #{q.endDate}
         <if test="q.goodsId != null">
             AND l.goods_id = #{q.goodsId}
         </if>
@@ -381,12 +383,12 @@
         ORDER BY l.audit_time DESC, l.id DESC
     </select>
 
-    <!-- 盘亏下钻条件：与损耗报表同口径（已审核盘点单、差异 < 0、审核时间区间） -->
+    <!-- 盘亏下钻条件：与损耗报表同口径（已审核盘点单、差异 < 0、审核营业日区间） -->
     <sql id="checkShortageDrillWhere">
         sco.status = 'AUDITED'
         AND sci.diff_qty &lt; 0
-        AND sco.audit_time &gt;= #{q.beginDate}
-        AND sco.audit_time &lt; DATE_ADD(#{q.endDate}, INTERVAL 1 DAY)
+        AND sco.business_date &gt;= #{q.beginDate}
+        AND sco.business_date &lt;= #{q.endDate}
         <if test="q.goodsId != null">
             AND sci.goods_id = #{q.goodsId}
         </if>

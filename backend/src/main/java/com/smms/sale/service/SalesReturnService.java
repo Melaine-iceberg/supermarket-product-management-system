@@ -30,6 +30,7 @@ import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.common.util.MaskUtils;
 import com.smms.security.LoginUser;
 import com.smms.security.SecurityUtils;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
@@ -42,7 +43,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -68,8 +68,6 @@ public class SalesReturnService {
     private static final String CONFIG_RETURN_AUTH_AMOUNT = "return_auth_amount";
     /** 退货有效期参数（BR-SALE-05，默认 7 天） */
     private static final String CONFIG_RETURN_VALID_DAYS = "return_valid_days";
-    /** 营业日起始时刻（BR-RPT-02） */
-    private static final String CONFIG_BUSINESS_DAY_START = "business_day_start";
     /** 收款方式字典（FR-SYS-07）：退款方式与之同域，停用项不可被新单据选择 */
     private static final String DICT_PAY_TYPE = "pay_type";
     /** 退货原因字典（FR-SYS-07） */
@@ -90,6 +88,7 @@ public class SalesReturnService {
     private final CashierShiftMapper shiftMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
+    private final BusinessDayService businessDayService;
     private final MemberBusinessService memberBusinessService;
     private final SensitiveAuthService sensitiveAuthService;
     private final SysDictService dictService;
@@ -391,7 +390,7 @@ public class SalesReturnService {
         returnOrder.setRefundType(req.refundType());
         returnOrder.setCashierName(operator.realName());
         returnOrder.setReturnTime(now);
-        returnOrder.setBusinessDate(businessDate(now));
+        returnOrder.setBusinessDate(businessDayService.businessDate(now));
         returnOrder.setRequestToken(requestToken);
         if (authorizer != null && !authorizer.isBlank()) {
             returnOrder.setAuthorizerName(authorizer);
@@ -437,12 +436,6 @@ public class SalesReturnService {
         ReturnReplaySignal(ReturnOrder returnOrder) {
             this.returnOrder = returnOrder;
         }
-    }
-
-    /** 营业日（BR-RPT-02）：退货时刻早于营业日起始时刻则归属前一日 */
-    private LocalDate businessDate(LocalDateTime now) {
-        LocalTime dayStart = LocalTime.parse(configService.getStr(CONFIG_BUSINESS_DAY_START, "00:00"));
-        return now.toLocalTime().isBefore(dayStart) ? now.toLocalDate().minusDays(1) : now.toLocalDate();
     }
 
     private String goodsName(Map<Long, Goods> goodsMap, ReturnOrderItem item) {

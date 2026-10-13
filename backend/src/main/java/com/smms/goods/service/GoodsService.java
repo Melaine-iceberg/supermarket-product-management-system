@@ -39,6 +39,7 @@ import com.smms.inv.mapper.InventoryRecordMapper;
 import com.smms.purchase.mapper.PurchaseOrderItemMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.sys.entity.OperationLog;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.OperationLogService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
@@ -81,6 +82,7 @@ public class GoodsService {
     private final SalesOrderItemMapper salesOrderItemMapper;
     private final SysConfigService configService;
     private final OperationLogService operationLogService;
+    private final BusinessDayService businessDayService;
 
     // ==================== 列表查询（FR-GOODS-03） ====================
 
@@ -609,6 +611,7 @@ public class GoodsService {
         record.setUnitCost(unitCost.setScale(4, RoundingMode.HALF_UP));
         record.setOperatorName(operator);
         record.setOperateTime(now);
+        record.setBusinessDate(businessDayService.businessDate(now));
         record.setRemark("商品建档期初建账");
         inventoryRecordMapper.insert(record);
     }

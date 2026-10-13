@@ -35,6 +35,7 @@ import com.smms.sale.mapper.PaymentRecordMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
@@ -47,7 +48,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -71,8 +71,6 @@ public class SalesCheckoutService {
     private static final long STORE_ID = 1L;
     /** 最低整单折扣率参数（BR-SALE-05/10） */
     private static final String CONFIG_MIN_DISCOUNT = "min_discount_rate";
-    /** 营业日起始时刻（BR-RPT-02 跨零点归属） */
-    private static final String CONFIG_BUSINESS_DAY_START = "business_day_start";
     /** 收款方式字典（FR-SYS-07）：停用项不可被新单据选择，字典缺失时回退内置枚举 */
     private static final String DICT_PAY_TYPE = "pay_type";
     /** 内置收款方式兜底（BALANCE 储值支付仅限会员单，FR-MEM-08） */
@@ -91,6 +89,7 @@ public class SalesCheckoutService {
     private final CashierShiftMapper shiftMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
+    private final BusinessDayService businessDayService;
     private final MemberBusinessService memberBusinessService;
     private final SensitiveAuthService sensitiveAuthService;
     private final SysDictService dictService;
@@ -611,7 +610,7 @@ public class SalesCheckoutService {
         order.setShiftId(workingShift == null ? null : workingShift.getId());
         order.setMemberId(cmd.memberId());
         order.setSaleTime(now);
-        order.setBusinessDate(businessDate(now));
+        order.setBusinessDate(businessDayService.businessDate(now));
         order.setItemCount(itemCount);
         order.setGoodsAmount(lines.goodsAmount());
         order.setMemberDiscountAmount(lines.memberDiscount());
@@ -730,12 +729,6 @@ public class SalesCheckoutService {
         record.setPayTime(now);
         record.setOperatorName(cashierName);
         return record;
-    }
-
-    /** 营业日（BR-RPT-02）：结算时刻早于营业日起始时刻则归属前一日 */
-    private LocalDate businessDate(LocalDateTime now) {
-        LocalTime dayStart = LocalTime.parse(configService.getStr(CONFIG_BUSINESS_DAY_START, "00:00"));
-        return now.toLocalTime().isBefore(dayStart) ? now.toLocalDate().minusDays(1) : now.toLocalDate();
     }
 
     private String goodsName(Long goodsId) {

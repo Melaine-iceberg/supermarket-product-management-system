@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.smms.common.exception.BusinessException;
 import com.smms.common.task.mapper.AsyncTaskMapper;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.OperationLogService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,6 +46,9 @@ class AsyncTaskServiceTest {
     @Mock
     private AsyncTaskMapper mapper;
 
+    @Mock
+    private OperationLogService operationLogService;
+
     @TempDir
     Path tempDir;
 
@@ -58,7 +62,7 @@ class AsyncTaskServiceTest {
         // MyBatis-Plus 条件构造器需要实体元信息（单测无 Spring 上下文）
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), AsyncTask.class);
         TaskFileStore fileStore = new TaskFileStore(tempDir.toString());
-        service = new AsyncTaskService(mapper, fileStore, new ObjectMapper(), sameThread, 24);
+        service = new AsyncTaskService(mapper, fileStore, new ObjectMapper(), sameThread, 24, operationLogService);
         loginAs(1L, "admin", false);
     }
 
@@ -100,6 +104,16 @@ class AsyncTaskServiceTest {
         assertThat(saved.getUsername()).isEqualTo("admin");
         assertThat(saved.getExpiresAt()).isAfter(LocalDateTime.now().plusHours(23));
         assertThat(Files.readAllBytes(Path.of(saved.getFilePath()))).isEqualTo(payload);
+
+        // GAP-P1-06：任务完成写操作日志（提交动作已有 @OpLog，此处补执行结果）
+        org.mockito.ArgumentCaptor<com.smms.sys.entity.OperationLog> logCaptor =
+                org.mockito.ArgumentCaptor.forClass(com.smms.sys.entity.OperationLog.class);
+        org.mockito.Mockito.verify(operationLogService).recordAsync(logCaptor.capture());
+        com.smms.sys.entity.OperationLog doneLog = logCaptor.getValue();
+        assertThat(doneLog.getModule()).isEqualTo("任务中心");
+        assertThat(doneLog.getAction()).contains("完成");
+        assertThat(doneLog.getResult()).isEqualTo(1);
+        assertThat(doneLog.getTarget()).isEqualTo("sales-daily.xlsx");
     }
 
     @Test
@@ -115,6 +129,16 @@ class AsyncTaskServiceTest {
         assertThat(saved.getErrorMessage()).contains("数据库连接中断");
         assertThat(saved.getFilePath()).isNull();
         assertThat(saved.getFinishTime()).isNotNull();
+
+        // GAP-P1-06：任务失败同样写操作日志（此前只落 async_task，提交日志无法反映真实结果）
+        org.mockito.ArgumentCaptor<com.smms.sys.entity.OperationLog> logCaptor =
+                org.mockito.ArgumentCaptor.forClass(com.smms.sys.entity.OperationLog.class);
+        org.mockito.Mockito.verify(operationLogService).recordAsync(logCaptor.capture());
+        com.smms.sys.entity.OperationLog failLog = logCaptor.getValue();
+        assertThat(failLog.getModule()).isEqualTo("任务中心");
+        assertThat(failLog.getAction()).contains("失败");
+        assertThat(failLog.getResult()).isEqualTo(0);
+        assertThat(failLog.getErrorMsg()).contains("数据库连接中断");
     }
 
     @Test
@@ -190,7 +214,7 @@ class AsyncTaskServiceTest {
         Executor rejecting = command -> {
             throw new java.util.concurrent.RejectedExecutionException("queue full");
         };
-        AsyncTaskService full = new AsyncTaskService(mapper, fileStore, new ObjectMapper(), rejecting, 24);
+        AsyncTaskService full = new AsyncTaskService(mapper, fileStore, new ObjectMapper(), rejecting, 24, operationLogService);
 
         assertThatThrownBy(() -> full.submitExport("GOODS_EXPORT", "商品导出", Map.of(), ctx -> new byte[0]))
                 .isInstanceOf(BusinessException.class)

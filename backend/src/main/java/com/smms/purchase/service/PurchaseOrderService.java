@@ -24,6 +24,7 @@ import com.smms.purchase.mapper.PurchaseOrderItemMapper;
 import com.smms.purchase.mapper.PurchaseOrderMapper;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -74,6 +75,7 @@ public class PurchaseOrderService {
     private final GoodsMapper goodsMapper;
     private final UnitMapper unitMapper;
     private final SysDictService dictService;
+    private final BusinessDayService businessDayService;
 
     // ==================== 创建草稿（FR-PUR-01） ====================
 
@@ -88,6 +90,8 @@ public class PurchaseOrderService {
         order.setSupplierId(supplier.getId());
         order.setStatus(PurchaseOrder.STATUS_DRAFT);
         order.setCreateBy(operator);
+        // 营业日（BR-RPT-02/GAP-P1-05）：采购报表按该字段聚合，不再运行时按 create_time 计算
+        order.setBusinessDate(businessDayService.businessDate(LocalDateTime.now()));
         order.setExpectDate(req.getExpectDate());
         order.setTotalAmount(totalOf(items));
         order.setReceivedAmount(BigDecimal.ZERO);

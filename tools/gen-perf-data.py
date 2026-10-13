@@ -400,7 +400,7 @@ class PerfDataGenerator:
         rec_rows = []
         # 与 apply_ledger 保持完全一致的列清单（同一张表的所有 INSERT 必须同构）
         rec_cols = ("id, goods_id, store_id, record_type, change_qty, before_qty, after_qty, unit_cost,"
-                    " biz_type, biz_no, operator_name, operate_time, remark")
+                    " biz_type, biz_no, operator_name, operate_time, business_date, remark")
         t0 = datetime(self.period_start.year, self.period_start.month, self.period_start.day, 8, 0, 0) - timedelta(days=1)
         t0s = dt_str(t0)
         for i in range(1, n + 1):
@@ -430,9 +430,9 @@ class PerfDataGenerator:
                 init_milli = init_milli // 1000 * 1000
             self.qty_milli[gid] = init_milli
             # INIT 流水 id 取 1..n 段（销售/采购等流水使用 10^9+ 独立段）
-            rec_rows.append("(%d, %d, 1, 'INIT', %s, 0, %s, %s, 'PD', NULL, 'system', %s, '仿真数据期初建账')" % (
+            rec_rows.append("(%d, %d, 1, 'INIT', %s, 0, %s, %s, 'PD', NULL, 'system', %s, %s, '仿真数据期初建账')" % (
                 i, gid, fmt_qty(init_milli, weighed), fmt_qty(init_milli, weighed),
-                fmt_cost4(p["cost_c"]), sql_str(t0s)))
+                fmt_cost4(p["cost_c"]), sql_str(t0s), sql_str(d_str(t0.date()))))
         for r in init_rows:
             self.w.insert("goods", gcols, r)
         for r in rec_rows:
@@ -537,15 +537,15 @@ class PerfDataGenerator:
                           "supplier_id, goods_id, supply_price, is_default, create_by",
                           "(%d, %d, %s, 1, 'perf-gen')" % (sid, gid, fmt_cents(g[4])))
         # 采购单
-        po_cols = ("id, order_no, supplier_id, status, create_by, create_time, submit_time, audit_by, audit_time,"
+        po_cols = ("id, order_no, supplier_id, status, create_by, create_time, business_date, submit_time, audit_by, audit_time,"
                    " expect_date, total_amount, received_amount, return_amount, settle_status, settle_amount,"
                    " settle_method, settle_date, settle_by, version, remark")
         poi_cols = "id, order_id, goods_id, quantity, price, amount, received_qty, returned_qty"
-        ro_cols = ("id, order_no, purchase_order_id, supplier_id, receipt_time, operator_name, authorizer_name,"
+        ro_cols = ("id, order_no, purchase_order_id, supplier_id, receipt_time, business_date, operator_name, authorizer_name,"
                    " delivery_order_no, total_amount, remark")
         roi_cols = "id, receipt_id, purchase_item_id, goods_id, received_qty, received_price, amount"
         pt_cols = ("id, order_no, purchase_order_id, supplier_id, status, return_reason, total_amount,"
-                   " create_by, create_time, audit_by, audit_time, remark")
+                   " create_by, create_time, business_date, audit_by, audit_time, remark")
         pt_item_cols = "id, return_id, purchase_item_id, goods_id, return_qty, return_price, amount"
         po_seq = {}
         rec_seq = {}
@@ -607,8 +607,9 @@ class PerfDataGenerator:
                 rkey = (recv_time.date(), 1)
                 rec_seq[rkey] = rec_seq.get(rkey, 0) + 1
                 rec_no = "RK%s%04d" % (d_str(recv_time.date()).replace("-", ""), rec_seq[rkey] % 10000)
-                self.w.insert("receipt_order", ro_cols, "(%d, %s, %d, %d, %s, '赵库管', NULL, %s, %s, '仿真数据')" % (
+                self.w.insert("receipt_order", ro_cols, "(%d, %s, %d, %d, %s, %s, '赵库管', NULL, %s, %s, '仿真数据')" % (
                     recv_id, sql_str(rec_no), po, sid, sql_str(dt_str(recv_time)),
+                    sql_str(d_str(recv_time.date())),
                     sql_str("DN%06d" % rng.randint(1, 999999)), fmt_cents(received_amount)))
                 events.append(("PURCHASE", recv_time, (recv_id, lines_recv)))
                 for gid, qty_r, price_r, price_po, qty_po, amount_r in lines_recv:
@@ -634,9 +635,10 @@ class PerfDataGenerator:
                         pt_no = "PT%s%02d%04d" % (d_str(t_rt.date()).replace("-", ""), sid, pt_seq[(t_rt.date(), sid)] % 10000)
                         amt_rt = qty_rt * price_po
                         self.w.insert("purchase_return_order", pt_cols,
-                                      "(%d, %s, %d, %d, 'APPROVED', '临近保质期退回', %s, '李采购', %s, '王店长', %s, NULL)" % (
+                                      "(%d, %s, %d, %d, 'APPROVED', '临近保质期退回', %s, '李采购', %s, %s, '王店长', %s, NULL)" % (
                                           pt_item_id, sql_str(pt_no), po, sid, fmt_cents(amt_rt),
-                                          sql_str(dt_str(t_rt)), sql_str(dt_str(t_rt + timedelta(hours=2)))))
+                                          sql_str(dt_str(t_rt)), sql_str(d_str(t_rt.date())),
+                                          sql_str(dt_str(t_rt + timedelta(hours=2)))))
                         self.w.insert("purchase_return_item", pt_item_cols, "(%d, %d, %d, %d, %s, %s, %s)" % (
                             pt_item_id, pt_item_id, poi_id, gid, fmt_qty(qty_rt * 1000, self.goods[gid][2]),
                             fmt_cents(price_po), fmt_cents(amt_rt)))
@@ -656,6 +658,7 @@ class PerfDataGenerator:
                 settle_status, settle_amount, settle_date, settle_method = "UNSETTLED", None, None, None
             po_vals = [
                 str(po), sql_str(no), str(sid), sql_str(status), "'李采购'", sql_str(dt_str(ct)),
+                sql_str(d_str(ct.date())),
                 sql_str(dt_str(submit)) if status != "DRAFT" else "NULL",
                 sql_str("王店长") if status not in ("SUBMITTED", "DRAFT") else "NULL",
                 sql_str(dt_str(audit)) if status not in ("SUBMITTED", "DRAFT") else "NULL",
@@ -687,7 +690,7 @@ class PerfDataGenerator:
         rng = self.rng
         events = []
         lo_cols = ("id, order_no, biz_type, goods_id, quantity, cost_price, amount, reason, apply_name,"
-                   " status, auditor_name, audit_time, remark")
+                   " status, auditor_name, audit_time, business_date, remark")
         seq = {}
         for i in range(1, ln + 1):
             t = self._ops_by_time(rng, self.period_start, self.period_end, 8, 20)
@@ -703,13 +706,14 @@ class PerfDataGenerator:
             no = "%s%s%04d" % ("BY" if overflow else "BS", d_str(t.date()).replace("-", ""),
                                seq[(t.date(), "BY" if overflow else "BS")] % 10000)
             self.w.insert("loss_order", lo_cols,
-                          "(%d, %s, %s, %d, %s, %s, %s, %s, '赵库管', %s, %s, %s, '仿真数据')" % (
+                          "(%d, %s, %s, %d, %s, %s, %s, %s, '赵库管', %s, %s, %s, %s, '仿真数据')" % (
                               i, sql_str(no), sql_str("OVERFLOW" if overflow else "LOSS"), gid,
                               fmt_qty(qty_milli, g[2]), fmt_cost4(cost_c), fmt_cents(amount),
                               sql_str(self.rng.choices(LOSS_REASONS, LOSS_REASON_WEIGHTS)[0]),
                               sql_str("AUDITED" if audited else "PENDING"),
                               sql_str("王店长") if audited else "NULL",
-                              sql_str(dt_str(t + timedelta(hours=2))) if audited else "NULL"))
+                              sql_str(dt_str(t + timedelta(hours=2))) if audited else "NULL",
+                              sql_str(d_str((t + timedelta(hours=2)).date() if audited else t.date()))))
             if audited:
                 events.append(("OVERFLOW" if overflow else "LOSS", t + timedelta(hours=2),
                                (gid, qty_milli, cost_c)))
@@ -766,12 +770,12 @@ class PerfDataGenerator:
         self.ledger_id += 1
         self.w.insert("inventory_record",
                       "id, goods_id, store_id, record_type, change_qty, before_qty, after_qty, unit_cost,"
-                      " biz_type, biz_no, operator_name, operate_time, remark",
-                      "(%d, %d, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)" % (
+                      " biz_type, biz_no, operator_name, operate_time, business_date, remark",
+                      "(%d, %d, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)" % (
                           self.ledger_id, gid, sql_str(record_type), fmt_qty(delta_milli, g[2]),
                           fmt_qty(cur, g[2]), fmt_qty(after, g[2]), fmt_cost4(unit_cost_c),
                           sql_str(biz_type) if biz_type else "NULL", sql_str(biz_no) if biz_no else "NULL",
-                          sql_str(operator), sql_str(dt_str(t))))
+                          sql_str(operator), sql_str(dt_str(t)), sql_str(d_str(t.date()))))
         self.last_change[gid] = t
         return after
 

@@ -123,8 +123,17 @@ public class MemberReportService {
 
     /** 生日提醒清单（⑥）：scope=month 当月 / week 未来 7 天（含今日） */
     public List<MemberRptRow> birthday(String scope, LoginUser user) {
+        return birthday(scope, null, user);
+    }
+
+    /** 生日提醒清单导出（FR-RPT-08）：取前 limit 行，超限由调用方校验 */
+    public List<MemberRptRow> birthdayForExport(String scope, int limit, LoginUser user) {
+        return birthday(scope, limit, user);
+    }
+
+    private List<MemberRptRow> birthday(String scope, Integer limit, LoginUser user) {
         String s = "week".equals(scope) ? "week" : "month";
-        return mask(mapper.selectBirthday(s), user);
+        return mask(mapper.selectBirthday(s, limit), user);
     }
 
     /** 沉睡天数 = 今天 − 最近消费（或注册）日期 */

@@ -27,6 +27,7 @@ import com.smms.purchase.mapper.ReceiptOrderMapper;
 import com.smms.security.LoginUser;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
@@ -82,6 +83,7 @@ public class ReceiptService {
     private final UnitMapper unitMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
+    private final BusinessDayService businessDayService;
     private final DutySeparationService dutySeparationService;
     private final SensitiveAuthService sensitiveAuthService;
 
@@ -399,7 +401,10 @@ public class ReceiptService {
         receipt.setStoreId(STORE_ID);
         receipt.setPurchaseOrderId(order.getId());
         receipt.setSupplierId(order.getSupplierId());
-        receipt.setReceiptTime(LocalDateTime.now());
+        LocalDateTime receiptTime = LocalDateTime.now();
+        receipt.setReceiptTime(receiptTime);
+        // 营业日（BR-RPT-02/GAP-P1-05）：与入库时刻同源，采购报表/到货及时率按该字段聚合
+        receipt.setBusinessDate(businessDayService.businessDate(receiptTime));
         receipt.setOperatorName(operator.realName());
         receipt.setAuthorizerName(authorizerName);
         receipt.setDeliveryOrderNo(req.getDeliveryOrderNo());

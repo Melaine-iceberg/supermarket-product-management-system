@@ -27,6 +27,7 @@ import com.smms.purchase.service.ReceiptService;
 import com.smms.security.LoginUser;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.OperationLogService;
 import com.smms.sys.service.SensitiveAuthService;
@@ -94,7 +95,7 @@ class ReceiptServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
         service = new ReceiptService(orderMapper, orderItemMapper, purchaseOrderService,
                 receiptMapper, receiptItemMapper, supplierMapper, goodsMapper, unitMapper,
-                inventoryService, configService,
+                inventoryService, configService, new BusinessDayService(configService),
                 new DutySeparationService(configService, operationLogService), sensitiveAuthService);
     }
 
@@ -111,6 +112,10 @@ class ReceiptServiceTest {
 
         assertThat(vo.orderNo()).isEqualTo("RK" + TODAY + "0001");
         assertThat(vo.authorizerName()).isNull();
+        // 营业日（BR-RPT-02/GAP-P1-05）：与入库时刻同源写入，到货及时率报表按该字段聚合
+        ArgumentCaptor<ReceiptOrder> receiptCaptor = ArgumentCaptor.forClass(ReceiptOrder.class);
+        verify(receiptMapper).insert(receiptCaptor.capture());
+        assertThat(receiptCaptor.getValue().getBusinessDate()).isEqualTo(LocalDate.now());
         // 库存流水：PURCHASE_IN，单价取实收单价 9.80（BR-PUR-07）
         ArgumentCaptor<StockChange> stockCaptor = ArgumentCaptor.forClass(StockChange.class);
         verify(inventoryService).stockIn(stockCaptor.capture());

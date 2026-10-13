@@ -8,14 +8,12 @@ import com.smms.rpt.dto.SalesGroupRow;
 import com.smms.rpt.dto.SalesMetrics;
 import com.smms.rpt.mapper.ReportMapper;
 import com.smms.security.LoginUser;
-import com.smms.sys.service.SysConfigService;
+import com.smms.sys.service.BusinessDayService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,12 +32,13 @@ public class DashboardService {
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private final ReportMapper reportMapper;
-    private final SysConfigService configService;
+    private final BusinessDayService businessDayService;
 
     /** 看板汇总：今日 KPI + 待办 + 近 N 日趋势 + TOP10 热销（trendDays 支持 7/30） */
     public DashboardVO summary(int trendDays, LoginUser user) {
         int days = trendDays == 30 ? 30 : 7;
-        LocalDate today = LocalDate.now();
+        // GAP-P1-05：看板"今日"取当前营业日（business_day_start 起算），与销售报表 business_date 口径一致
+        LocalDate today = businessDayService.today();
         boolean canProfit = RptRoles.canViewProfit(user);
 
         DashboardVO.KpiVO kpi = kpi(today, canProfit);
@@ -60,7 +59,7 @@ public class DashboardService {
         BigDecimal profitAmount = canProfit ? m.profitAmount() : null;
         BigDecimal profitRate = canProfit ? m.profitRate() : null;
         return new DashboardVO.KpiVO(m.salesAmount(), m.orderCount(), profitAmount, profitRate,
-                reportMapper.countNewMembers(dayBegin(today), dayEnd(today)),
+                reportMapper.countNewMembers(businessDayService.dayBegin(today), businessDayService.dayEnd(today)),
                 reportMapper.countWarningGoods());
     }
 
@@ -116,23 +115,6 @@ public class DashboardService {
 
     private boolean hasPerm(LoginUser user, String perm) {
         return user.permCodes() != null && user.permCodes().contains(perm);
-    }
-
-    /** 营业日窗口（BR-RPT-02）：business_day_start 起算 */
-    private LocalDateTime dayBegin(LocalDate today) {
-        return LocalDateTime.of(today, businessDayStart());
-    }
-
-    private LocalDateTime dayEnd(LocalDate today) {
-        return LocalDateTime.of(today.plusDays(1), businessDayStart());
-    }
-
-    private LocalTime businessDayStart() {
-        try {
-            return LocalTime.parse(configService.getStr("business_day_start", "00:00"));
-        } catch (Exception e) {
-            return LocalTime.MIDNIGHT;
-        }
     }
 
     private static final class Cell {

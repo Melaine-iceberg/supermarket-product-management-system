@@ -36,5 +36,5 @@ public interface MemberReportMapper {
     IPage<MemberRptRow> selectSleeping(Page<MemberRptRow> page, @Param("deadline") LocalDateTime deadline);
 
     /** 生日提醒清单（scope=month 当月 / week 本周 7 天内） */
-    List<MemberRptRow> selectBirthday(@Param("scope") String scope);
+    List<MemberRptRow> selectBirthday(@Param("scope") String scope, @Param("limit") Integer limit);
 }

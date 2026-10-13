@@ -34,6 +34,7 @@ import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.sale.mapper.SalesOrderItemMapper;
 import com.smms.sale.service.SalesCheckoutService;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import com.smms.sys.service.SysDictService;
@@ -120,7 +121,8 @@ class SalesCheckoutServiceTest {
         lenient().when(configService.getStr(KEY_MIN_DISCOUNT, "0.7")).thenReturn("0.7");
         service = new SalesCheckoutService(salesOrderMapper, salesOrderItemMapper, paymentRecordMapper,
                 goodsMapper, promotionMapper, inventoryMapper, memberMapper, memberLevelMapper,
-                shiftMapper, inventoryService, configService, memberBusinessService, sensitiveAuthService,
+                shiftMapper, inventoryService, configService, new BusinessDayService(configService),
+                memberBusinessService, sensitiveAuthService,
                 dictService, categoryService);
     }
 

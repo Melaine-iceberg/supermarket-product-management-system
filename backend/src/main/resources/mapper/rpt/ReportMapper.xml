@@ -287,7 +287,8 @@
 
     <!-- ==================== 商品销售分析（FR-RPT-03） ==================== -->
 
-    <!-- 商品销售排行（按销量/销售额/毛利额；毛利额为快照口径 AC-17：Σ(实付−成本快照×数量)） -->
+    <!-- 商品销售排行（按销量/销售额/毛利额；BR-RPT-01 统一口径：毛利额 = (净销售额−退货额) − (成本−退货成本回冲)，
+         销售/退货快照成本不随调价变化（AC-17）；退货子查询按 goods_id 聚合后 1:1 关联，避免明细行放大） -->
     <select id="selectGoodsRanking" resultType="com.smms.rpt.dto.GoodsRankRow">
         SELECT soi.goods_id                    AS goodsId,
                g.goods_code                    AS goodsCode,
@@ -301,10 +302,11 @@
                COALESCE(SUM(soi.amount), 0)     AS salesAmount,
                COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
                COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
-               NULL AS refundAmount,
+               COALESCE(MAX(r.refundAmount), 0) AS refundAmount,
                COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
-               NULL AS returnCostAmount,
-               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               COALESCE(MAX(r.returnCostAmount), 0) AS returnCostAmount,
+               (COALESCE(SUM(soi.paid_amount), 0) - COALESCE(MAX(r.refundAmount), 0)
+                    - COALESCE(SUM(soi.cost_amount), 0) + COALESCE(MAX(r.returnCostAmount), 0)) AS profitAmount,
                NULL AS profitRate,
                NULL AS shareRate,
                NULL AS stockQty,
@@ -316,6 +318,14 @@
         LEFT JOIN goods g ON g.id = soi.goods_id
         LEFT JOIN category c ON c.id = g.category_id
         LEFT JOIN brand b ON b.id = g.brand_id
+        LEFT JOIN (SELECT roi.goods_id AS gid,
+                          SUM(roi.refund_amount) AS refundAmount,
+                          SUM(roi.cost_amount)   AS returnCostAmount
+                   FROM return_order_item roi
+                   JOIN return_order ro ON ro.id = roi.return_id
+                   WHERE ro.business_date BETWEEN #{begin} AND #{end}
+                     AND roi.goods_id IS NOT NULL
+                   GROUP BY roi.goods_id) r ON r.gid = soi.goods_id
         WHERE so.business_date BETWEEN #{begin} AND #{end}
           AND soi.goods_id IS NOT NULL
         <if test="categoryId != null">
@@ -325,7 +335,8 @@
         ORDER BY ${orderBy} DESC, soi.goods_id
     </select>
 
-    <!-- 品类销售结构（各分类销售额与占比，饼图/矩形树图；毛利分析分类维度复用） -->
+    <!-- 品类销售结构（各分类销售额与占比，饼图/矩形树图；毛利分析分类维度复用；
+         BR-RPT-01 统一口径：退货按分类聚合后 1:1 关联） -->
     <select id="selectCategoryStructure" resultType="com.smms.rpt.dto.GoodsRankRow">
         SELECT NULL AS goodsId,
                NULL AS goodsCode,
@@ -339,10 +350,11 @@
                COALESCE(SUM(soi.amount), 0)     AS salesAmount,
                COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
                COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
-               NULL AS refundAmount,
+               COALESCE(MAX(r.refundAmount), 0) AS refundAmount,
                COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
-               NULL AS returnCostAmount,
-               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               COALESCE(MAX(r.returnCostAmount), 0) AS returnCostAmount,
+               (COALESCE(SUM(soi.paid_amount), 0) - COALESCE(MAX(r.refundAmount), 0)
+                    - COALESCE(SUM(soi.cost_amount), 0) + COALESCE(MAX(r.returnCostAmount), 0)) AS profitAmount,
                NULL AS profitRate,
                NULL AS shareRate,
                NULL AS stockQty,
@@ -353,12 +365,20 @@
         JOIN sales_order so ON so.id = soi.order_id
         JOIN goods g ON g.id = soi.goods_id
         JOIN category c ON c.id = g.category_id
+        LEFT JOIN (SELECT g2.category_id AS cid,
+                          SUM(roi.refund_amount) AS refundAmount,
+                          SUM(roi.cost_amount)   AS returnCostAmount
+                   FROM return_order_item roi
+                   JOIN return_order ro ON ro.id = roi.return_id
+                   JOIN goods g2 ON g2.id = roi.goods_id
+                   WHERE ro.business_date BETWEEN #{begin} AND #{end}
+                   GROUP BY g2.category_id) r ON r.cid = c.id
         WHERE so.business_date BETWEEN #{begin} AND #{end}
         GROUP BY c.id, c.name
         ORDER BY salesAmount DESC
     </select>
 
-    <!-- 品牌销售分析 -->
+    <!-- 品牌销售分析（BR-RPT-01 统一口径：退货按品牌聚合后 1:1 关联） -->
     <select id="selectBrandSales" resultType="com.smms.rpt.dto.GoodsRankRow">
         SELECT NULL AS goodsId,
                NULL AS goodsCode,
@@ -372,10 +392,11 @@
                COALESCE(SUM(soi.amount), 0)     AS salesAmount,
                COALESCE(SUM(soi.discount_amount), 0) AS discountAmount,
                COALESCE(SUM(soi.paid_amount), 0) AS netSalesAmount,
-               NULL AS refundAmount,
+               COALESCE(MAX(r.refundAmount), 0) AS refundAmount,
                COALESCE(SUM(soi.cost_amount), 0)   AS costAmount,
-               NULL AS returnCostAmount,
-               COALESCE(SUM(soi.profit_amount), 0) AS profitAmount,
+               COALESCE(MAX(r.returnCostAmount), 0) AS returnCostAmount,
+               (COALESCE(SUM(soi.paid_amount), 0) - COALESCE(MAX(r.refundAmount), 0)
+                    - COALESCE(SUM(soi.cost_amount), 0) + COALESCE(MAX(r.returnCostAmount), 0)) AS profitAmount,
                NULL AS profitRate,
                NULL AS shareRate,
                NULL AS stockQty,
@@ -386,6 +407,14 @@
         JOIN sales_order so ON so.id = soi.order_id
         JOIN goods g ON g.id = soi.goods_id
         JOIN brand b ON b.id = g.brand_id
+        LEFT JOIN (SELECT g2.brand_id AS bid,
+                          SUM(roi.refund_amount) AS refundAmount,
+                          SUM(roi.cost_amount)   AS returnCostAmount
+                   FROM return_order_item roi
+                   JOIN return_order ro ON ro.id = roi.return_id
+                   JOIN goods g2 ON g2.id = roi.goods_id
+                   WHERE ro.business_date BETWEEN #{begin} AND #{end}
+                   GROUP BY g2.brand_id) r ON r.bid = g.brand_id
         WHERE so.business_date BETWEEN #{begin} AND #{end}
         GROUP BY b.id, b.name
         ORDER BY salesAmount DESC

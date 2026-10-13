@@ -142,6 +142,7 @@ public class ProfitReportController {
                 TaskParams.of("view", view, "beginDate", beginDate, "endDate", endDate, "categoryId", categoryId),
                 ctx -> {
             ReportRange range = new ReportRange(beginDate, endDate);
+            int limit = excelService.maxRows() + 1;
             List<String[]> rows = new ArrayList<>();
             String sheet;
             String[] columns;
@@ -150,8 +151,7 @@ public class ProfitReportController {
                     sheet = "商品毛利分析";
                     columns = GOODS_COLUMNS;
                     List<GoodsRankRow> list = profitReportService.byGoodsForExport(
-                            range, categoryId, excelService.maxRows() + 1, ctx.user());
-                    excelService.checkLimit(list.size());
+                            range, categoryId, limit, ctx.user());
                     list.forEach(r -> rows.add(new String[]{
                             text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()), text(r.brandName()),
                             String.valueOf(r.orderCount()), qty(r.qty()), amount(r.salesAmount()),
@@ -182,7 +182,7 @@ public class ProfitReportController {
                 case "negative" -> {
                     sheet = "负毛利商品清单";
                     columns = NEGATIVE_COLUMNS;
-                    profitReportService.negative(range, ctx.user())
+                    profitReportService.negativeForExport(range, limit, ctx.user())
                             .forEach(r -> rows.add(new String[]{
                                     text(r.goodsCode()), text(r.goodsName()), text(r.categoryName()),
                                     amount(r.unitPrice()), amount(r.costPrice()), amount(r.unitProfit()),
@@ -191,6 +191,8 @@ public class ProfitReportController {
                 }
                 default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "导出视图不合法");
             }
+            // GAP-P1-06：全部视图统一执行导出行数上限校验（超限明确提示缩小范围，FR-RPT-08）
+            excelService.checkLimit(rows.size());
             ctx.fileName("profit-" + view + ".xlsx");
             return excelService.build(new ReportExcelService.Table(sheet, columns, rows));
                 }));

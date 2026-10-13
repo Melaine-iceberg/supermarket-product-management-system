@@ -52,6 +52,9 @@ public class PurchaseOrder {
 
     private LocalDateTime createTime;
 
+    /** 营业日（BR-RPT-02，GAP-P1-05）：按下单时刻归属 */
+    private LocalDate businessDate;
+
     private LocalDateTime submitTime;
 
     private String auditBy;

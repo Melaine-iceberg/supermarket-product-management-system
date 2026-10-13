@@ -20,6 +20,8 @@ import com.smms.sys.entity.SysDict;
 import com.smms.sys.entity.SysDictItem;
 import com.smms.sys.mapper.SysDictItemMapper;
 import com.smms.sys.mapper.SysDictMapper;
+import com.smms.sys.service.BusinessDayService;
+import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -63,6 +66,7 @@ class LossOrderServiceTest {
     @Mock private InventoryService inventoryService;
     @Mock private SysDictMapper dictMapper;
     @Mock private SysDictItemMapper dictItemMapper;
+    @Mock private SysConfigService configService;
 
     private LossOrderService service;
 
@@ -72,7 +76,7 @@ class LossOrderServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SysDict.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SysDictItem.class);
         service = new LossOrderService(lossOrderMapper, goodsMapper, inventoryMapper,
-                inventoryService, dictMapper, dictItemMapper);
+                inventoryService, dictMapper, dictItemMapper, new BusinessDayService(configService));
     }
 
     // ---------- 造数 ----------
@@ -165,6 +169,8 @@ class LossOrderServiceTest {
         assertThat(order.getReason()).isEqualTo("EXPIRED");
         assertThat(order.getApplyName()).isEqualTo(APPLIER);
         assertThat(order.getStatus()).isEqualTo("PENDING");
+        // 营业日（BR-RPT-02/GAP-P1-05）：申请落库即写入，审核通过后改写为审核营业日
+        assertThat(order.getBusinessDate()).isEqualTo(LocalDate.now());
         assertThat(order.getRemark()).isEqualTo("过期清理");
     }
 

@@ -21,6 +21,7 @@ import com.smms.sys.entity.SysDict;
 import com.smms.sys.entity.SysDictItem;
 import com.smms.sys.mapper.SysDictItemMapper;
 import com.smms.sys.mapper.SysDictMapper;
+import com.smms.sys.service.BusinessDayService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +61,7 @@ public class LossOrderService {
     private final InventoryService inventoryService;
     private final SysDictMapper dictMapper;
     private final SysDictItemMapper dictItemMapper;
+    private final BusinessDayService businessDayService;
 
     // ==================== 登记（FR-INV-10） ====================
 
@@ -95,6 +97,8 @@ public class LossOrderService {
         order.setReason(reason);
         order.setApplyName(applyName);
         order.setStatus(STATUS_PENDING);
+        // 营业日（BR-RPT-02/GAP-P1-05）：创建时按申请时刻归属，审核通过后改写为审核时刻所属营业日
+        order.setBusinessDate(businessDayService.businessDate(LocalDateTime.now()));
         order.setRemark(trimToNull(req.remark()));
         lossOrderMapper.insert(order);
         return detail(order.getId());
@@ -231,7 +235,10 @@ public class LossOrderService {
         LossOrder patch = new LossOrder();
         patch.setStatus(STATUS_AUDITED);
         patch.setAuditorName(auditorName);
-        patch.setAuditTime(LocalDateTime.now());
+        LocalDateTime auditTime = LocalDateTime.now();
+        patch.setAuditTime(auditTime);
+        // 营业日按审核时刻改写（损耗报表按审核营业日聚合，与盘亏口径一致）
+        patch.setBusinessDate(businessDayService.businessDate(auditTime));
         patch.setAuditRemark(cleanRemark);
         if (loss) {
             // 报损金额按审核出库时实际结转成本定稿，与流水快照一致（BR-INV-06）

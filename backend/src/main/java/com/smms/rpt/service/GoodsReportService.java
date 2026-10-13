@@ -22,7 +22,8 @@ import java.util.Set;
 /**
  * 商品销售分析（FR-RPT-03）：商品销售排行（销量/销售额/毛利额，TOP N 与全量）、
  * 品类销售结构、滞销商品清单、品牌销售分析。
- * 毛利额为快照口径（AC-17）：Σ(实付金额 − 成本快照 × 数量)。
+ * 毛利额按 BR-RPT-01 统一口径：Σ(实付−成本快照×数量)（AC-17）
+ * 再扣减退货冲减（退款额 − 退货成本回冲），与销售日报一致（GAP-P0-10①）。
  */
 @Service
 @RequiredArgsConstructor
@@ -134,9 +135,9 @@ public class GoodsReportService {
                 r.stockQty(), r.costPrice(), r.occupiedAmount(), r.retailPrice());
     }
 
-    /** 毛利率 = 毛利额 / 净销售 × 100%（净销售为 0 显示 "—"，BR-RPT-01） */
+    /** 毛利率 = 毛利额 / 净销售 × 100%，净销售 = 净销售额 − 退货额（BR-RPT-01；净销售为 0 显示 "—"） */
     private BigDecimal profitRate(GoodsRankRow r) {
-        BigDecimal net = nvl(r.netSalesAmount());
+        BigDecimal net = nvl(r.netSalesAmount()).subtract(nvl(r.refundAmount()));
         if (net.compareTo(BigDecimal.ZERO) == 0) {
             return null;
         }
@@ -156,7 +157,7 @@ public class GoodsReportService {
         return v == null ? BigDecimal.ZERO : v;
     }
 
-    /** BR-RPT-07：无毛利权限时成本/毛利字段不返回（而非前端隐藏） */
+    /** BR-RPT-07：无毛利权限时成本/毛利字段不返回（而非前端隐藏）；占用资金 = 结存×成本单价，可反推成本，一并置空（GAP-P0-10②） */
     private GoodsRankRow mask(GoodsRankRow r, boolean canProfit) {
         if (canProfit) {
             return r;
@@ -165,6 +166,6 @@ public class GoodsReportService {
                 r.categoryId(), r.categoryName(), r.brandId(), r.brandName(),
                 r.orderCount(), r.qty(), r.salesAmount(), r.discountAmount(),
                 r.netSalesAmount(), r.refundAmount(), null, null,
-                null, null, r.shareRate(), r.stockQty(), null, r.occupiedAmount(), r.retailPrice());
+                null, null, r.shareRate(), r.stockQty(), null, null, r.retailPrice());
     }
 }

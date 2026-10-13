@@ -3,14 +3,24 @@ package com.smms.rpt;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
+import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.goods.dto.GoodsListVO;
 import com.smms.goods.dto.GoodsQuery;
 import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.service.GoodsService;
+import com.smms.rpt.dto.DrillInvRecordQuery;
+import com.smms.rpt.dto.DrillInvRecordRow;
+import com.smms.rpt.dto.GoodsRankRow;
+import com.smms.rpt.dto.InvSummaryRow;
+import com.smms.rpt.dto.PurchSummaryRow;
 import com.smms.rpt.dto.ReportRange;
 import com.smms.rpt.dto.SalesReportRow;
 import com.smms.rpt.dto.SalesReportVO;
+import com.smms.rpt.service.DrillDownService;
+import com.smms.rpt.service.GoodsReportService;
+import com.smms.rpt.service.InventoryReportService;
+import com.smms.rpt.service.PurchaseReportService;
 import com.smms.rpt.service.ReportExcelService;
 import com.smms.rpt.service.SalesReportService;
 import com.smms.security.LoginUser;
@@ -48,13 +58,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 批次一（数据正确性）回归集成测试，Testcontainers 起真 MariaDB（无 Docker 自动跳过）：
+ * 批次一/批次三回归集成测试，Testcontainers 起真 MariaDB（无 Docker 自动跳过）：
  *
  * <ul>
  *   <li>GAP-P0-02：销售月报按“月”正确聚合（修复前月报只保留每月最后一天）；</li>
  *   <li>GAP-P0-03：日报/月报退货额与退货单数按“退货单”口径（修复前一单多明细时退款额被重复计、单数记成明细行数）；</li>
  *   <li>GAP-P0-01：导出查询突破 IR-COM-04 单页 500 条上限，同时全局保护仍在（普通分页仍截断），
- *       并校验 FR-RPT-08 的 5 万行超限提示可达。</li>
+ *       并校验 FR-RPT-08 的 5 万行超限提示可达；</li>
+ *   <li>GAP-P0-10①：商品/品类毛利扣减退货后与销售日报 BR-RPT-01 口径一致；</li>
+ *   <li>GAP-P0-10②③：无毛利权限角色在库存/采购汇总与下钻中看不到成本类字段（真实 SQL 路径）；</li>
+ *   <li>GAP-P1-05：采购/库存/损耗报表按 business_date 聚合，不再按 create_time/operate_time/audit_time。</li>
  * </ul>
  */
 @Testcontainers(disabledWithoutDocker = true)
@@ -88,8 +101,23 @@ class ReportAggregationExportIntegrationTest {
     private static final LoginUser MANAGER = new LoginUser(2L, "manager", "王店长",
             List.of("MANAGER"), List.of("店长"), Set.of(), "fp", false);
 
+    private static final LoginUser CASHIER = new LoginUser(5L, "cashier", "陈收银",
+            List.of("CASHIER"), List.of("收银员"), Set.of(), "fp", false);
+
     @Autowired
     private SalesReportService salesReportService;
+
+    @Autowired
+    private GoodsReportService goodsReportService;
+
+    @Autowired
+    private InventoryReportService inventoryReportService;
+
+    @Autowired
+    private PurchaseReportService purchaseReportService;
+
+    @Autowired
+    private DrillDownService drillDownService;
 
     @Autowired
     private ReportExcelService reportExcelService;
@@ -184,7 +212,230 @@ class ReportAggregationExportIntegrationTest {
                 .isEqualTo(ErrorCode.PARAM_INVALID.getCode());
     }
 
+    // ==================== GAP-P0-10：报表口径统一与成本掩码 ====================
+
+    @Test
+    @DisplayName("商品/品类毛利扣减退货后与销售日报 BR-RPT-01 口径一致（GAP-P0-10①）")
+    void goodsRankingDeductsReturnsAndMatchesDailyReport() {
+        long categoryId = ensureCategory("批次三毛利口径分类");
+        long unitId = ensureUnit("件");
+        Long goodsId = insertGoodsRow(categoryId, unitId, "T3G001", "口径测试商品");
+        LocalDate day = LocalDate.of(2026, 4, 15);
+
+        // 两笔销售：200 + 100（成本 120 + 60）；一笔退货：退 50、成本回冲 60
+        long so1 = insertSalesOrder("XS202604150001", day, "200.00", "120.00", 2);
+        insertSalesItem(so1, goodsId, "口径测试商品", "100.00", "2", "200.00", "60.00", "120.00");
+        long so2 = insertSalesOrder("XS202604150002", day, "100.00", "60.00", 1);
+        insertSalesItem(so2, goodsId, "口径测试商品", "100.00", "1", "100.00", "60.00", "60.00");
+        long rt = insertReturnOrder("XT202604150001", so1, day, "50.00");
+        insertReturnItemForGoods(rt, goodsId, "50.00", "60.00");
+
+        ReportRange range = new ReportRange(day, day);
+
+        // 商品排行：净销售 = 300 − 50 = 250；销售成本 = 180 − 60 = 120；毛利 = 130；毛利率 = 52%
+        GoodsRankRow rank = goodsReportService.ranking(range, "salesAmount", categoryId, 1, 20, MANAGER)
+                .list().stream().filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
+        assertThat(rank.refundAmount()).isEqualByComparingTo("50.00");
+        assertThat(rank.returnCostAmount()).isEqualByComparingTo("60.00");
+        assertThat(rank.costAmount()).isEqualByComparingTo("180.00");
+        assertThat(rank.profitAmount()).isEqualByComparingTo("130.00");
+        assertThat(rank.profitRate()).isEqualByComparingTo("52.00");
+
+        // 品类维度复用同一口径
+        GoodsRankRow catRow = goodsReportService.categoryStructure(range, MANAGER).stream()
+                .filter(r -> Long.valueOf(categoryId).equals(r.categoryId())).findFirst().orElseThrow();
+        assertThat(catRow.refundAmount()).isEqualByComparingTo("50.00");
+        assertThat(catRow.profitAmount()).isEqualByComparingTo("130.00");
+
+        // 与同日销售日报逐项一致（BR-RPT-01 全系统唯一定义）
+        SalesReportRow daily = salesReportService.daily(range, false, MANAGER).rows().stream()
+                .filter(r -> day.equals(r.bizDate())).findFirst().orElseThrow();
+        assertThat(daily.netAmount()).isEqualByComparingTo("250.00");
+        assertThat(daily.refundAmount()).isEqualByComparingTo("50.00");
+        assertThat(daily.profitAmount()).isEqualByComparingTo("130.00");
+        assertThat(daily.profitRate()).isEqualByComparingTo("52.00");
+    }
+
+    @Test
+    @DisplayName("无毛利权限角色：库存/采购汇总与下钻成本类字段不返回（GAP-P0-10②③）")
+    void nonPrivilegedUserSeesMaskedCostFields() {
+        long categoryId = ensureCategory("批次三掩码分类");
+        long unitId = ensureUnit("件");
+        Long goodsId = insertGoodsRow(categoryId, unitId, "T3G002", "掩码测试商品");
+        LocalDate day = LocalDate.of(2026, 4, 20);
+
+        jdbcTemplate.update("""
+                INSERT INTO inventory (goods_id, store_id, quantity, cost_price, cost_amount)
+                VALUES (?, 1, 5, 12.0000, 60.00)
+                """, goodsId);
+        long supplierId = ensureSupplier("批次三掩码供应商", "S-T3-002");
+        long poId = insertPurchaseOrderRow("PO202604200001", supplierId, day, day, "APPROVED", "100.00");
+        jdbcTemplate.update("""
+                INSERT INTO purchase_order_item (order_id, goods_id, quantity, price, amount, received_qty, returned_qty)
+                VALUES (?, ?, 10, 10.00, 100.00, 0, 0)
+                """, poId, goodsId);
+        jdbcTemplate.update("""
+                INSERT INTO inventory_record (goods_id, store_id, record_type, change_qty, before_qty, after_qty,
+                                              unit_cost, biz_type, operator_name, operate_time, business_date)
+                VALUES (?, 1, 'PURCHASE_IN', 10, 0, 10, 10.0000, 'RK', '赵库管', ?, ?)
+                """, goodsId, day.atTime(9, 0), day);
+
+        ReportRange range = new ReportRange(day, day);
+
+        // 库存汇总：收银员（非店长）看不到成本单价/成本金额，数量与零售价值保留
+        InvSummaryRow maskedInv = inventoryReportService.summaryByGoods(categoryId, 1, 50, CASHIER)
+                .list().stream().filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
+        assertThat(maskedInv.costPrice()).isNull();
+        assertThat(maskedInv.costAmount()).isNull();
+        assertThat(maskedInv.stockQty()).isEqualByComparingTo("5");
+
+        // 采购汇总：采购金额/退货金额/结算金额不返回，数量保留
+        PurchSummaryRow maskedPurch = purchaseReportService.summary(range, "goods", CASHIER).stream()
+                .filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
+        assertThat(maskedPurch.purchaseAmount()).isNull();
+        assertThat(maskedPurch.settledAmount()).isNull();
+        assertThat(maskedPurch.purchaseQty()).isEqualByComparingTo("10");
+
+        // 下钻流水：单位成本不返回
+        PageVO<DrillInvRecordRow> drills = drillDownService.inventoryRecords(
+                new DrillInvRecordQuery(day, day, "PURCHASE_IN", goodsId, 1, 20), CASHIER);
+        assertThat(drills.list()).isNotEmpty();
+        assertThat(drills.list().get(0).unitCost()).isNull();
+
+        // 店长完整可见（同一 SQL 路径）
+        InvSummaryRow fullInv = inventoryReportService.summaryByGoods(categoryId, 1, 50, MANAGER)
+                .list().stream().filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
+        assertThat(fullInv.costPrice()).isEqualByComparingTo("12.0000");
+        assertThat(fullInv.costAmount()).isEqualByComparingTo("60.00");
+        PurchSummaryRow fullPurch = purchaseReportService.summary(range, "goods", MANAGER).stream()
+                .filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
+        assertThat(fullPurch.purchaseAmount()).isEqualByComparingTo("100.00");
+        assertThat(drillDownService.inventoryRecords(
+                        new DrillInvRecordQuery(day, day, "PURCHASE_IN", goodsId, 1, 20), MANAGER)
+                .list().get(0).unitCost()).isEqualByComparingTo("10.0000");
+    }
+
+    // ==================== GAP-P1-05：报表按营业日聚合 ====================
+
+    @Test
+    @DisplayName("采购/库存/损耗报表按 business_date 聚合，不再按 create_time/operate_time/audit_time（GAP-P1-05）")
+    void reportsAggregateByBusinessDate() {
+        long categoryId = ensureCategory("批次三营业日分类");
+        long unitId = ensureUnit("件");
+        Long goodsId = insertGoodsRow(categoryId, unitId, "T3G003", "营业日测试商品");
+        LocalDate bizDay = LocalDate.of(2026, 5, 1);
+        LocalDate actualDay = LocalDate.of(2026, 5, 10);
+
+        // 采购单：创建时间为实际时刻（5/10），营业日为 5/1
+        long supplierId = ensureSupplier("批次三营业日供应商", "S-T3-003");
+        long poId = insertPurchaseOrderRow("PO202605100001", supplierId, bizDay, actualDay, "APPROVED", "100.00");
+        jdbcTemplate.update("""
+                INSERT INTO purchase_order_item (order_id, goods_id, quantity, price, amount, received_qty, returned_qty)
+                VALUES (?, ?, 5, 20.00, 100.00, 0, 0)
+                """, poId, goodsId);
+
+        // 库存流水：记账时间为 5/10，营业日为 5/1
+        jdbcTemplate.update("""
+                INSERT INTO inventory_record (goods_id, store_id, record_type, change_qty, before_qty, after_qty,
+                                              unit_cost, biz_type, operator_name, operate_time, business_date)
+                VALUES (?, 1, 'LOSS_OUT', -1, 10, 9, 20.0000, 'BS', '赵库管', ?, ?)
+                """, goodsId, actualDay.atTime(10, 0), bizDay);
+
+        // 报损单：审核时间为 5/10，营业日为 5/1
+        jdbcTemplate.update("""
+                INSERT INTO loss_order (order_no, biz_type, goods_id, quantity, cost_price, amount, reason,
+                                        apply_name, status, auditor_name, audit_time, business_date)
+                VALUES ('BS202605100001', 'LOSS', ?, 2, 12.0000, 24.00, 'EXPIRED', '赵库管', 'AUDITED', '王店长', ?, ?)
+                """, goodsId, actualDay.atTime(11, 0), bizDay);
+
+        // 营业日 5/1：三张报表都命中
+        assertThat(purchaseReportService.summary(new ReportRange(bizDay, bizDay), "goods", MANAGER))
+                .anyMatch(r -> goodsId.equals(r.goodsId()) && r.purchaseAmount().compareTo(new BigDecimal("100.00")) == 0);
+        assertThat(inventoryReportService.changes(new ReportRange(bizDay, bizDay), MANAGER))
+                .anyMatch(r -> "LOSS_OUT".equals(r.recordType()) && r.recordCount() == 1);
+        assertThat(inventoryReportService.loss(new ReportRange(bizDay, bizDay), MANAGER).totalLossAmount())
+                .isEqualByComparingTo("24.00");
+
+        // 实际日历日 5/10（旧口径 create_time/operate_time/audit_time）不得命中
+        assertThat(purchaseReportService.summary(new ReportRange(actualDay, actualDay), "goods", MANAGER))
+                .noneMatch(r -> goodsId.equals(r.goodsId()));
+        assertThat(inventoryReportService.changes(new ReportRange(actualDay, actualDay), MANAGER))
+                .noneMatch(r -> "LOSS_OUT".equals(r.recordType()));
+        assertThat(inventoryReportService.loss(new ReportRange(actualDay, actualDay), MANAGER).totalLossAmount())
+                .isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    @DisplayName("采购导出按 limit 取数（真实 SQL LIMIT），交互查询不限行（GAP-P1-06）")
+    void purchaseExportLimitBoundsRows() {
+        LocalDate day = LocalDate.of(2026, 5, 20);
+        long supplierA = ensureSupplier("批次三限额供应商A", "S-T3-004");
+        long supplierB = ensureSupplier("批次三限额供应商B", "S-T3-005");
+        Long goodsId = insertGoodsRow(ensureCategory("批次三限额分类"), ensureUnit("件"), "T3G004", "限额测试商品");
+        long poA = insertPurchaseOrderRow("PO202605200001", supplierA, day, day, "APPROVED", "10.00");
+        long poB = insertPurchaseOrderRow("PO202605200002", supplierB, day, day, "APPROVED", "20.00");
+        jdbcTemplate.update("""
+                INSERT INTO purchase_order_item (order_id, goods_id, quantity, price, amount, received_qty, returned_qty)
+                VALUES (?, ?, 1, 10.00, 10.00, 0, 0), (?, ?, 2, 10.00, 20.00, 0, 0)
+                """, poA, goodsId, poB, goodsId);
+
+        ReportRange range = new ReportRange(day, day);
+        assertThat(purchaseReportService.summary(range, "supplier", MANAGER)).hasSize(2);
+        assertThat(purchaseReportService.summaryForExport(range, "supplier", MANAGER, 1)).hasSize(1);
+    }
+
     // ==================== 测试数据 ====================
+
+    private long insertGoodsRow(long categoryId, long unitId, String code, String name) {
+        jdbcTemplate.update("""
+                INSERT INTO goods (goods_code, barcode, name, category_id, unit_id, retail_price)
+                VALUES (?, ?, ?, ?, ?, 9.90)
+                """, code, "899" + code + "0", name, categoryId, unitId);
+        return jdbcTemplate.queryForObject("SELECT id FROM goods WHERE goods_code = ?", Long.class, code);
+    }
+
+    private void insertSalesItem(long orderId, long goodsId, String goodsName, String unitPrice, String qty,
+                                 String paidAmount, String costPrice, String costAmount) {
+        BigDecimal unit = new BigDecimal(unitPrice);
+        BigDecimal quantity = new BigDecimal(qty);
+        jdbcTemplate.update("""
+                INSERT INTO sales_order_item (order_id, goods_id, goods_name, unit_price, quantity, amount,
+                                              discount_rate, discount_amount, paid_amount, cost_price, cost_amount,
+                                              profit_amount, returned_qty, line_type)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, 0, 'NORMAL')
+                """, orderId, goodsId, goodsName, unit, quantity, unit.multiply(quantity),
+                new BigDecimal(paidAmount), new BigDecimal(costPrice), new BigDecimal(costAmount),
+                new BigDecimal(paidAmount).subtract(new BigDecimal(costAmount)));
+    }
+
+    private void insertReturnItemForGoods(long returnId, long goodsId, String refundAmount, String costAmount) {
+        jdbcTemplate.update("""
+                INSERT INTO return_order_item (return_id, sales_item_id, goods_id, return_qty, refund_price,
+                                               refund_amount, cost_price, cost_amount)
+                VALUES (?, 1, ?, 1, ?, ?, ?, ?)
+                """, returnId, goodsId, new BigDecimal(refundAmount), new BigDecimal(refundAmount),
+                new BigDecimal(costAmount), new BigDecimal(costAmount));
+    }
+
+    private long ensureSupplier(String name, String code) {
+        jdbcTemplate.update("""
+                INSERT INTO supplier (supplier_code, name, status)
+                SELECT ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM supplier WHERE name = ?)
+                """, code, name, name);
+        return jdbcTemplate.queryForObject("SELECT id FROM supplier WHERE name = ?", Long.class, name);
+    }
+
+    /** 采购单：businessDate 为报表口径，createTime 为实际落库时刻（用于验证两者解耦） */
+    private long insertPurchaseOrderRow(String orderNo, long supplierId, LocalDate businessDate,
+                                        LocalDate createDate, String status, String totalAmount) {
+        jdbcTemplate.update("""
+                INSERT INTO purchase_order (order_no, supplier_id, status, create_by, create_time, business_date,
+                                            total_amount, received_amount, return_amount, settle_status, version)
+                VALUES (?, ?, ?, '李采购', ?, ?, ?, 0, 0, 'UNSETTLED', 0)
+                """, orderNo, supplierId, status, createDate.atTime(9, 0), businessDate,
+                new BigDecimal(totalAmount));
+        return jdbcTemplate.queryForObject("SELECT id FROM purchase_order WHERE order_no = ?", Long.class, orderNo);
+    }
 
     private long insertSalesOrder(String orderNo, LocalDate bizDate, String amount, String cost, int itemCount) {
         BigDecimal amt = new BigDecimal(amount);

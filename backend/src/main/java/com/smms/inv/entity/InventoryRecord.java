@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -53,6 +54,9 @@ public class InventoryRecord {
 
     /** 操作时间 */
     private LocalDateTime operateTime;
+
+    /** 营业日（BR-RPT-02，GAP-P1-05）：按记账时刻归属 */
+    private LocalDate businessDate;
 
     private String remark;
 }

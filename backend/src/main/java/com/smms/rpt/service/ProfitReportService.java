@@ -55,10 +55,16 @@ public class ProfitReportService {
         return salesReportService.daily(range, false, user);
     }
 
-    /** 负毛利商品清单：成交价低于成本价（FR-RPT-05） */
+    /** 负毛利商品清单：成交价低于成本价（FR-RPT-05）；列表视图取前 1000 行 */
     public List<NegativeProfitRow> negative(ReportRange range, LoginUser user) {
         requireProfitRole(user);
         return reportMapper.selectNegativeProfit(range.beginDate(), range.endDate(), 1000);
+    }
+
+    /** 负毛利商品清单导出（FR-RPT-08）：取前 limit 行，超限由调用方校验 */
+    public List<NegativeProfitRow> negativeForExport(ReportRange range, int limit, LoginUser user) {
+        requireProfitRole(user);
+        return reportMapper.selectNegativeProfit(range.beginDate(), range.endDate(), limit);
     }
 
     /** 毛利类指标仅店长及以上可见（BR-RPT-07） */

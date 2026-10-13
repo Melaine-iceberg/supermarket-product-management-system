@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -44,6 +45,9 @@ public class PurchaseReturnOrder {
     private String createBy;
 
     private LocalDateTime createTime;
+
+    /** 营业日（BR-RPT-02，GAP-P1-05）：按创建时刻归属 */
+    private LocalDate businessDate;
 
     private String auditBy;
 
