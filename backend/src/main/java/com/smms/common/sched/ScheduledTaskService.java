@@ -83,6 +83,7 @@ public class ScheduledTaskService {
         entry.setResultSummary(truncate(summary));
         entry.setErrorMessage(error);
         entry.setRetryCount(retries);
+        entry.setCreateTime(startedAt);
         logMapper.insert(entry);
         if (success) {
             log.info("定时任务执行成功: code={}, name={}, 触发={}, 重试={}, 耗时={}ms, 结果={}",

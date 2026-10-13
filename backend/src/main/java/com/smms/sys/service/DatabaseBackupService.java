@@ -112,6 +112,7 @@ public class DatabaseBackupService {
         record.setFinishedAt(LocalDateTime.now());
         record.setDurationMs(System.currentTimeMillis() - start);
         record.setErrorMessage(truncate(error));
+        record.setCreateTime(startedAt);
         backupMapper.insert(record);
         if (success) {
             int pruned = pruneRetention();
