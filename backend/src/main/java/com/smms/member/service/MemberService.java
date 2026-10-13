@@ -16,6 +16,7 @@ import com.smms.member.entity.MemberLevel;
 import com.smms.member.mapper.MemberLevelMapper;
 import com.smms.member.mapper.MemberMapper;
 import com.smms.security.SecurityUtils;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -80,7 +81,7 @@ public class MemberService {
         member.setRegisterName(operatorRealName);
         member.setRegisterTime(LocalDateTime.now());
         member.setStatus(1);
-        member.setRemark(req.getRemark());
+        member.setRemark(TextSanitizer.sanitize(req.getRemark()));
         insertWithRetry(member);
         return toVO(member, level);
     }
@@ -98,7 +99,7 @@ public class MemberService {
         member.setGender(req.getGender());
         member.setBirthday(req.getBirthday());
         member.setAddress(req.getAddress());
-        member.setRemark(req.getRemark());
+        member.setRemark(TextSanitizer.sanitize(req.getRemark()));
         memberMapper.updateById(member);
     }
 

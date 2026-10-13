@@ -8,6 +8,7 @@ import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Promotion;
 import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.mapper.PromotionMapper;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -81,7 +82,7 @@ public class PromotionService {
             promotion.setEndTime(req.endTime());
             promotion.setStatus("ACTIVE");
             promotion.setCreateBy(operator);
-            promotion.setRemark(req.remark());
+            promotion.setRemark(TextSanitizer.sanitize(req.remark()));
             promotionMapper.insert(promotion);
         }
     }

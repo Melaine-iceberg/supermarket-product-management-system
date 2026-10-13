@@ -22,6 +22,7 @@ import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.security.LoginUser;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -351,7 +352,7 @@ public class MemberBusinessService {
         record.setBizNo(bizNo);
         record.setOperatorName(operator);
         record.setCreateTime(now);
-        record.setRemark(remark);
+        record.setRemark(TextSanitizer.sanitize(remark));
         return record;
     }
 
@@ -368,7 +369,7 @@ public class MemberBusinessService {
         record.setOperatorName(operator);
         record.setAuthorizerName(authorizer);
         record.setCreateTime(now);
-        record.setRemark(remark);
+        record.setRemark(TextSanitizer.sanitize(remark));
         return record;
     }
 

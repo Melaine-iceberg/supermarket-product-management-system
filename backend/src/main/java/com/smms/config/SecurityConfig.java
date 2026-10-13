@@ -55,7 +55,9 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/login", "/api/v1/auth/store-name").permitAll()
                         .requestMatchers("/api/v1/ping").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // 健康检查探针匿名放行（NFR-SEC-01 例外、IR-SW-08：容器编排/运维脚本使用）；
+                        // 管理端点 /actuator/info 须鉴权，不再匿名（GAP-P2-27）
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

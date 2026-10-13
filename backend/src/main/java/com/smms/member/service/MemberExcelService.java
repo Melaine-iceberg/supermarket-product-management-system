@@ -9,6 +9,7 @@ import com.smms.member.dto.MemberImportResultVO;
 import com.smms.member.dto.MemberImportRowVO;
 import com.smms.member.entity.Member;
 import com.smms.member.mapper.MemberMapper;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
@@ -306,7 +307,7 @@ public class MemberExcelService {
         req.setGender(gender);
         req.setBirthday(birthday);
         req.setAddress(address.isEmpty() ? null : address);
-        req.setRemark(remark.isEmpty() ? null : remark);
+        req.setRemark(remark.isEmpty() ? null : TextSanitizer.sanitize(remark));
         return new CheckedRow(row, errors, req);
     }
 

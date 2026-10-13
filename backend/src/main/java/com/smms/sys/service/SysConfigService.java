@@ -7,6 +7,7 @@ import com.smms.sys.dto.BusinessParamsVO;
 import com.smms.sys.dto.PrintInfoVO;
 import com.smms.sys.entity.SysConfig;
 import com.smms.sys.mapper.SysConfigMapper;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -77,7 +78,7 @@ public class SysConfigService {
         validateValue(config, value);
         config.setConfigValue(value);
         if (remark != null) {
-            config.setRemark(remark);
+            config.setRemark(TextSanitizer.sanitize(remark));
         }
         config.setUpdateBy(updateBy);
         configMapper.updateById(config);

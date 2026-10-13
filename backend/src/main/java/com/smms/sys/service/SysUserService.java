@@ -15,6 +15,7 @@ import com.smms.sys.entity.SysUserRole;
 import com.smms.sys.mapper.SysRoleMapper;
 import com.smms.sys.mapper.SysUserMapper;
 import com.smms.sys.mapper.SysUserRoleMapper;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -83,7 +84,7 @@ public class SysUserService {
         user.setStatus(1);
         user.setMustChangePwd(1);
         user.setFailCount(0);
-        user.setRemark(req.remark());
+        user.setRemark(TextSanitizer.sanitize(req.remark()));
         user.setCreateBy(operator);
         userMapper.insert(user);
 
@@ -98,7 +99,7 @@ public class SysUserService {
         SysUser user = requireUser(id);
         user.setRealName(req.realName());
         user.setPhone(blankToNull(req.phone()));
-        user.setRemark(req.remark());
+        user.setRemark(TextSanitizer.sanitize(req.remark()));
         user.setUpdateBy(operator);
         userMapper.updateById(user);
 

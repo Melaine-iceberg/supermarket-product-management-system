@@ -28,6 +28,7 @@ import com.smms.purchase.mapper.ReceiptOrderItemMapper;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.BusinessDayService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -103,7 +104,7 @@ public class PurchaseReturnService {
         returnOrder.setCreateBy(operator);
         // 营业日（BR-RPT-02/GAP-P1-05）：采购汇总的退货侧按该字段聚合
         returnOrder.setBusinessDate(businessDayService.businessDate(LocalDateTime.now()));
-        returnOrder.setRemark(req.getRemark());
+        returnOrder.setRemark(TextSanitizer.sanitize(req.getRemark()));
 
         List<PurchaseReturnItem> items = new java.util.ArrayList<>();
         for (PurchaseReturnCreateRequest.ItemRequest request : req.getItems()) {
@@ -139,7 +140,7 @@ public class PurchaseReturnService {
             item.setReturnQty(qty);
             item.setReturnPrice(returnPrice);
             item.setAmount(qty.multiply(returnPrice).setScale(2, RoundingMode.HALF_UP));
-            item.setRemark(request.getRemark());
+            item.setRemark(TextSanitizer.sanitize(request.getRemark()));
             items.add(item);
             total = total.add(item.getAmount());
         }

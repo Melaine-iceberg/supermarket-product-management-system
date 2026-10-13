@@ -26,6 +26,7 @@ import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.SysDictService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -100,7 +101,7 @@ public class PurchaseOrderService {
         order.setReturnAmount(BigDecimal.ZERO);
         order.setSettleStatus(PurchaseOrder.SETTLE_UNSETTLED);
         order.setVersion(0);
-        order.setRemark(req.getRemark());
+        order.setRemark(TextSanitizer.sanitize(req.getRemark()));
         insertWithOrderNo(order);
 
         for (PurchaseOrderItem item : items) {
@@ -125,7 +126,7 @@ public class PurchaseOrderService {
         order.setSupplierId(supplier.getId());
         order.setExpectDate(req.getExpectDate());
         order.setTotalAmount(totalOf(items));
-        order.setRemark(req.getRemark());
+        order.setRemark(TextSanitizer.sanitize(req.getRemark()));
         order.setUpdateBy(operator);
         casUpdateById(order);
 
@@ -405,7 +406,7 @@ public class PurchaseOrderService {
             // 建议采购原值（UC-INV-002 6a）：仅建议采购生成时携带，手工建单为空
             item.setSuggestedQty(request.getSuggestedQty());
             item.setSuggestedPrice(request.getSuggestedPrice());
-            item.setRemark(request.getRemark());
+            item.setRemark(TextSanitizer.sanitize(request.getRemark()));
             return item;
         }).toList();
     }

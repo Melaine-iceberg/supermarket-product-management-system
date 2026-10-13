@@ -42,6 +42,7 @@ import com.smms.sys.entity.OperationLog;
 import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.OperationLogService;
 import com.smms.sys.service.SysConfigService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -210,7 +211,7 @@ public class GoodsService {
         goods.setSafetyStockUpper(req.safetyStockUpper());
         goods.setImage(req.image());
         goods.setStatus(1);
-        goods.setRemark(req.remark());
+        goods.setRemark(TextSanitizer.sanitize(req.remark()));
         goods.setCreateBy(operator);
 
         for (int attempt = 1; ; attempt++) {
@@ -290,7 +291,7 @@ public class GoodsService {
         goods.setSafetyStockLower(req.safetyStockLower() == null ? BigDecimal.ZERO : req.safetyStockLower());
         goods.setSafetyStockUpper(req.safetyStockUpper());
         goods.setImage(req.image());
-        goods.setRemark(req.remark());
+        goods.setRemark(TextSanitizer.sanitize(req.remark()));
         goods.setUpdateBy(operator);
         goodsMapper.updateById(goods);
 

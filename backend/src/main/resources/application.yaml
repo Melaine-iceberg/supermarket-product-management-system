@@ -68,7 +68,15 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: when-authorized
+      # 匿名探针返回 DB 状态与版本（IR-SW-08）；管理端点 /actuator/info 须鉴权（GAP-P2-27）
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,appVersion
 
 # 日志（IR-SW-07）：文件按天/大小滚动、ERROR 独立文件，详见 logback-spring.xml
 logging:

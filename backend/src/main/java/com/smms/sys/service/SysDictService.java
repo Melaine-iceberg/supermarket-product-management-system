@@ -9,6 +9,7 @@ import com.smms.sys.entity.SysDict;
 import com.smms.sys.entity.SysDictItem;
 import com.smms.sys.mapper.SysDictItemMapper;
 import com.smms.sys.mapper.SysDictMapper;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -99,7 +100,7 @@ public class SysDictService {
         item.setValue(req.value());
         item.setSortNo(req.sortNo());
         item.setStatus(req.status());
-        item.setRemark(req.remark());
+        item.setRemark(TextSanitizer.sanitize(req.remark()));
         item.setCreateBy(operator);
         itemMapper.insert(item);
     }
@@ -115,7 +116,7 @@ public class SysDictService {
         item.setValue(req.value());
         item.setSortNo(req.sortNo());
         item.setStatus(req.status());
-        item.setRemark(req.remark());
+        item.setRemark(TextSanitizer.sanitize(req.remark()));
         item.setUpdateBy(operator);
         itemMapper.updateById(item);
     }

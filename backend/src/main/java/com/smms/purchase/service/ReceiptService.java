@@ -33,6 +33,7 @@ import com.smms.sys.service.BusinessDayService;
 import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -240,7 +241,7 @@ public class ReceiptService {
             item.setReceivedQty(line.qty());
             item.setReceivedPrice(line.price());
             item.setAmount(line.amount());
-            item.setRemark(line.remark());
+            item.setRemark(TextSanitizer.sanitize(line.remark()));
             item.setCreateBy(operator.username());
             item.setCreateTime(receipt.getReceiptTime());
             receiptItemMapper.insert(item);
@@ -432,7 +433,7 @@ public class ReceiptService {
         receipt.setAuthorizerName(authorizerName);
         receipt.setDeliveryOrderNo(req.getDeliveryOrderNo());
         receipt.setTotalAmount(total);
-        receipt.setRemark(req.getRemark());
+        receipt.setRemark(TextSanitizer.sanitize(req.getRemark()));
         receipt.setRequestToken(requestToken);
         // 审计字段（DR-C-08/GAP-P2-28）：验收经办人/业务发生时间
         receipt.setCreateBy(operator.username());

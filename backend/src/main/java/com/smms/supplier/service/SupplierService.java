@@ -21,6 +21,7 @@ import com.smms.supplier.entity.SupplierGoods;
 import com.smms.supplier.mapper.SupplierGoodsMapper;
 import com.smms.supplier.mapper.SupplierMapper;
 import com.smms.sys.service.SysDictService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -102,7 +103,7 @@ public class SupplierService {
         supplier.setLeadTimeDays(leadTimeDays);
         supplier.setTotalPurchaseAmount(BigDecimal.ZERO);
         supplier.setStatus(1);
-        supplier.setRemark(trimToNull(req.getRemark()));
+        supplier.setRemark(TextSanitizer.sanitize(trimToNull(req.getRemark())));
         supplier.setCreateBy(operatorRealName);
         insertWithRetry(supplier);
         return toVO(supplier, null);

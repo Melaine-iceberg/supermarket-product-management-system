@@ -22,6 +22,7 @@ import com.smms.sys.entity.SysDictItem;
 import com.smms.sys.mapper.SysDictItemMapper;
 import com.smms.sys.mapper.SysDictMapper;
 import com.smms.sys.service.BusinessDayService;
+import com.smms.common.util.TextSanitizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -99,7 +100,7 @@ public class LossOrderService {
         order.setStatus(STATUS_PENDING);
         // 营业日（BR-RPT-02/GAP-P1-05）：创建时按申请时刻归属，审核通过后改写为审核时刻所属营业日
         order.setBusinessDate(businessDayService.businessDate(LocalDateTime.now()));
-        order.setRemark(trimToNull(req.remark()));
+        order.setRemark(TextSanitizer.sanitize(trimToNull(req.remark())));
         lossOrderMapper.insert(order);
         return detail(order.getId());
     }
