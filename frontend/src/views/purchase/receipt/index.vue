@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
   createReceiptOrder,
-  getPurchaseOrderDetail,
+  getPickablePurchaseOrderDetail,
   getReceiptOrderDetail,
+  pagePickablePurchaseOrders,
   pageReceiptOrders,
   preCheckReceipt,
   type PurchaseOrderDetailVO,
@@ -16,7 +17,7 @@ import {
   type ReceiptOrderVO,
   type ReceiptPreCheckVO,
 } from '@/api/purchase'
-import { pagePurchaseOrders, type PurchaseOrderVO } from '@/api/purchase'
+import type { PurchaseOrderVO } from '@/api/purchase'
 import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
 import { pMoney, pQty, printSheet } from '@/utils/print'
 import { newRequestToken } from '@/utils/token'
@@ -146,12 +147,13 @@ function openPick() {
 async function searchPickable() {
   pickDialog.loading = true
   try {
-    // 分别查已审核待入库与部分入库（状态—操作约束矩阵）
-    const [approved, partial] = await Promise.all([
-      pagePurchaseOrders({ status: 'APPROVED', orderNo: pickDialog.keyword.trim() || undefined, page: 1, size: 50 }),
-      pagePurchaseOrders({ status: 'PARTIAL', orderNo: pickDialog.keyword.trim() || undefined, page: 1, size: 50 }),
-    ])
-    pickDialog.list = [...approved.list, ...partial.list]
+    // GAP-P0-05：按 sys:rcv:list 鉴权的"待入库单"专用接口（仅 APPROVED/PARTIAL），库管员无需采购单菜单权限
+    const data = await pagePickablePurchaseOrders({
+      orderNo: pickDialog.keyword.trim() || undefined,
+      page: 1,
+      size: 50,
+    })
+    pickDialog.list = data.list
   } finally {
     pickDialog.loading = false
   }
@@ -187,7 +189,7 @@ const receiveDialog = reactive({
 })
 
 async function openReceive(row: PurchaseOrderVO) {
-  const detail: PurchaseOrderDetailVO = await getPurchaseOrderDetail(row.id)
+  const detail: PurchaseOrderDetailVO = await getPickablePurchaseOrderDetail(row.id)
   receiveDialog.orderId = row.id
   receiveDialog.orderNo = detail.orderNo
   receiveDialog.supplierName = detail.supplierName
@@ -273,9 +275,18 @@ async function submitReceive() {
       return
     }
   }
+  // 职责分离（BR-SYS-01，GAP-P1-08 统一策略）：验收人=创建人时后端按参数拒绝（严格）或放行并记异常日志，
+  // 前端仅提示确认，不再硬拦截，使"放行+异常日志"路径可达（AC-13）
   if (receiveDialog.orderCreateBy === auth.user?.realName) {
-    ElMessage.warning('验收人与采购单创建人不能为同一人（职责分离，BR-SYS-01）')
-    return
+    try {
+      await ElMessageBox.confirm(
+        '本单采购创建人与当前验收人为同一人：系统将按参数 duty_separation_strict 拒绝或放行并记录异常日志（BR-SYS-01）。是否继续提交？',
+        '职责分离提醒',
+        { type: 'warning', confirmButtonText: '继续提交', cancelButtonText: '取消' },
+      )
+    } catch {
+      return
+    }
   }
   receiveDialog.saving = true
   try {
@@ -304,7 +315,10 @@ async function bootstrap() {
 
 onMounted(() => {
   bootstrap()
-  pageSuppliers({ status: 1, page: 1, size: 200 }).then((data) => (suppliers.value = data.list))
+  // 供应商筛选项需要对供应商档案的只读权限（库管员无 sys:sup:list 时隐藏下拉，不影响验收主流程）
+  if (auth.hasPerm('sys:sup:list')) {
+    pageSuppliers({ status: 1, page: 1, size: 200 }).then((data) => (suppliers.value = data.list))
+  }
 })
 </script>
 
@@ -318,7 +332,7 @@ onMounted(() => {
         <el-form-item label="采购单号">
           <el-input v-model="query.purchaseOrderNo" placeholder="PO 单号" clearable style="width: 155px" @keyup.enter="search" />
         </el-form-item>
-        <el-form-item label="供应商">
+        <el-form-item v-if="auth.hasPerm('sys:sup:list')" label="供应商">
           <el-select v-model="query.supplierId" placeholder="全部" clearable filterable style="width: 160px">
             <el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
@@ -394,18 +408,25 @@ onMounted(() => {
       <el-table v-loading="pickDialog.loading" :data="pickDialog.list" size="small" stripe max-height="380">
         <el-table-column prop="orderNo" label="单号" width="155" />
         <el-table-column prop="supplierName" label="供应商" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="createBy" label="创建人" width="85" />
+        <el-table-column label="创建人" width="110">
+          <template #default="{ row }">
+            {{ row.createBy }}
+            <el-tag v-if="row.createBy === auth.user?.realName" type="warning" size="small" class="tag-gap">
+              本人创建
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="expectDate" label="预计到货" width="100" />
         <el-table-column label="入库进度" width="90" align="center">
           <template #default="{ row }">{{ row.receiveProgress ?? 0 }}%</template>
         </el-table-column>
         <el-table-column label="操作" width="80" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" :disabled="row.createBy === auth.user?.realName" @click="openReceive(row as PurchaseOrderVO)">验收</el-button>
+            <el-button link type="primary" @click="openReceive(row as PurchaseOrderVO)">验收</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <div class="form-tip">仅显示"已审核待入库 / 部分入库"单据；创建人与验收人相同的单据不可验收（职责分离，BR-SYS-01）</div>
+      <div class="form-tip">仅显示"已审核待入库 / 部分入库"单据；创建人与验收人相同时按参数拒绝或放行并记录异常日志（职责分离，BR-SYS-01）</div>
     </el-dialog>
 
     <!-- ==================== 录入实收（FR-PUR-06 第二步） ==================== -->

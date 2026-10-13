@@ -103,8 +103,10 @@ export const RECHARGE_PAY_MAP: Record<string, string> = {
 export interface RechargePayload {
   amount: number
   payType: RechargePayType
-  /** 店长授权人姓名（须 ≠ 发起人，FR-MEM-08） */
-  authorizerName: string
+  /** 店长授权账号（须为店长及以上且 ≠ 发起人，FR-MEM-08） */
+  authorizerUsername: string
+  /** 店长授权密码（服务端按账号+密码+角色核验，BR-SYS-06） */
+  authorizerPassword: string
   remark?: string
 }
 

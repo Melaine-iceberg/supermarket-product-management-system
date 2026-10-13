@@ -8,6 +8,7 @@ import com.smms.rpt.dto.SalesReportRow;
 import com.smms.rpt.dto.SalesReportVO;
 import com.smms.rpt.mapper.ReportMapper;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,7 @@ import java.util.TreeMap;
 public class SalesReportService {
 
     private final ReportMapper reportMapper;
+    private final SysDictService dictService;
 
     /** 销售日报/月报（①）：日期、单数、件数、销售额、优惠额、净销售额、退货额、净销售、销售成本、毛利额、毛利率、客单价 */
     public SalesReportVO daily(ReportRange range, boolean monthly, LoginUser user) {
@@ -182,9 +184,16 @@ public class SalesReportService {
         return rows.stream().map(f).filter(v -> v != null).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** 收款方式编码 → 中文（与字典 pay_type 对齐） */
+    /** 收款方式编码 → 中文（GAP-P1-09：优先取数据字典 pay_type，含停用项；字典缺失时回退内置标签） */
     private String payLabel(String code) {
-        return switch (code == null ? "" : code) {
+        if (code == null || code.isBlank()) {
+            return code;
+        }
+        String label = dictService.valueLabels("pay_type").get(code);
+        if (label != null) {
+            return label;
+        }
+        return switch (code) {
             case "CASH" -> "现金";
             case "BANK" -> "银行卡";
             case "MOBILE" -> "移动支付";

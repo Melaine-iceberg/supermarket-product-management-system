@@ -107,6 +107,31 @@ export function searchCashierGoods(keyword: string) {
   return http.get<CashierGoodsVO[]>('/sales/cashier/goods', { keyword })
 }
 
+// ---------- 收银台分类树浏览（GAP-P0-06，FR-SALE-02③：按 sys:cashier:enter 鉴权的只读接口） ----------
+
+/** 收银台分类节点（仅启用分类，字段与商品分类树对齐） */
+export interface CashierCategoryNode {
+  id: number
+  parentId: number
+  name: string
+  level: number
+  sortNo: number
+  status: number
+  leaf: boolean
+  goodsCount: number
+  children: CashierCategoryNode[]
+}
+
+/** 收银台分类树（仅启用分类；收银员无 sys:cat:list 权限亦可浏览） */
+export function getCashierCategoryTree() {
+  return http.get<CashierCategoryNode[]>('/sales/cashier/categories')
+}
+
+/** 收银台分类浏览商品：分类含子分类、仅启用商品、分页返回 */
+export function pageCashierGoods(params: { categoryId?: number; page: number; size: number }) {
+  return http.get<PageResult<CashierGoodsVO>>('/sales/cashier/browse', params)
+}
+
 // ---------- 收银台会员检索（FR-SALE-05） ----------
 
 export interface MemberSearchVO {

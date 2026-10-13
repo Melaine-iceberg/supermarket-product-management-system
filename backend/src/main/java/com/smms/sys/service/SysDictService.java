@@ -72,6 +72,23 @@ public class SysDictService {
                 .stream().map(SysDictItem::getValue).collect(Collectors.toSet());
     }
 
+    /**
+     * 字典项 值 → 名称 映射（含停用项，FR-SYS-07 历史数据展示口径，GAP-P1-09）：
+     * 报表等处按编码回显中文名，历史单据使用的停用项仍能正确显示；
+     * 字典不存在时返回空映射，由调用方回退内置标签。
+     */
+    public Map<String, String> valueLabels(String dictType) {
+        SysDict dict = dictMapper.selectOne(Wrappers.<SysDict>lambdaQuery()
+                .eq(SysDict::getDictType, dictType));
+        if (dict == null) {
+            return Map.of();
+        }
+        return itemMapper.selectList(Wrappers.<SysDictItem>lambdaQuery()
+                        .eq(SysDictItem::getDictId, dict.getId())
+                        .orderByAsc(SysDictItem::getSortNo))
+                .stream().collect(Collectors.toMap(SysDictItem::getValue, SysDictItem::getLabel, (a, b) -> a));
+    }
+
     /** 新增字典项：同一字典下 value 唯一 */
     public void addItem(String dictType, DictItemSaveRequest req, String operator) {
         SysDict dict = requireDict(dictType);

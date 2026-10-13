@@ -5,7 +5,7 @@ import type { FormInstance } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { saveBlob } from '@/api/request'
 import { getCategoryTree, pageGoods, type CategoryNode, type GoodsListVO } from '@/api/goods'
-import { listDicts } from '@/api/system'
+import { getDictItems } from '@/api/system'
 import {
   auditStockCheck,
   cancelStockCheck,
@@ -98,13 +98,29 @@ function resetQuery() {
 onMounted(() => {
   load()
   getCategoryTree().then((data) => (categoryTree.value = data))
-  listDicts().then((dicts) => {
-    const dict = dicts.find((d) => d.dictType === 'check_diff_reason')
-    if (dict) {
-      diffReasons.value = dict.items.filter((i) => i.status === 1).map((i) => i.label)
-    }
-  })
+  loadDiffReasons()
 })
+
+// ---------- 差异原因字典（FR-SYS-07 / GAP-P1-09：存字典代码，经任意登录可读接口加载） ----------
+/** 差异原因选项：label 展示 / value 存库（代码） */
+const diffReasonOptions = ref<{ label: string; value: string }[]>([])
+const diffReasonLabels = ref<Record<string, string>>({})
+
+async function loadDiffReasons() {
+  try {
+    const items = await getDictItems('check_diff_reason')
+    diffReasonOptions.value = items.map((i) => ({ label: i.label, value: i.value }))
+    diffReasonLabels.value = Object.fromEntries(items.map((i) => [i.value, i.label]))
+  } catch {
+    // 加载失败时可手工选择，服务端仍会校验字典合法性
+  }
+}
+
+/** 差异原因显示：字典代码 → 名称；历史数据（存名称）或未知代码原样显示 */
+function reasonLabel(value: string | null | undefined) {
+  if (!value) return '—'
+  return diffReasonLabels.value[value] ?? value
+}
 
 // ---------- 新建盘点单（FR-INV-07） ----------
 const categoryTree = ref<CategoryNode[]>([])
@@ -214,9 +230,10 @@ const edits = ref<Record<number, EditLine>>({})
 const hasEdits = computed(() => Object.keys(edits.value).length > 0)
 /** 仅盘点中且持录入权限可编辑 */
 const editable = computed(() => order.value?.status === 'CHECKING' && auth.hasPerm('sys:check:update'))
-const diffReasons = ref<string[]>([])
-/** 审核人与盘点人职责分离（BR-SYS-01）：后端强校验，前端提前禁用 */
+/** 审核人与盘点人职责分离（BR-SYS-01，GAP-P1-08）：超管可代审留痕，其余角色由后端按参数拒绝或放行记日志 */
 const selfCheck = computed(() => order.value?.checkerName === auth.user?.username)
+const isSuperAdmin = computed(() => auth.user?.roleCodes?.includes('SUPER_ADMIN') ?? false)
+const auditBlockedBySeparation = computed(() => selfCheck.value && !isSuperAdmin.value)
 
 function openDetail(row: CheckOrderVO) {
   if (drawer.id !== row.id) {
@@ -300,7 +317,7 @@ function printDiff() {
             { label: '差异数量', value: (r) => pQty(r.diffQty), align: 'right' },
             { label: '成本单价', value: (r) => pMoney(r.costPrice), align: 'right' },
             { label: '差异金额', value: (r) => pMoney(r.diffAmount), align: 'right' },
-            { label: '差异原因', value: (r) => r.diffReason },
+            { label: '差异原因', value: (r) => reasonLabel(r.diffReason) },
             { label: '备注', value: (r) => r.remark },
           ],
           rows,
@@ -919,16 +936,14 @@ async function onImportFile(e: Event) {
                 v-if="editable"
                 :model-value="displayReason(row as CheckItemVO)"
                 filterable
-                allow-create
-                default-first-option
                 placeholder="差异≠0 必填"
                 size="small"
                 class="reason-select"
                 @update:model-value="(v: string) => setReason(row as CheckItemVO, v)"
               >
-                <el-option v-for="r in diffReasons" :key="r" :label="r" :value="r" />
+                <el-option v-for="r in diffReasonOptions" :key="r.value" :label="r.label" :value="r.value" />
               </el-select>
-              <span v-else>{{ row.diffReason || '—' }}</span>
+              <span v-else>{{ reasonLabel(row.diffReason) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="备注" width="130">
@@ -982,18 +997,21 @@ async function onImportFile(e: Event) {
               @click="doCancel(drawer.id)"
             >作废</el-button>
             <el-button
-              v-if="order?.status === 'PENDING_AUDIT' && auth.hasPerm('sys:check:audit') && !selfCheck"
+              v-if="order?.status === 'PENDING_AUDIT' && auth.hasPerm('sys:check:audit')"
               type="success"
               @click="openAudit(true)"
             >审核通过</el-button>
             <el-button
-              v-if="order?.status === 'PENDING_AUDIT' && auth.hasPerm('sys:check:audit') && !selfCheck"
+              v-if="order?.status === 'PENDING_AUDIT' && auth.hasPerm('sys:check:audit')"
               type="danger"
               plain
               @click="openAudit(false)"
             >驳回</el-button>
-            <el-tag v-if="order?.status === 'PENDING_AUDIT' && selfCheck" type="info">
-              本人盘点的单据不可自审（BR-SYS-01）
+            <el-tag v-if="order?.status === 'PENDING_AUDIT' && auditBlockedBySeparation" type="warning">
+              本人盘点的单据：按参数职责分离策略处理，可能被拒绝或放行并记异常日志（BR-SYS-01）
+            </el-tag>
+            <el-tag v-else-if="order?.status === 'PENDING_AUDIT' && selfCheck" type="info">
+              超级管理员代审将记录异常日志（BR-SYS-01）
             </el-tag>
           </div>
         </div>

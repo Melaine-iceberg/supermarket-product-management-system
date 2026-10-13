@@ -27,6 +27,7 @@ import com.smms.purchase.service.ReceiptService;
 import com.smms.security.LoginUser;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.OperationLogService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
@@ -93,7 +94,8 @@ class ReceiptServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
         service = new ReceiptService(orderMapper, orderItemMapper, purchaseOrderService,
                 receiptMapper, receiptItemMapper, supplierMapper, goodsMapper, unitMapper,
-                inventoryService, configService, operationLogService, sensitiveAuthService);
+                inventoryService, configService,
+                new DutySeparationService(configService, operationLogService), sensitiveAuthService);
     }
 
     // ==================== 入库验收（FR-PUR-06） ====================
@@ -216,6 +218,19 @@ class ReceiptServiceTest {
         lenient().when(configService.getBool(eq("duty_separation_strict"), eq(false))).thenReturn(false);
 
         service.create(request("10", "10", null), operator("李采购"));
+
+        verify(operationLogService).recordAsync(any());
+        verify(orderMapper).updateReceiptState(eq(100L), any(), any(), eq("李采购"), eq(0));
+    }
+
+    @Test
+    @DisplayName("职责分离（GAP-P1-08）：超级管理员可代验（无视严格模式）并记录异常日志")
+    void createAllowsSuperAdminOverrideInStrictModeWithLog() {
+        PurchaseOrder order = order(PurchaseOrder.STATUS_APPROVED);
+        PurchaseOrderItem item = poItem("10", "10", "0");
+        stubFullReceiptFlow(order, item, "10", "10", null);
+
+        service.create(request("10", "10", null), superAdmin("李采购"));
 
         verify(operationLogService).recordAsync(any());
         verify(orderMapper).updateReceiptState(eq(100L), any(), any(), eq("李采购"), eq(0));
@@ -349,6 +364,11 @@ class ReceiptServiceTest {
 
     private LoginUser operator(String realName) {
         return new LoginUser(9L, "operator", realName, List.of("PURCHASER"), List.of("采购员"),
+                Set.of(), "fp", false);
+    }
+
+    private LoginUser superAdmin(String realName) {
+        return new LoginUser(1L, "admin", realName, List.of("SUPER_ADMIN"), List.of("超级管理员"),
                 Set.of(), "fp", false);
     }
 

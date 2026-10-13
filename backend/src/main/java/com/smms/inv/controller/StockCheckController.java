@@ -143,7 +143,8 @@ public class StockCheckController {
 
     /**
      * 盘点审核（FR-INV-09）：通过 → 单事务生成盘盈/盘亏流水并覆盖结存（BR-INV-08 不变式保持）；
-     * 驳回 → 意见必填并退回盘点中。审核人与盘点人必须不同（BR-SYS-01）。
+     * 驳回 → 意见必填并退回盘点中。职责分离（BR-SYS-01）：违反时按参数拒绝或放行并记异常日志，
+     * 超级管理员可代审并留痕。
      */
     @PostMapping("/{id}/audit")
     @RequirePerm("sys:check:audit")
@@ -151,7 +152,7 @@ public class StockCheckController {
     public ApiResponse<CheckOrderVO> audit(@PathVariable Long id,
                                            @Valid @RequestBody CheckAuditRequest req) {
         sensitiveAuthService.confirmPassword(req.password());
-        return ApiResponse.ok(stockCheckService.audit(id, req, SecurityUtils.getLoginUser().username()));
+        return ApiResponse.ok(stockCheckService.audit(id, req, SecurityUtils.getLoginUser()));
     }
 
     private InputStream open(MultipartFile file) {

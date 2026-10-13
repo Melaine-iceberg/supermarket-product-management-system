@@ -306,7 +306,8 @@ const rechargeDialog = reactive({
   form: {
     amount: null as number | null,
     payType: 'CASH' as RechargePayType,
-    authorizerName: '',
+    authorizerUsername: '',
+    authorizerPassword: '',
     remark: '',
   },
 })
@@ -316,7 +317,8 @@ function openRecharge(row: MemberListVO) {
   rechargeDialog.form = {
     amount: null,
     payType: 'CASH' as RechargePayType,
-    authorizerName: '',
+    authorizerUsername: '',
+    authorizerPassword: '',
     remark: '',
   }
   rechargeDialog.visible = true
@@ -328,12 +330,16 @@ async function saveRecharge() {
     ElMessage.warning('充值金额必须大于 0')
     return
   }
-  if (!form.authorizerName.trim()) {
-    ElMessage.warning('储值充值须店长授权，请填写授权人姓名（FR-MEM-08）')
+  if (!form.authorizerUsername.trim()) {
+    ElMessage.warning('储值充值须店长授权，请填写授权店长账号（FR-MEM-08）')
     return
   }
-  if (form.authorizerName.trim() === auth.user?.realName) {
+  if (form.authorizerUsername.trim() === auth.user?.username) {
     ElMessage.warning('授权人不得为发起人本人')
+    return
+  }
+  if (!form.authorizerPassword) {
+    ElMessage.warning('请填写授权店长密码以完成授权（BR-SYS-06）')
     return
   }
   rechargeDialog.saving = true
@@ -341,7 +347,8 @@ async function saveRecharge() {
     const balance = await rechargeMember(rechargeDialog.member!.id, {
       amount: form.amount,
       payType: form.payType,
-      authorizerName: form.authorizerName.trim(),
+      authorizerUsername: form.authorizerUsername.trim(),
+      authorizerPassword: form.authorizerPassword,
       remark: form.remark.trim() || undefined,
     })
     ElMessage.success(`充值成功，当前余额 ￥${Number(balance).toFixed(2)}`)
@@ -593,7 +600,7 @@ async function doDownloadTemplate() {
         type="info"
         :closable="false"
         show-icon
-        title="充值须店长授权（授权人 ≠ 发起人）；充值不计积分，余额变动全部写入不可删改流水"
+        title="充值须店长授权（输入店长账号+密码，授权人 ≠ 发起人）；充值不计积分，余额变动全部写入不可删改流水"
         class="dialog-alert"
       />
       <el-form label-width="80px" @submit.prevent>
@@ -612,8 +619,17 @@ async function doDownloadTemplate() {
             <el-radio v-for="(label, type) in RECHARGE_PAY_MAP" :key="type" :value="type">{{ label }}</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="授权人" required>
-          <el-input v-model="rechargeDialog.form.authorizerName" placeholder="店长姓名（须 ≠ 当前登录人）" />
+        <el-form-item label="授权账号" required>
+          <el-input v-model="rechargeDialog.form.authorizerUsername" maxlength="30" placeholder="店长登录账号" />
+        </el-form-item>
+        <el-form-item label="授权密码" required>
+          <el-input
+            v-model="rechargeDialog.form.authorizerPassword"
+            type="password"
+            show-password
+            maxlength="50"
+            placeholder="店长账号密码（现场授权，BR-SYS-06）"
+          />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="rechargeDialog.form.remark" maxlength="200" placeholder="选填" />

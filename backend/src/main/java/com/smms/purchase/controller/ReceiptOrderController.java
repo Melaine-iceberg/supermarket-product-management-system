@@ -4,10 +4,13 @@ import com.smms.common.annotation.OpLog;
 import com.smms.common.annotation.RequirePerm;
 import com.smms.common.api.ApiResponse;
 import com.smms.common.api.PageVO;
+import com.smms.purchase.dto.PurchaseOrderDetailVO;
+import com.smms.purchase.dto.PurchaseOrderVO;
 import com.smms.purchase.dto.ReceiptCreateRequest;
 import com.smms.purchase.dto.ReceiptOrderVO;
 import com.smms.purchase.dto.ReceiptPreCheckVO;
 import com.smms.purchase.dto.ReceiptQuery;
+import com.smms.purchase.service.PurchaseOrderService;
 import com.smms.purchase.service.ReceiptService;
 import com.smms.security.SecurityUtils;
 import jakarta.validation.Valid;
@@ -26,7 +29,7 @@ import java.time.LocalDate;
 /**
  * 采购入库接口（FR-PUR-06/07）：
  * 入库预检（容差/价差黄色提示）、入库验收（事务联动库存与供应商累计采购额）、
- * 入库单分页查询与详情（A4 打印数据源）。
+ * 入库单分页查询与详情（A4 打印数据源）、待入库采购单选单与详情（库管员专用只读，GAP-P0-05）。
  */
 @RestController
 @RequestMapping("/api/v1/receipt-orders")
@@ -34,6 +37,7 @@ import java.time.LocalDate;
 public class ReceiptOrderController {
 
     private final ReceiptService receiptService;
+    private final PurchaseOrderService purchaseOrderService;
 
     /** 入库单分页（FR-PUR-07）：入库单号/采购单号/供应商/日期区间/操作人 */
     @GetMapping
@@ -57,6 +61,26 @@ public class ReceiptOrderController {
     @RequirePerm("sys:rcv:list")
     public ApiResponse<ReceiptOrderVO> detail(@PathVariable Long id) {
         return ApiResponse.ok(receiptService.detail(id));
+    }
+
+    /**
+     * 待入库采购单分页（GAP-P0-05）：仅"已审核待入库/部分入库"，供库管员验收选单；
+     * 按 {@code sys:rcv:list} 鉴权，使库管员无需采购单菜单权限（sys:pur:list）即可走通验收主流程。
+     */
+    @GetMapping("/pickable")
+    @RequirePerm("sys:rcv:list")
+    public ApiResponse<PageVO<PurchaseOrderVO>> pickable(
+            @RequestParam(required = false) String orderNo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.ok(purchaseOrderService.pickable(orderNo, page, size));
+    }
+
+    /** 待入库采购单详情（GAP-P0-05）：验收录入所需明细（含待入库数量与采购单价），按 sys:rcv:list 鉴权 */
+    @GetMapping("/pickable/{id}")
+    @RequirePerm("sys:rcv:list")
+    public ApiResponse<PurchaseOrderDetailVO> pickableDetail(@PathVariable Long id) {
+        return ApiResponse.ok(purchaseOrderService.detail(id));
     }
 
     /** 入库预检（BR-PUR-04/05）：容差上限、价差率、近 3 次均价黄色提示、是否须授权 */

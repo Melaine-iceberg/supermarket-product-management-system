@@ -3,6 +3,7 @@ package com.smms.config;
 import com.smms.common.api.ApiResponse;
 import com.smms.common.api.ErrorCode;
 import com.smms.security.JwtAuthFilter;
+import com.smms.security.MustChangePwdFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +37,7 @@ import tools.jackson.databind.ObjectMapper;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final MustChangePwdFilter mustChangePwdFilter;
     private final ObjectMapper objectMapper;
 
     @Value("${smms.cors.allowed-origins}")
@@ -61,7 +63,8 @@ public class SecurityConfig {
                                 response, HttpStatus.UNAUTHORIZED, ApiResponse.fail(ErrorCode.UNAUTHORIZED)))
                         .accessDeniedHandler((request, response, accessDeniedException) -> writeJson(
                                 response, HttpStatus.FORBIDDEN, ApiResponse.fail(ErrorCode.FORBIDDEN))))
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(mustChangePwdFilter, JwtAuthFilter.class);
         return http.build();
     }
 

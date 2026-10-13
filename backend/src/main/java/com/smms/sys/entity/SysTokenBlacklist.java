@@ -8,7 +8,10 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * Token 黑名单（IR-SW-03）：登出、停用、密码修改后即时失效。
+ * Token 黑名单（IR-SW-03，GAP-P1-11）：
+ * 仅登出（LOGOUT）与改密（PWD_CHANGE）需要按 jti 拉黑；
+ * 用户停用/权限变更通过"用户状态实时校验 + JWT ver 版本号强制重建上下文"即时生效，不写黑名单；
+ * 过期记录由 AuthService 定时任务清理。
  */
 @Data
 @TableName("sys_token_blacklist")

@@ -278,6 +278,18 @@ export function createReceiptOrder(data: ReceiptCreatePayload) {
   return http.post<ReceiptOrderVO>('/receipt-orders', data)
 }
 
+// ---------- 待入库采购单（GAP-P0-05：库管员验收选单，按 sys:rcv:list 鉴权只读） ----------
+
+/** 待入库采购单分页：仅"已审核待入库/部分入库"，收银/库管无需采购单菜单权限 */
+export function pagePickablePurchaseOrders(params: { orderNo?: string; page: number; size: number }) {
+  return http.get<PageResult<PurchaseOrderVO>>('/receipt-orders/pickable', params)
+}
+
+/** 待入库采购单详情（验收录入数据源）：含待入库数量与采购单价 */
+export function getPickablePurchaseOrderDetail(id: number) {
+  return http.get<PurchaseOrderDetailVO>(`/receipt-orders/pickable/${id}`)
+}
+
 // ---------- 采购退货（FR-PUR-08） ----------
 
 export const RETURN_STATUS_MAP: Record<string, { label: string; type: 'warning' | 'success' | 'danger' }> = {

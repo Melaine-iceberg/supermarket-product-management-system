@@ -73,6 +73,7 @@ public class OperationLogAspect {
         if (user != null) {
             entity.setUserId(user.userId());
             entity.setUsername(user.username());
+            entity.setRealName(user.realName());
             entity.setRoleNames(String.join(",", user.roleNames()));
         }
         entity.setModule(opLog.module());

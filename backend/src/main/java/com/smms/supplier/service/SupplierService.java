@@ -20,6 +20,7 @@ import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.entity.SupplierGoods;
 import com.smms.supplier.mapper.SupplierGoodsMapper;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -61,9 +62,14 @@ public class SupplierService {
     /** 采购提前期缺省值（天） */
     private static final int DEFAULT_LEAD_TIME = 3;
 
+    /** 结算方式字典（FR-SYS-07/GAP-P1-09）：停用项不可被新档案选择，字典缺失时回退内置枚举 */
+    private static final String DICT_SETTLE_TYPE = "settle_type";
+    private static final Set<String> SETTLE_TYPES = Set.of("CASH", "MONTHLY", "CREDIT");
+
     private final SupplierMapper supplierMapper;
     private final SupplierGoodsMapper supplierGoodsMapper;
     private final GoodsMapper goodsMapper;
+    private final SysDictService dictService;
 
     // ==================== 新增（FR-SUP-01） ====================
 
@@ -278,7 +284,15 @@ public class SupplierService {
 
     /** 结算方式归一化：空值默认现结 */
     private String normalizeSettleType(String settleType) {
-        return settleType == null || settleType.isBlank() ? "CASH" : settleType;
+        String value = settleType == null || settleType.isBlank() ? "CASH" : settleType.trim();
+        // 取值以数据字典为准（FR-SYS-07/GAP-P1-09：停用项不可选）；字典缺失/为空时按内置枚举兜底
+        Set<String> enabled = dictService.enabledValues(DICT_SETTLE_TYPE);
+        Set<String> allowed = enabled.isEmpty() ? SETTLE_TYPES : enabled;
+        if (!allowed.contains(value)) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "结算方式不合法或已被停用（数据字典 settle_type）：" + value);
+        }
+        return value;
     }
 
     /** 账期天数：结算方式为账期时必填，其他方式清空 */

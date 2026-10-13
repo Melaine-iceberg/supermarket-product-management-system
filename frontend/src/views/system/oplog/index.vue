@@ -134,6 +134,9 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="operateTime" label="操作时间" width="165" />
         <el-table-column prop="username" label="操作人" width="100" />
+        <el-table-column label="真实姓名" width="100">
+          <template #default="{ row }">{{ row.realName || '—' }}</template>
+        </el-table-column>
         <el-table-column prop="roleNames" label="角色" width="110">
           <template #default="{ row }">{{ row.roleNames || '—' }}</template>
         </el-table-column>

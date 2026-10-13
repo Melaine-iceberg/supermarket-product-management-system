@@ -41,6 +41,7 @@ public enum ErrorCode {
     SENSITIVE_PWD_ERROR(1111, "密码错误，操作未执行"),
     AUTHORIZER_AUTH_FAILED(1112, "授权账号或密码错误"),
     AUTHORIZER_NOT_MANAGER(1113, "授权人须为店长及以上账号（FR-SALE-07/11、FR-PUR-06）"),
+    MUST_CHANGE_PWD(1114, "首次登录或重置密码后须先修改密码（BR-SYS-02）"),
 
     // ---------- CAT 分类模块（1200 ~ 1299，FR-CAT-01 ~ 07） ----------
     CAT_NAME_EXISTS(1201, "同级下已存在同名分类"),
@@ -73,6 +74,7 @@ public enum ErrorCode {
     CHECK_STATUS_INVALID(1413, "盘点单当前状态不允许该操作"),
     CHECK_AUDIT_SELF(1414, "审核人与盘点人必须为不同用户（BR-SYS-01）"),
     CHECK_REASON_REQUIRED(1415, "差异原因或驳回意见不能为空"),
+    CHECK_REASON_INVALID(1416, "盘点差异原因不合法或已被停用（数据字典 check_diff_reason）"),
     LOSS_STATUS_INVALID(1421, "报损报溢单当前状态不允许该操作"),
     LOSS_REASON_INVALID(1422, "报损报溢原因不合法或已被停用（数据字典 loss_reason）"),
 

@@ -196,6 +196,8 @@ export interface OperationLogVO {
   id: number
   userId: number | null
   username: string | null
+  /** 操作人真实姓名（BR-SYS-07，GAP-P1-10） */
+  realName: string | null
   roleNames: string | null
   module: string
   action: string

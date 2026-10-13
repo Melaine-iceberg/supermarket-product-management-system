@@ -20,6 +20,7 @@ import com.smms.sale.entity.SalesOrder;
 import com.smms.sale.mapper.ReturnOrderMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +61,7 @@ public class MemberBusinessService {
     private final SalesOrderMapper salesOrderMapper;
     private final ReturnOrderMapper returnOrderMapper;
     private final SysConfigService configService;
+    private final SensitiveAuthService sensitiveAuthService;
 
     // ==================== 结算联动（BR-MEM-05/06/07） ====================
 
@@ -168,12 +170,15 @@ public class MemberBusinessService {
     // ==================== 储值充值（FR-MEM-08） ====================
 
     /**
-     * 储值充值：金额 > 0、收款方式合法、须店长授权（授权人 ≠ 发起人）；
-     * 余额 += 金额并写 RECHARGE 流水（充值不计积分）。
+     * 储值充值（FR-MEM-08）：金额 > 0、收款方式合法、须店长授权（授权人 ≠ 发起人）；
+     * 授权按"账号+密码+店长及以上角色"核验（BR-SYS-06，与退货/改价同款），
+     * 落库真实授权人姓名；余额 += 金额并写 RECHARGE 流水（充值不计积分）。
      */
     @Transactional(rollbackFor = Exception.class)
     public BigDecimal recharge(Long memberId, RechargeRequest req, LoginUser operator) {
-        if (req.getAuthorizerName().trim().equals(operator.realName())) {
+        SensitiveAuthService.Authorizer authorizer = sensitiveAuthService.authorize(
+                req.getAuthorizerUsername(), req.getAuthorizerPassword());
+        if (authorizer.userId().equals(operator.userId())) {
             throw new BusinessException(ErrorCode.MEMBER_RECHARGE_AUTH_SELF,
                     "储值充值的授权人不得为发起人本人（FR-MEM-08）");
         }
@@ -186,7 +191,7 @@ public class MemberBusinessService {
         member.setBalance(balance);
         memberMapper.updateById(member);
         balanceRecordMapper.insert(balanceRecord(member.getId(), "RECHARGE", amount, balance,
-                req.getPayType(), null, operator.realName(), req.getAuthorizerName().trim(),
+                req.getPayType(), null, operator.realName(), authorizer.realName(),
                 LocalDateTime.now(), req.getRemark()));
         return balance;
     }

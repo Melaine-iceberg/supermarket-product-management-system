@@ -192,6 +192,28 @@
         LIMIT #{limit}
     </select>
 
+    <!-- 收银台分类浏览（GAP-P0-06）：仅启用商品，按分类子树（Java 侧解析物化路径）分页 -->
+    <select id="selectCashierBrowsePage" resultType="com.smms.sale.dto.CashierGoodsVO">
+        SELECT
+            g.id           AS id,
+            g.goods_code   AS goodsCode,
+            g.barcode      AS barcode,
+            g.name         AS name,
+            g.spec         AS spec,
+            g.plu_code     AS pluCode,
+            u.name         AS unitName,
+            g.retail_price AS retailPrice,
+            g.is_weighed   AS isWeighed
+        FROM goods g
+        JOIN unit u ON u.id = g.unit_id
+        WHERE g.status = 1
+        <if test="categoryIds != null and categoryIds.size() > 0">
+            AND g.category_id IN
+            <foreach collection="categoryIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+        </if>
+        ORDER BY g.id DESC
+    </select>
+
     <!-- ==================== 安全库存阈值维护（FR-INV-06） ==================== -->
 
     <!-- 单商品更新阈值：仅更新阈值字段与更新人，结存等派生数据不受影响（BR-INV-11） -->

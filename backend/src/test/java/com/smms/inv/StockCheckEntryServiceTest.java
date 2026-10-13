@@ -16,6 +16,9 @@ import com.smms.inv.mapper.StockCheckItemMapper;
 import com.smms.inv.mapper.StockCheckOrderMapper;
 import com.smms.inv.service.StockCheckExcelService;
 import com.smms.inv.service.StockCheckService;
+import com.smms.sys.dto.DictVO;
+import com.smms.sys.service.DutySeparationService;
+import com.smms.sys.service.SysDictService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,12 +33,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,6 +59,8 @@ class StockCheckEntryServiceTest {
     @Mock private com.smms.inv.mapper.InventoryRecordMapper inventoryRecordMapper;
     @Mock private CategoryMapper categoryMapper;
     @Mock private GoodsMapper goodsMapper;
+    @Mock private SysDictService dictService;
+    @Mock private DutySeparationService dutySeparationService;
 
     private StockCheckService service;
     private StockCheckExcelService excelService;
@@ -64,8 +71,20 @@ class StockCheckEntryServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckItem.class);
         service = new StockCheckService(orderMapper, itemMapper, inventoryMapper,
-                inventoryRecordMapper, categoryMapper, goodsMapper);
-        excelService = new StockCheckExcelService(itemMapper, service);
+                inventoryRecordMapper, categoryMapper, goodsMapper, dictService, dutySeparationService);
+        excelService = new StockCheckExcelService(itemMapper, service, dictService);
+    }
+
+    /** 差异原因字典（FR-SYS-07/GAP-P1-09）：代码集 + 名称映射（Excel 名称归一用）；lenient 供不同用例按需触发 */
+    private void stubDiffReasonDict() {
+        lenient().when(dictService.enabledValues("check_diff_reason")).thenReturn(
+                Set.of("COUNT_ERROR", "NATURAL_LOSS", "STEAL", "RECORD_ERROR", "OTHER"));
+        lenient().when(dictService.enabledItems("check_diff_reason")).thenReturn(List.of(
+                new DictVO.ItemVO(1L, "计数误差", "COUNT_ERROR", 1, 1, null),
+                new DictVO.ItemVO(2L, "损耗", "NATURAL_LOSS", 2, 1, null),
+                new DictVO.ItemVO(3L, "失窃", "STEAL", 3, 1, null),
+                new DictVO.ItemVO(4L, "单据错误", "RECORD_ERROR", 4, 1, null),
+                new DictVO.ItemVO(5L, "其他", "OTHER", 5, 1, null)));
     }
 
     // ---------- 造数 ----------
@@ -111,18 +130,19 @@ class StockCheckEntryServiceTest {
     @Test
     @DisplayName("录入：差异由服务端按实盘-账面计算，差异金额=差异×快照成本（2位），并实时汇总盈亏")
     void enter_serverSideDiff() {
+        stubDiffReasonDict();
         when(orderMapper.selectById(1L)).thenReturn(checkingOrder());
         when(itemMapper.selectList(any())).thenReturn(
                 List.of(item(9L, "10", "2.5"), item(10L, "5", "4.00")),
                 // refreshTotals 重查：9 盘盈 2（金额 5.00）、10 盘亏 3（金额 12.00）
-                List.of(entered(9L, "10", "2.5", "12", "5.00", "理货补录"),
-                        entered(10L, "5", "4.00", "2", "-12.00", "破损")));
+                List.of(entered(9L, "10", "2.5", "12", "5.00", "COUNT_ERROR"),
+                        entered(10L, "5", "4.00", "2", "-12.00", "NATURAL_LOSS")));
         when(goodsMapper.selectBatchIds(anyList())).thenReturn(
                 List.of(goods(9L, "可乐"), goods(10L, "纸巾")));
 
         CheckSummaryVO summary = service.enter(1L,
-                entry(9L, new BigDecimal("12"), "理货补录",
-                        10L, new BigDecimal("2"), "破损"));
+                entry(9L, new BigDecimal("12"), "COUNT_ERROR",
+                        10L, new BigDecimal("2"), "NATURAL_LOSS"));
 
         assertThat(summary.enteredCount()).isEqualTo(2);
         assertThat(summary.diffCount()).isEqualTo(2);
@@ -160,6 +180,27 @@ class StockCheckEntryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("必须填写差异原因");
         verify(itemMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("GAP-P1-09：差异原因须为启用中的字典代码；非字典值/停用项拒绝，字典未初始化报错")
+    void enter_diffReasonMustBeEnabledDictCode() {
+        when(orderMapper.selectById(1L)).thenReturn(checkingOrder());
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(9L, "10", "2.5")));
+        when(goodsMapper.selectBatchIds(anyList())).thenReturn(List.of(goods(9L, "可乐")));
+
+        // 非法代码（含手填中文名称）拒绝
+        when(dictService.enabledValues("check_diff_reason")).thenReturn(Set.of("COUNT_ERROR", "OTHER"));
+        assertThatThrownBy(() -> service.enter(1L, entry(9L, new BigDecimal("8"), "手填原因")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("差异原因不合法");
+        verify(itemMapper, never()).update(any(), any());
+
+        // 字典未初始化（整体缺失/停用）报系统错误
+        when(dictService.enabledValues("check_diff_reason")).thenReturn(Set.of());
+        assertThatThrownBy(() -> service.enter(1L, entry(9L, new BigDecimal("8"), "COUNT_ERROR")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("字典未初始化");
     }
 
     @Test
@@ -264,18 +305,19 @@ class StockCheckEntryServiceTest {
     @Test
     @DisplayName("Excel 导入：编码/条码定位行，实盘留空跳过，复用统一录入入口")
     void excelImport_matchesByCodeOrBarcode() throws IOException {
+        stubDiffReasonDict();
         CheckItemVO vo = new CheckItemVO(1L, 9L, "01001", "6901234567890", "可乐",
                 5L, "饮料", "罐", "330ml", 0,
                 new BigDecimal("10"), null, null, new BigDecimal("2.5"), null, null, null);
         when(itemMapper.selectAllItems(1L)).thenReturn(List.of(vo));
         when(orderMapper.selectById(1L)).thenReturn(checkingOrder());
         when(itemMapper.selectList(any())).thenReturn(List.of(item(9L, "10", "2.5")),
-                List.of(entered(9L, "10", "2.5", "12", "5.00", "理货补录")));
+                List.of(entered(9L, "10", "2.5", "12", "5.00", "COUNT_ERROR")));
         when(goodsMapper.selectBatchIds(anyList())).thenReturn(List.of(goods(9L, "可乐")));
 
         byte[] file = xlsx(new Object[][]{
                 {"商品编码", "商品条码", "商品名称", "单位", "账面数量", "实盘数量", "差异原因", "备注"},
-                {"01001", "6901234567890", "可乐", "罐", "10", "12", "理货补录", ""},
+                {"01001", "6901234567890", "可乐", "罐", "10", "12", "计数误差", ""},
                 {"01001", "6901234567890", "可乐", "罐", "10", "", "", ""},   // 实盘留空：跳过
         });
 

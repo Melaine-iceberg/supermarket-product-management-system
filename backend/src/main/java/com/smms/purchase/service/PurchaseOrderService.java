@@ -24,6 +24,7 @@ import com.smms.purchase.mapper.PurchaseOrderItemMapper;
 import com.smms.purchase.mapper.PurchaseOrderMapper;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
+import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -63,12 +64,16 @@ public class PurchaseOrderService {
     private static final Set<String> SETTLABLE_STATUSES = Set.of(
             PurchaseOrder.STATUS_PARTIAL, PurchaseOrder.STATUS_COMPLETED,
             PurchaseOrder.STATUS_PARTIAL_RETURNED, PurchaseOrder.STATUS_ALL_RETURNED);
+    /** 结算方式字典（FR-SYS-07/GAP-P1-09）：停用项不可被选择，字典缺失时回退内置枚举 */
+    private static final String DICT_SETTLE_TYPE = "settle_type";
+    private static final Set<String> SETTLE_TYPES = Set.of("CASH", "MONTHLY", "CREDIT");
 
     private final PurchaseOrderMapper orderMapper;
     private final PurchaseOrderItemMapper itemMapper;
     private final SupplierMapper supplierMapper;
     private final GoodsMapper goodsMapper;
     private final UnitMapper unitMapper;
+    private final SysDictService dictService;
 
     // ==================== 创建草稿（FR-PUR-01） ====================
 
@@ -209,7 +214,7 @@ public class PurchaseOrderService {
 
     // ==================== 结算登记（FR-PUR-09） ====================
 
-    /** 标记结算状态并登记金额/方式/日期/经办人（不做财务核销，X-05） */
+    /** 标记结算状态并登记金额/方式/日期/经办人（不做财务核销，X-05）；结算方式取值以字典为准（GAP-P1-09） */
     @Transactional
     public void settle(Long id, PurchaseSettleRequest req, String operator) {
         PurchaseOrder order = requireOrder(id);
@@ -220,18 +225,31 @@ public class PurchaseOrderService {
         if (!SETTLE_STATUSES.contains(req.settleStatus())) {
             throw new BusinessException(ErrorCode.PUR_SETTLE_INVALID, "结算状态不合法：" + req.settleStatus());
         }
+        boolean unsettled = PurchaseOrder.SETTLE_UNSETTLED.equals(req.settleStatus());
+        String settleMethod = unsettled ? null : requireSettleMethod(req.settleMethod());
         casUpdate(order, order.getStatus(), updater -> updater
                 .set(PurchaseOrder::getSettleStatus, req.settleStatus())
                 .set(PurchaseOrder::getSettleAmount,
-                        PurchaseOrder.SETTLE_UNSETTLED.equals(req.settleStatus())
-                                ? BigDecimal.ZERO : req.settleAmount())
-                .set(PurchaseOrder::getSettleMethod,
-                        PurchaseOrder.SETTLE_UNSETTLED.equals(req.settleStatus()) ? null : req.settleMethod())
-                .set(PurchaseOrder::getSettleDate,
-                        PurchaseOrder.SETTLE_UNSETTLED.equals(req.settleStatus()) ? null : req.settleDate())
-                .set(PurchaseOrder::getSettleBy,
-                        PurchaseOrder.SETTLE_UNSETTLED.equals(req.settleStatus()) ? null : operator)
+                        unsettled ? BigDecimal.ZERO : req.settleAmount())
+                .set(PurchaseOrder::getSettleMethod, settleMethod)
+                .set(PurchaseOrder::getSettleDate, unsettled ? null : req.settleDate())
+                .set(PurchaseOrder::getSettleBy, unsettled ? null : operator)
                 .set(PurchaseOrder::getUpdateBy, operator));
+    }
+
+    /** 结算方式校验（FR-PUR-09、FR-SYS-07/GAP-P1-09）：非未结算状态下必填且须为启用中的字典项 */
+    private String requireSettleMethod(String settleMethod) {
+        String value = settleMethod == null ? "" : settleMethod.trim();
+        if (value.isEmpty()) {
+            throw new BusinessException(ErrorCode.PUR_SETTLE_INVALID, "请选择结算方式（数据字典 settle_type）");
+        }
+        Set<String> enabled = dictService.enabledValues(DICT_SETTLE_TYPE);
+        Set<String> allowed = enabled.isEmpty() ? SETTLE_TYPES : enabled;
+        if (!allowed.contains(value)) {
+            throw new BusinessException(ErrorCode.PUR_SETTLE_INVALID,
+                    "结算方式不合法或已被停用（数据字典 settle_type）：" + value);
+        }
+        return value;
     }
 
     // ==================== 查询（FR-PUR-03） ====================
@@ -243,8 +261,24 @@ public class PurchaseOrderService {
         LocalDateTime beginTime = q.createDateBegin() == null ? null : q.createDateBegin().atStartOfDay();
         LocalDateTime endTime = q.createDateEnd() == null ? null : q.createDateEnd().plusDays(1).atStartOfDay();
         IPage<PurchaseOrderVO> result =
-                orderMapper.selectOrderPage(new Page<>(pageNo, size), q, beginTime, endTime);
+                orderMapper.selectOrderPage(new Page<>(pageNo, size), q, beginTime, endTime, null);
         return PageVO.of(result);
+    }
+
+    /** 待入库采购单分页（GAP-P0-05）：已审核待入库/部分入库，供库管员验收选单（只读，鉴权 sys:rcv:list） */
+    public PageVO<PurchaseOrderVO> pickable(String orderNo, int page, int size) {
+        int pageNo = Math.max(page, 1);
+        int pageSize = size <= 0 ? 20 : Math.min(size, 50);
+        PurchaseOrderQuery q = new PurchaseOrderQuery(blankToNull(orderNo), null, null, null,
+                null, null, null, null, null, pageNo, pageSize);
+        IPage<PurchaseOrderVO> result =
+                orderMapper.selectOrderPage(new Page<>(pageNo, pageSize), q, null, null,
+                        List.of(PurchaseOrder.STATUS_APPROVED, PurchaseOrder.STATUS_PARTIAL));
+        return PageVO.of(result);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /** 单据详情：单头 + 明细（含商品信息与已入库/已退货/待入库数量） */

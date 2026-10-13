@@ -14,6 +14,7 @@ import {
   type SupplierListVO,
 } from '@/api/supplier'
 import { getCategoryTree, pageGoods, type CategoryNode, type GoodsListVO } from '@/api/goods'
+import { getDictItems } from '@/api/system'
 
 const auth = useAuthStore()
 
@@ -25,10 +26,29 @@ function money(v: number | null | undefined) {
   return v == null ? '—' : Number(v).toFixed(2)
 }
 
-/** 结算方式展示：账期附带天数 */
+/** 结算方式选项（FR-SYS-07/GAP-P1-09：取自数据字典 settle_type 启用项，字典缺失时回退内置展示） */
+const settleTypeOptions = ref<{ label: string; value: string }[]>(
+  Object.entries(SETTLE_TYPE_MAP).map(([value, label]) => ({ label, value })),
+)
+const settleTypeLabels = ref<Record<string, string>>({ ...SETTLE_TYPE_MAP })
+
+async function loadSettleTypes() {
+  try {
+    const items = await getDictItems('settle_type')
+    if (items.length) {
+      settleTypeOptions.value = items.map((i) => ({ label: i.label, value: i.value }))
+      settleTypeLabels.value = Object.fromEntries(items.map((i) => [i.value, i.label]))
+    }
+  } catch {
+    // 回退内置展示，后端保存时仍按字典校验
+  }
+}
+
+/** 结算方式展示：账期附带天数；名称取自字典 */
 function settleLabel(row: SupplierListVO) {
+  const label = settleTypeLabels.value[row.settleType] ?? row.settleType
   if (row.settleType === 'CREDIT') return `账期${row.creditDays}天`
-  return SETTLE_TYPE_MAP[row.settleType] ?? row.settleType
+  return label
 }
 
 // ---------- 查询（FR-SUP-02） ----------
@@ -90,6 +110,7 @@ function resetQuery() {
 onMounted(() => {
   load()
   getCategoryTree().then((tree) => (categoryTree.value = tree))
+  loadSettleTypes()
 })
 
 // ---------- 新增 / 编辑（FR-SUP-01） ----------
@@ -477,7 +498,7 @@ async function saveGoods() {
         </el-form-item>
         <el-form-item label="结算方式" required>
           <el-radio-group v-model="editDialog.form.settleType">
-            <el-radio v-for="(label, type) in SETTLE_TYPE_MAP" :key="type" :value="type">{{ label }}</el-radio>
+            <el-radio v-for="t in settleTypeOptions" :key="t.value" :value="t.value">{{ t.label }}</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="editDialog.form.settleType === 'CREDIT'" label="账期天数" required>

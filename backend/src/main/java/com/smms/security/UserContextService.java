@@ -41,15 +41,18 @@ public class UserContextService {
 
     /**
      * 获取登录用户上下文：
-     * Token 版本号与当前全局版本不一致或缓存过期/不存在时，从数据库重建。
+     * 仅当 Token 版本号与当前全局版本一致、且缓存新鲜时才直接复用缓存；
+     * Token 版本落后（签发后发生过用户/角色/权限变更）或缓存过期/不存在时，从数据库重建。
+     * 注意是"重建而非拒绝"：历史 Token 在权限变更后按最新权限继续可用，保证变更即时生效（NFR-SEC-02）。
      *
-     * @param tokenVersion JWT 载荷中的权限版本号（可为 null，视为过期）
+     * @param tokenVersion JWT 载荷中的权限版本号（登录时为 null，视为须重建）
      * @return 用户不存在或已停用时返回 null
      */
     public LoginUser getLoginUser(Long userId, Long tokenVersion) {
-        CacheEntry entry = cache.get(userId);
         long current = permVersion.current();
-        if (entry != null && entry.version() == current
+        boolean versionMatched = tokenVersion != null && tokenVersion == current;
+        CacheEntry entry = cache.get(userId);
+        if (entry != null && versionMatched && entry.version() == current
                 && System.currentTimeMillis() - entry.cachedAt() < TTL_MILLIS) {
             return entry.user();
         }

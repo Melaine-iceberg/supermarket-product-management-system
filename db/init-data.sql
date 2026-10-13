@@ -56,6 +56,7 @@ INSERT INTO sys_permission (id, parent_id, name, perm_type, perm_code, route_pat
 (202, 20, '编辑分类',     'B', 'sys:cat:update',        NULL, NULL, NULL, 2, 1, 'system'),
 (203, 20, '停用/启用分类','B', 'sys:cat:status',        NULL, NULL, NULL, 3, 1, 'system'),
 (204, 20, '删除分类',     'B', 'sys:cat:delete',        NULL, NULL, NULL, 4, 1, 'system'),
+(205, 20, '分类树只读',   'B', 'sys:cat:tree',          NULL, NULL, NULL, 5, 1, 'system'),
 (21, 2, '商品档案', 'M', 'sys:goods:list',  '/goods/list',      'goods/list/index',     'GoodsFilled',2, 1, 'system'),
 (211, 21, '新增商品',     'B', 'sys:goods:create',      NULL, NULL, NULL, 1, 1, 'system'),
 (212, 21, '编辑商品',     'B', 'sys:goods:update',     NULL, NULL, NULL, 2, 1, 'system'),
@@ -173,15 +174,16 @@ WHERE NOT (
 AND (p.perm_code IS NULL OR p.perm_code <> 'sys:inv:health:fix');
 
 -- 采购员：供应商维护、采购单编制提交、采购退货、建议采购、入库跟踪；商品与库存仅查看
+-- 注：205 分类树只读（业务页面按分类筛选/选品用，不开分类管理菜单）
 INSERT INTO sys_role_permission (role_id, perm_id) VALUES
-(3, 2), (3, 21),
+(3, 2), (3, 21), (3, 205),
 (3, 3), (3, 30), (3, 31), (3, 32),
 (3, 4), (3, 40), (3, 401), (3, 402), (3, 403), (3, 404), (3, 408),
 (3, 41), (3, 42), (3, 421), (3, 422), (3, 424), (3, 43);
 
 -- 库管员：入库验收、盘点执行、报损报溢登记、库存体检查看；商品与库存查看
 INSERT INTO sys_role_permission (role_id, perm_id) VALUES
-(4, 2), (4, 21),
+(4, 2), (4, 21), (4, 205),
 (4, 3), (4, 30), (4, 31), (4, 32),
 (4, 33), (4, 331), (4, 332), (4, 333), (4, 335),
 (4, 34), (4, 341), (4, 35),

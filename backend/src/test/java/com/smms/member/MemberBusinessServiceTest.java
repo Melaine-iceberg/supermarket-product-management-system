@@ -21,6 +21,7 @@ import com.smms.sale.entity.SalesOrder;
 import com.smms.sale.mapper.ReturnOrderMapper;
 import com.smms.sale.mapper.SalesOrderMapper;
 import com.smms.security.LoginUser;
+import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,6 +67,7 @@ class MemberBusinessServiceTest {
     @Mock private SalesOrderMapper salesOrderMapper;
     @Mock private ReturnOrderMapper returnOrderMapper;
     @Mock private SysConfigService configService;
+    @Mock private SensitiveAuthService sensitiveAuthService;
 
     private MemberBusinessService service;
 
@@ -78,7 +80,7 @@ class MemberBusinessServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SalesOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ReturnOrder.class);
         service = new MemberBusinessService(memberMapper, memberLevelMapper, pointRecordMapper,
-                balanceRecordMapper, salesOrderMapper, returnOrderMapper, configService);
+                balanceRecordMapper, salesOrderMapper, returnOrderMapper, configService, sensitiveAuthService);
 
         // 默认参数与等级（普通 0 元 / 银卡 1000 元，倍率 1 / 2）
         when(configService.getBool(eq("point_include_recharge"), eq(false))).thenReturn(false);
@@ -118,11 +120,17 @@ class MemberBusinessServiceTest {
         return m;
     }
 
-    private RechargeRequest rechargeReq(String amount, String payType, String authorizer) {
+    private RechargeRequest rechargeReq(String amount, String payType, String authorizerUsername) {
+        return rechargeReq(amount, payType, authorizerUsername, "pwd");
+    }
+
+    private RechargeRequest rechargeReq(String amount, String payType, String authorizerUsername,
+                                        String authorizerPassword) {
         RechargeRequest req = new RechargeRequest();
         req.setAmount(new BigDecimal(amount));
         req.setPayType(payType);
-        req.setAuthorizerName(authorizer);
+        req.setAuthorizerUsername(authorizerUsername);
+        req.setAuthorizerPassword(authorizerPassword);
         return req;
     }
 
@@ -334,13 +342,15 @@ class MemberBusinessServiceTest {
     // ---------- 储值充值 recharge（FR-MEM-08） ----------
 
     @Test
-    @DisplayName("充值：店长授权（授权人≠发起人）、余额累加并写 RECHARGE 流水、返回新余额")
+    @DisplayName("充值：店长授权（授权账号+密码核验、授权人≠发起人）、余额累加并写 RECHARGE 流水、返回新余额")
     void recharge_success() {
         Member m = member("100.00", 0, "50.00", 1L);
         when(memberMapper.selectByIdForUpdate(MEMBER_ID)).thenReturn(m);
+        when(sensitiveAuthService.authorize("manager1", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(9L, "manager1", "王店长"));
 
         BigDecimal balance = service.recharge(MEMBER_ID,
-                rechargeReq("200.00", "CASH", "王店长"), CASHIER);
+                rechargeReq("200.00", "CASH", "manager1"), CASHIER);
 
         assertThat(balance).isEqualByComparingTo("250.00");
         ArgumentCaptor<Member> captor = ArgumentCaptor.forClass(Member.class);
@@ -355,16 +365,33 @@ class MemberBusinessServiceTest {
         assertThat(record.getAfterBalance()).isEqualByComparingTo("250.00");
         assertThat(record.getPayType()).isEqualTo("CASH");
         assertThat(record.getOperatorName()).isEqualTo("陈收银");
-        assertThat(record.getAuthorizerName()).isEqualTo("王店长");
+        assertThat(record.getAuthorizerName()).isEqualTo("王店长"); // 落库真实授权人姓名（GAP-P0-07）
     }
 
     @Test
-    @DisplayName("充值授权人不得为发起人本人（FR-MEM-08）")
+    @DisplayName("充值授权人不得为发起人本人（FR-MEM-08，按授权账号核验）")
     void recharge_authSelf_rejected() {
+        when(sensitiveAuthService.authorize("cashier", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(CASHIER.userId(), "cashier", "陈收银"));
+
         assertThatThrownBy(() -> service.recharge(MEMBER_ID,
-                rechargeReq("200.00", "CASH", "陈收银"), CASHIER))
+                rechargeReq("200.00", "CASH", "cashier"), CASHIER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage(ErrorCode.MEMBER_RECHARGE_AUTH_SELF.getMessage());
+        verify(memberMapper, never()).updateById(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("GAP-P0-07：授权账号不存在/密码错误/非店长一律拒绝（不可再手填姓名伪造授权）")
+    void recharge_authorizerAuthFailed_rejected() {
+        when(sensitiveAuthService.authorize("someone", "wrong"))
+                .thenThrow(new BusinessException(ErrorCode.AUTHORIZER_AUTH_FAILED));
+
+        assertThatThrownBy(() -> service.recharge(MEMBER_ID,
+                rechargeReq("200.00", "CASH", "someone", "wrong"), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(ErrorCode.AUTHORIZER_AUTH_FAILED.getCode());
         verify(memberMapper, never()).updateById(any(Member.class));
     }
 
@@ -374,9 +401,11 @@ class MemberBusinessServiceTest {
         Member m = member("100.00", 0, "50.00", 1L);
         m.setStatus(0);
         when(memberMapper.selectByIdForUpdate(MEMBER_ID)).thenReturn(m);
+        when(sensitiveAuthService.authorize("manager1", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(9L, "manager1", "王店长"));
 
         assertThatThrownBy(() -> service.recharge(MEMBER_ID,
-                rechargeReq("200.00", "CASH", "王店长"), CASHIER))
+                rechargeReq("200.00", "CASH", "manager1"), CASHIER))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("停用");
         verify(memberMapper, never()).updateById(any(Member.class));

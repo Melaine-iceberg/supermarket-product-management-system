@@ -31,9 +31,9 @@ public class CategoryController {
 
     private final CategoryService categoryService;
 
-    /** 分类树（FR-CAT-01）：含每个节点子树汇总的商品数量 */
+    /** 分类树（FR-CAT-01）：含每个节点子树汇总的商品数量；分类维护页或业务只读选品均可 */
     @GetMapping
-    @RequirePerm("sys:cat:list")
+    @RequirePerm({"sys:cat:list", "sys:cat:tree"})
     public ApiResponse<List<CategoryNode>> tree() {
         return ApiResponse.ok(categoryService.tree());
     }

@@ -22,6 +22,7 @@ import {
   type SalesReportRow,
   type SalesReportVO,
 } from '@/api/report'
+import { getDictItems } from '@/api/system'
 import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
 
 type ViewKey = 'daily' | 'pay-method' | 'hour' | 'cashier' | 'counter' | 'member-ratio'
@@ -177,11 +178,26 @@ async function handlePrint() {
 }
 
 // ---------- 下钻（BR-RPT-06）：汇总数字 → 构成它的销售单列表（AC-16） ----------
-const PAY_LABEL_TO_CODE: Record<string, string> = {
+/** 收款方式名称→编码兜底（字典未加载时）；GAP-P1-09：优先按数据字典 pay_type 反查 */
+const FALLBACK_PAY_LABEL_TO_CODE: Record<string, string> = {
   现金: 'CASH',
   银行卡: 'BANK',
   移动支付: 'MOBILE',
   会员储值: 'BALANCE',
+}
+
+/** 数据字典 pay_type：名称→编码（报表展示名由后端按字典回填，下钻反查编码走字典，NFR-EXT-01） */
+const payCodeByLabel = ref<Record<string, string>>({ ...FALLBACK_PAY_LABEL_TO_CODE })
+
+async function loadPayTypes() {
+  try {
+    const items = await getDictItems('pay_type')
+    if (items.length) {
+      payCodeByLabel.value = Object.fromEntries(items.map((i) => [i.label, i.value]))
+    }
+  } catch {
+    // 回退内置映射
+  }
 }
 
 const drillVisible = ref(false)
@@ -214,7 +230,7 @@ function drillRow(row: SalesReportRow) {
       openDrill({ beginDate: day, endDate: day }, `销售日报 ${day}`)
     }
   } else if (view.value === 'pay-method') {
-    const code = PAY_LABEL_TO_CODE[row.groupKey]
+    const code = payCodeByLabel.value[row.groupKey] ?? FALLBACK_PAY_LABEL_TO_CODE[row.groupKey]
     if (!code) {
       ElMessage.warning('该收款方式暂不支持下钻')
       return
@@ -237,7 +253,10 @@ function drillTotalRow() {
   openDrill({ ...range }, `合计（${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}）`)
 }
 
-onMounted(load)
+onMounted(() => {
+  loadPayTypes()
+  load()
+})
 </script>
 
 <template>

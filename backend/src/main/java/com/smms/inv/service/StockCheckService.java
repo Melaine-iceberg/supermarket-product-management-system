@@ -27,6 +27,9 @@ import com.smms.inv.mapper.InventoryMapper;
 import com.smms.inv.mapper.InventoryRecordMapper;
 import com.smms.inv.mapper.StockCheckItemMapper;
 import com.smms.inv.mapper.StockCheckOrderMapper;
+import com.smms.security.LoginUser;
+import com.smms.sys.service.DutySeparationService;
+import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +60,8 @@ public class StockCheckService {
     private static final int INSERT_BATCH = 500;
     /** 未审核完成状态（BR-INV-09 防重复盘点的排除对象） */
     private static final List<String> UNAUDITED_STATUSES = List.of("CHECKING", "PENDING_AUDIT");
+    /** 盘点差异原因字典（FR-SYS-07，差异行原因存字典代码） */
+    private static final String DICT_CHECK_DIFF_REASON = "check_diff_reason";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final StockCheckOrderMapper orderMapper;
@@ -65,6 +70,8 @@ public class StockCheckService {
     private final InventoryRecordMapper inventoryRecordMapper;
     private final CategoryMapper categoryMapper;
     private final GoodsMapper goodsMapper;
+    private final SysDictService dictService;
+    private final DutySeparationService dutySeparationService;
 
     // ==================== 盘点单创建（FR-INV-07） ====================
 
@@ -283,12 +290,13 @@ public class StockCheckService {
                                 + " 与账面 " + item.getBookQty().stripTrailingZeros().toPlainString()
                                 + " 存在差异，必须填写差异原因");
             }
+            String diffReason = requireDiffReason(names.get(line.goodsId()), line.diffReason());
             BigDecimal diffAmount = diff.multiply(item.getCostPrice()).setScale(2, java.math.RoundingMode.HALF_UP);
             itemMapper.update(null, Wrappers.<StockCheckItem>lambdaUpdate()
                     .set(StockCheckItem::getActualQty, actual)
                     .set(StockCheckItem::getDiffQty, diff)
                     .set(StockCheckItem::getDiffAmount, diffAmount)
-                    .set(StockCheckItem::getDiffReason, isBlank(line.diffReason()) ? null : line.diffReason().trim())
+                    .set(StockCheckItem::getDiffReason, diffReason)
                     .set(StockCheckItem::getRemark, isBlank(line.remark()) ? null : line.remark().trim())
                     .eq(StockCheckItem::getId, item.getId()));
         }
@@ -364,22 +372,25 @@ public class StockCheckService {
 
     /**
      * 盘点审核（FR-INV-09）：通过 → 单事务内生成盘盈/盘亏流水并将结存覆盖为实盘数；
-     * 驳回 → 须填意见并退回盘点中（§2.2.4）。审核人与盘点人必须不同（BR-SYS-01）。
+     * 驳回 → 须填意见并退回盘点中（§2.2.4）。
+     * 职责分离（BR-SYS-01，GAP-P1-08 统一策略）：审核人 ≠ 盘点人；违反时按参数
+     * duty_separation_strict 拒绝或放行并记异常日志，超级管理员可代审（同样留痕）。
      */
     @Transactional
-    public CheckOrderVO audit(Long orderId, CheckAuditRequest req, String auditorName) {
+    public CheckOrderVO audit(Long orderId, CheckAuditRequest req, LoginUser auditor) {
         StockCheckOrder order = requireOrder(orderId);
         if (!"PENDING_AUDIT".equals(order.getStatus())) {
             throw new BusinessException(ErrorCode.CHECK_STATUS_INVALID,
                     "仅待审核的盘点单可审核，当前状态：" + statusLabel(order.getStatus()));
         }
-        if (auditorName.equals(order.getCheckerName())) {
-            throw new BusinessException(ErrorCode.CHECK_AUDIT_SELF,
-                    "审核人与盘点人必须为不同用户（当前均为 " + auditorName + "）");
+        if (auditor.username().equals(order.getCheckerName())) {
+            dutySeparationService.enforce("库存管理", "盘点审核职责未分离",
+                    "盘点单 " + order.getOrderNo() + " 盘点人与审核人同为 " + auditor.username(),
+                    ErrorCode.CHECK_AUDIT_SELF, auditor);
         }
         return Boolean.TRUE.equals(req.approved())
-                ? auditPass(order, req.remark(), auditorName)
-                : auditReject(order, req.remark(), auditorName);
+                ? auditPass(order, req.remark(), auditor.username())
+                : auditReject(order, req.remark(), auditor.username());
     }
 
     /**
@@ -533,6 +544,27 @@ public class StockCheckService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * 差异原因校验（FR-SYS-07、GAP-P1-09）：须为启用中的 check_diff_reason 字典项代码，
+     * 停用项不可被新单据选择；空白返回 null（无差异时允许不填）；字典未初始化时报系统错误。
+     */
+    private String requireDiffReason(String goodsName, String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        Set<String> enabled = dictService.enabledValues(DICT_CHECK_DIFF_REASON);
+        if (enabled.isEmpty()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,
+                    "盘点差异原因字典未初始化（check_diff_reason）");
+        }
+        if (!enabled.contains(value)) {
+            throw new BusinessException(ErrorCode.CHECK_REASON_INVALID,
+                    "商品【" + goodsName + "】差异原因不合法或已被停用（数据字典 check_diff_reason）");
+        }
+        return value;
     }
 
     /** 分类子树 id 集合（含自身）：按物化路径前缀匹配（与库存查询同口径） */

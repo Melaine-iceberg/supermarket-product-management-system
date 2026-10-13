@@ -21,7 +21,10 @@ public class OperationLog {
 
     private String username;
 
-    /** 操作人角色（BR-SYS-07 同时记录账号与真实姓名，此处记录角色名） */
+    /** 操作人真实姓名（BR-SYS-07：关键业务动作同时记录账号与真实姓名，GAP-P1-10） */
+    private String realName;
+
+    /** 操作人角色（记录角色名） */
     private String roleNames;
 
     /** 模块（如 商品管理、安全审计） */

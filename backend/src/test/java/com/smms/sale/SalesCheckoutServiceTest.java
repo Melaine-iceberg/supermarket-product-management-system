@@ -2,12 +2,15 @@ package com.smms.sale;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
+import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Promotion;
 import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.mapper.PromotionMapper;
+import com.smms.goods.service.CategoryService;
 import com.smms.inv.dto.StockChange;
 import com.smms.inv.entity.Inventory;
 import com.smms.inv.mapper.InventoryMapper;
@@ -17,6 +20,7 @@ import com.smms.member.entity.MemberLevel;
 import com.smms.member.mapper.MemberLevelMapper;
 import com.smms.member.mapper.MemberMapper;
 import com.smms.member.service.MemberBusinessService;
+import com.smms.sale.dto.CashierGoodsVO;
 import com.smms.sale.dto.CheckoutCommand;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
@@ -63,6 +67,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -102,6 +107,7 @@ class SalesCheckoutServiceTest {
     @Mock private MemberBusinessService memberBusinessService;
     @Mock private SensitiveAuthService sensitiveAuthService;
     @Mock private SysDictService dictService;
+    @Mock private CategoryService categoryService;
 
     private SalesCheckoutService service;
 
@@ -110,10 +116,12 @@ class SalesCheckoutServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Goods.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Promotion.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Member.class);
+        // 默认参数：最低整单折扣率（BR-SALE-10，GAP-P0-09 起计算分摊时总是读取）；具体用例可覆盖
+        lenient().when(configService.getStr(KEY_MIN_DISCOUNT, "0.7")).thenReturn("0.7");
         service = new SalesCheckoutService(salesOrderMapper, salesOrderItemMapper, paymentRecordMapper,
                 goodsMapper, promotionMapper, inventoryMapper, memberMapper, memberLevelMapper,
                 shiftMapper, inventoryService, configService, memberBusinessService, sensitiveAuthService,
-                dictService);
+                dictService, categoryService);
     }
 
     // ---------- 造数 ----------
@@ -494,6 +502,36 @@ class SalesCheckoutServiceTest {
                 .hasMessageContaining("储值余额不足");
     }
 
+    // ---------- 收银台分类浏览（GAP-P0-06） ----------
+
+    @Test
+    @DisplayName("GAP-P0-06：收银台分类树仅返回启用分类；分类浏览按子树分页查询")
+    void cashierCategoriesAndBrowse() {
+        com.smms.goods.dto.CategoryNode disabled = com.smms.goods.dto.CategoryNode.of(
+                1L, 0L, "停用分类", 1, 1, 0, 0);
+        com.smms.goods.dto.CategoryNode enabled = com.smms.goods.dto.CategoryNode.of(
+                2L, 0L, "饮料", 1, 2, 1, 0);
+        when(categoryService.tree()).thenReturn(List.of(disabled, enabled));
+
+        assertThat(service.cashierCategories())
+                .extracting(com.smms.goods.dto.CategoryNode::name)
+                .containsExactly("饮料");
+
+        when(categoryService.resolveTreeIds(2L)).thenReturn(List.of(2L, 20L));
+        Page<CashierGoodsVO> pager = new Page<>(1, 100);
+        pager.setRecords(List.of(new CashierGoodsVO(9L, "01001", "6901234567890", "可乐",
+                "330ml", null, "罐", new BigDecimal("3.50"), 0)));
+        pager.setTotal(1);
+        when(goodsMapper.selectCashierBrowsePage(any(), eq(List.of(2L, 20L)))).thenReturn(pager);
+
+        PageVO<CashierGoodsVO> page = service.browseCashierGoods(2L, 1, 100);
+
+        assertThat(page.total()).isEqualTo(1);
+        assertThat(page.list()).hasSize(1);
+        assertThat(page.list().get(0).name()).isEqualTo("可乐");
+        verify(categoryService).resolveTreeIds(2L);
+    }
+
     // ---------- 整单折扣授权（FR-SALE-07，BR-SALE-05/10） ----------
 
     @Test
@@ -514,9 +552,45 @@ class SalesCheckoutServiceTest {
     }
 
     @Test
-    @DisplayName("整单折扣授权人不得为当前收银员本人（FR-SALE-07）")
-    void checkout_orderDiscountAuthorizerSelf_rejected() {
+    @DisplayName("GAP-P0-09（BR-SALE-10）：会员折扣×整单折扣的最终折扣率低于下限拒绝（0.95×0.7=0.665<0.70）")
+    void checkout_combinedDiscountBelowMin_rejected() {
         mockGoodsAndPromoAndStock();
+        when(configService.getStr(KEY_MIN_DISCOUNT, "0.7")).thenReturn("0.7");
+        when(memberMapper.selectById(MEMBER_ID)).thenReturn(member("100.00", 3, 1));
+        when(memberLevelMapper.selectById(1L)).thenReturn(level("0.95")); // 金卡折扣
+        when(sensitiveAuthService.authorize("manager1", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(9L, "manager1", "王店长"));
+
+        assertThatThrownBy(() -> service.checkout(
+                command(MEMBER_ID, new BigDecimal("0.7"), "manager1", List.of(pay("CASH", "35"))), CASHIER))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(ErrorCode.SALE_DISCOUNT_BELOW_MIN.getCode());
+        verify(salesOrderMapper, never()).insert(any(SalesOrder.class));
+    }
+
+    @Test
+    @DisplayName("GAP-P0-09（BR-SALE-10）：会员折扣×整单折扣≥下限通过（0.98×0.75=0.735）")
+    void checkout_combinedDiscountAtOrAboveMin_accepted() {
+        mockGoodsAndPromoAndStock();
+        mockOrderInsertSuccess();
+        when(memberMapper.selectById(MEMBER_ID)).thenReturn(member("100.00", 3, 1));
+        when(memberLevelMapper.selectById(1L)).thenReturn(level("0.98"));
+        when(sensitiveAuthService.authorize("manager1", "pwd"))
+                .thenReturn(new SensitiveAuthService.Authorizer(9L, "manager1", "王店长"));
+
+        // 商品总额 45.75 × 0.98 × 0.75 = 33.626250 → 优惠 12.12，应收 33.63
+        CheckoutVO vo = service.checkout(
+                command(MEMBER_ID, new BigDecimal("0.75"), "manager1", List.of(pay("CASH", "35"))), CASHIER);
+
+        assertThat(vo.payableAmount()).isEqualByComparingTo("33.63");
+        assertThat(vo.changeAmount()).isEqualByComparingTo("1.37");
+        verify(salesOrderMapper).insert(any(SalesOrder.class));
+    }
+
+    @Test
+    @DisplayName("整单折扣授权人不得为当前收银员本人（FR-SALE-07）")
+    void checkout_orderDiscountAuthorizerSelf_rejected() {        mockGoodsAndPromoAndStock();
         when(configService.getStr(KEY_MIN_DISCOUNT, "0.7")).thenReturn("0.7");
         when(sensitiveAuthService.authorize("cashier", "pwd"))
                 .thenReturn(new SensitiveAuthService.Authorizer(CASHIER.userId(), "cashier", "陈收银"));

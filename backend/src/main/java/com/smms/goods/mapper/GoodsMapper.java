@@ -59,4 +59,9 @@ public interface GoodsMapper extends BaseMapper<Goods> {
     /** 收银台关键字检索（FR-SALE-02）：条码/编码/PLU 精确优先，名称/拼音首字母模糊次之，仅启用商品 */
     List<com.smms.sale.dto.CashierGoodsVO> searchForCashier(@Param("keyword") String keyword,
                                                             @Param("limit") int limit);
+
+    /** 收银台分类浏览（GAP-P0-06）：启用商品按分类子树分页，仅返回录入所需字段 */
+    IPage<com.smms.sale.dto.CashierGoodsVO> selectCashierBrowsePage(
+            IPage<com.smms.sale.dto.CashierGoodsVO> page,
+            @Param("categoryIds") List<Long> categoryIds);
 }

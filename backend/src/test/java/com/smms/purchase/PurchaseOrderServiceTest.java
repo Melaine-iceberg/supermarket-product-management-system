@@ -3,7 +3,9 @@ package com.smms.purchase;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
+import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Unit;
@@ -11,6 +13,8 @@ import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.mapper.UnitMapper;
 import com.smms.purchase.dto.PurchaseAuditRequest;
 import com.smms.purchase.dto.PurchaseOrderDetailVO;
+import com.smms.purchase.dto.PurchaseOrderQuery;
+import com.smms.purchase.dto.PurchaseOrderVO;
 import com.smms.purchase.dto.PurchaseReasonRequest;
 import com.smms.purchase.dto.PurchaseSaveRequest;
 import com.smms.purchase.dto.PurchaseSettleRequest;
@@ -61,6 +65,7 @@ class PurchaseOrderServiceTest {
     @Mock private SupplierMapper supplierMapper;
     @Mock private GoodsMapper goodsMapper;
     @Mock private UnitMapper unitMapper;
+    @Mock private com.smms.sys.service.SysDictService dictService;
 
     private PurchaseOrderService service;
 
@@ -71,7 +76,7 @@ class PurchaseOrderServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Goods.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Unit.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
-        service = new PurchaseOrderService(orderMapper, itemMapper, supplierMapper, goodsMapper, unitMapper);
+        service = new PurchaseOrderService(orderMapper, itemMapper, supplierMapper, goodsMapper, unitMapper, dictService);
     }
 
     // ==================== 创建草稿（FR-PUR-01 / BR-PUR-01 / BR-PUR-03） ====================
@@ -269,6 +274,28 @@ class PurchaseOrderServiceTest {
         verify(orderMapper).update(isNull(), any(Wrapper.class));
     }
 
+    // ==================== 待入库选单（GAP-P0-05，库管员验收只读） ====================
+
+    @Test
+    @DisplayName("GAP-P0-05：待入库选单仅查 APPROVED/PARTIAL，单号模糊传递，供 sys:rcv:list 只读接口")
+    void pickableQueriesReceivableStatuses() {
+        Page<PurchaseOrderVO> pager = new Page<>(1, 20);
+        pager.setTotal(0);
+        when(orderMapper.selectOrderPage(any(), any(), isNull(), isNull(),
+                eq(List.of(PurchaseOrder.STATUS_APPROVED, PurchaseOrder.STATUS_PARTIAL))))
+                .thenReturn(pager);
+
+        PageVO<PurchaseOrderVO> page = service.pickable(" PO2026 ", 1, 20);
+
+        assertThat(page.total()).isZero();
+        org.mockito.ArgumentCaptor<PurchaseOrderQuery> qCaptor =
+                org.mockito.ArgumentCaptor.forClass(PurchaseOrderQuery.class);
+        verify(orderMapper).selectOrderPage(any(), qCaptor.capture(), isNull(), isNull(),
+                eq(List.of(PurchaseOrder.STATUS_APPROVED, PurchaseOrder.STATUS_PARTIAL)));
+        assertThat(qCaptor.getValue().status()).isNull();
+        assertThat(qCaptor.getValue().orderNo()).isEqualTo("PO2026");
+    }
+
     // ==================== 结算登记（FR-PUR-09） ====================
 
     @Test
@@ -304,6 +331,31 @@ class PurchaseOrderServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(ErrorCode.PUR_SETTLE_INVALID.getCode());
+    }
+
+    @Test
+    @DisplayName("GAP-P1-09：结算方式必填且以数据字典 settle_type 启用项为准（字典存在时停用项拒绝）")
+    void settleMethodValidatedAgainstDict() {
+        when(orderMapper.selectById(100L)).thenReturn(order(PurchaseOrder.STATUS_COMPLETED));
+        when(orderMapper.update(isNull(), any(Wrapper.class))).thenReturn(1);
+
+        // 非未结算状态未填结算方式拒绝
+        assertThatThrownBy(() -> service.settle(100L,
+                new PurchaseSettleRequest(PurchaseOrder.SETTLE_SETTLED, new BigDecimal("100"), "  ", LocalDate.now()), "王店长"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请选择结算方式");
+
+        // 字典启用项为 MONTHLY 时，CASH 视为停用项拒绝
+        when(dictService.enabledValues("settle_type")).thenReturn(java.util.Set.of("MONTHLY", "CREDIT"));
+        assertThatThrownBy(() -> service.settle(100L,
+                new PurchaseSettleRequest(PurchaseOrder.SETTLE_SETTLED, new BigDecimal("100"), "CASH", LocalDate.now()), "王店长"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("settle_type");
+
+        // 字典启用项内的取值放行
+        service.settle(100L, new PurchaseSettleRequest(PurchaseOrder.SETTLE_SETTLED,
+                new BigDecimal("100"), "MONTHLY", LocalDate.now()), "王店长");
+        verify(orderMapper, org.mockito.Mockito.times(1)).update(isNull(), any(Wrapper.class));
     }
 
     // ==================== 测试数据 ====================

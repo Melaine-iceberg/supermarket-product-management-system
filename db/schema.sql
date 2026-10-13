@@ -98,11 +98,11 @@ CREATE TABLE IF NOT EXISTS sys_role_permission (
     KEY idx_perm (perm_id)
 ) ENGINE = InnoDB COMMENT = '角色-权限关联';
 
--- Token 黑名单（IR-SW-03：登出、停用、权限变更即时失效）
+-- Token 黑名单（IR-SW-03：登出/改密按 jti 拉黑；停用与权限变更经用户状态校验 + JWT ver 即时生效）
 CREATE TABLE IF NOT EXISTS sys_token_blacklist (
     jti         VARCHAR(40)  NOT NULL COMMENT 'JWT ID',
-    expire_time DATETIME     NOT NULL COMMENT 'Token 原始过期时间（过期后可清理）',
-    reason      VARCHAR(50)  DEFAULT NULL COMMENT '拉黑原因：LOGOUT/DISABLE/PERM_CHANGE',
+    expire_time DATETIME     NOT NULL COMMENT 'Token 原始过期时间（过期后由定时任务清理）',
+    reason      VARCHAR(50)  DEFAULT NULL COMMENT '拉黑原因：LOGOUT登出/PWD_CHANGE改密',
     create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (jti),
     KEY idx_expire (expire_time)
@@ -164,7 +164,8 @@ CREATE TABLE IF NOT EXISTS operation_log (
     id            BIGINT UNSIGNED AUTO_INCREMENT COMMENT '日志ID',
     user_id       BIGINT UNSIGNED DEFAULT NULL COMMENT '操作人ID',
     username      VARCHAR(30)  DEFAULT NULL COMMENT '操作人用户名',
-    role_names    VARCHAR(100) DEFAULT NULL COMMENT '操作人角色（BR-SYS-07 同时记录）',
+    real_name     VARCHAR(30)  DEFAULT NULL COMMENT '操作人真实姓名（BR-SYS-07：关键动作同时记录账号与姓名）',
+    role_names    VARCHAR(100) DEFAULT NULL COMMENT '操作人角色',
     module        VARCHAR(30)  NOT NULL COMMENT '模块（如 商品管理）',
     action        VARCHAR(60)  NOT NULL COMMENT '动作（如 调价、审核）',
     target        VARCHAR(60)  DEFAULT NULL COMMENT '目标对象标识（单号/编码等）',

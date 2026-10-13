@@ -23,6 +23,8 @@ import com.smms.goods.entity.Category;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.PriceHistory;
 import com.smms.goods.entity.Promotion;
+import com.smms.security.LoginUser;
+import com.smms.security.SecurityUtils;
 import com.smms.goods.entity.Unit;
 import com.smms.goods.mapper.BrandMapper;
 import com.smms.goods.mapper.CategoryMapper;
@@ -611,10 +613,11 @@ public class GoodsService {
         inventoryRecordMapper.insert(record);
     }
 
-    /** 条码变更历史（FR-GOODS-02）：单独留操作日志，记录前值后值 */
+    /** 条码变更历史（FR-GOODS-02）：单独留操作日志，记录前值后值；同时记录真实姓名（BR-SYS-07/GAP-P1-10） */
     private void logBarcodeChange(Goods goods, String oldBarcode, String newBarcode, String operator) {
         OperationLog log = new OperationLog();
         log.setUsername(operator);
+        log.setRealName(currentRealName());
         log.setModule("商品管理");
         log.setAction("修改条码");
         log.setTarget(goods.getGoodsCode());
@@ -622,6 +625,12 @@ public class GoodsService {
         log.setResult(1);
         log.setOperateTime(LocalDateTime.now());
         operationLogService.recordAsync(log);
+    }
+
+    /** 当前请求上下文的操作人真实姓名（非请求线程如异步任务返回 null） */
+    private String currentRealName() {
+        LoginUser user = SecurityUtils.getLoginUserOrNull();
+        return user == null ? null : user.realName();
     }
 
     /**

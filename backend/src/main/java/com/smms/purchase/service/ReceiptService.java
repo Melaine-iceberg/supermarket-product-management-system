@@ -27,8 +27,7 @@ import com.smms.purchase.mapper.ReceiptOrderMapper;
 import com.smms.security.LoginUser;
 import com.smms.supplier.entity.Supplier;
 import com.smms.supplier.mapper.SupplierMapper;
-import com.smms.sys.entity.OperationLog;
-import com.smms.sys.service.OperationLogService;
+import com.smms.sys.service.DutySeparationService;
 import com.smms.sys.service.SensitiveAuthService;
 import com.smms.sys.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
@@ -72,8 +71,6 @@ public class ReceiptService {
     private static final String CFG_PRICE_DIFF_TOLERANCE = "price_diff_tolerance_rate";
     /** 与近 3 次均价偏离黄色提示阈值（BR-PUR-05，默认 ±20%） */
     private static final String CFG_PRICE_DIFF_WARN = "price_diff_warn_rate";
-    /** 职责分离是否强制拒绝（BR-SYS-01，默认 false 放行但记异常日志） */
-    private static final String CFG_DUTY_SEPARATION_STRICT = "duty_separation_strict";
 
     private final PurchaseOrderMapper orderMapper;
     private final PurchaseOrderItemMapper orderItemMapper;
@@ -85,7 +82,7 @@ public class ReceiptService {
     private final UnitMapper unitMapper;
     private final InventoryService inventoryService;
     private final SysConfigService configService;
-    private final OperationLogService operationLogService;
+    private final DutySeparationService dutySeparationService;
     private final SensitiveAuthService sensitiveAuthService;
 
     // ==================== 入库预检（BR-PUR-04/05） ====================
@@ -382,27 +379,14 @@ public class ReceiptService {
                 .multiply(HUNDRED).setScale(2, RoundingMode.HALF_UP);
     }
 
-    /** 职责分离（BR-SYS-01）：验收人 = 创建人时按参数拒绝或放行并记异常日志 */
+    /** 职责分离（BR-SYS-01，GAP-P1-08 统一策略）：验收人 = 创建人时按参数拒绝或放行并记异常日志，超管代验留痕 */
     private void checkDutySeparation(PurchaseOrder order, LoginUser operator) {
         if (!operator.realName().equals(order.getCreateBy())) {
             return;
         }
-        if (configService.getBool(CFG_DUTY_SEPARATION_STRICT, false)) {
-            throw new BusinessException(ErrorCode.PUR_RECEIPT_DUTY_SEPARATION);
-        }
-        // LOG 模式：放行但记录异常日志（BR-SYS-01）
-        OperationLog dutyLog = new OperationLog();
-        dutyLog.setUserId(operator.userId());
-        dutyLog.setUsername(operator.username());
-        dutyLog.setRoleNames(String.join(",", operator.roleNames()));
-        dutyLog.setModule("采购管理");
-        dutyLog.setAction("职责未分离告警");
-        dutyLog.setTarget("采购单 " + order.getOrderNo());
-        dutyLog.setParamSummary("入库验收人与采购单创建人同为 " + operator.realName() + "（BR-SYS-01）");
-        dutyLog.setResult(1);
-        dutyLog.setOperateTime(LocalDateTime.now());
-        operationLogService.recordAsync(dutyLog);
-        log.warn("职责未分离：采购单 {} 验收人与创建人同为 {}（BR-SYS-01）", order.getOrderNo(), operator.realName());
+        dutySeparationService.enforce("采购管理", "入库验收职责未分离",
+                "采购单 " + order.getOrderNo() + " 验收人与创建人同为 " + operator.realName(),
+                ErrorCode.PUR_RECEIPT_DUTY_SEPARATION, operator);
     }
 
     /** RK 单号生成（BR-PUR-01）：RK+yyyyMMdd+4位流水，行锁取号 + 唯一键兜底重试 */

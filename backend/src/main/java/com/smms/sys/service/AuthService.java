@@ -27,6 +27,7 @@ import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -106,7 +107,7 @@ public class AuthService {
         JwtTokenService.IssuedToken issued = jwtTokenService.createToken(loginUser, expireHours);
 
         loginLog(httpRequest, user.getUsername(), user.getId(), 1, "登录成功", ip, userAgent);
-        operationLog(user.getUsername(), String.join(",", loginUser.roleNames()),
+        operationLog(user.getUsername(), loginUser.realName(), String.join(",", loginUser.roleNames()),
                 "系统管理", "登录", null, ip, userAgent);
 
         return new LoginResponse(
@@ -129,7 +130,7 @@ public class AuthService {
             blacklistMapper.insert(blacklist);
             HttpServletRequest request = RequestUtils.currentRequest();
             if (user != null) {
-                operationLog(user.username(), String.join(",", user.roleNames()),
+                operationLog(user.username(), user.realName(), String.join(",", user.roleNames()),
                         "系统管理", "登出", null,
                         request != null ? RequestUtils.getClientIp(request) : null,
                         request != null ? request.getHeader("User-Agent") : null);
@@ -142,6 +143,21 @@ public class AuthService {
         LoginUser user = SecurityUtils.getLoginUser();
         List<MenuNode> menus = permissionService.getMenuTreeByUserId(user.userId());
         return new MeResponse(user.mustChangePwd(), toUserInfo(user), menus);
+    }
+
+    /** 每小时清理已过期的黑名单记录（Token 已自然过期，无需再比对，GAP-P1-11） */
+    @Scheduled(cron = "0 41 * * * *")
+    public void cleanExpiredBlacklist() {
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            int deleted = blacklistMapper.delete(Wrappers.<SysTokenBlacklist>lambdaQuery()
+                    .lt(SysTokenBlacklist::getExpireTime, now));
+            if (deleted > 0) {
+                log.info("Token 黑名单清理：删除已过期记录 {} 条", deleted);
+            }
+        } catch (Exception e) {
+            log.error("Token 黑名单清理失败：{}", e.getMessage());
+        }
     }
 
     /** 修改自身密码（FR-SYS-03）：校验原密码；成功后所有端强制重新登录 */
@@ -170,7 +186,7 @@ public class AuthService {
             blacklistMapper.insert(blacklist);
         }
         HttpServletRequest request = RequestUtils.currentRequest();
-        operationLog(user.getUsername(), String.join(",", current.roleNames()),
+        operationLog(user.getUsername(), user.getRealName(), String.join(",", current.roleNames()),
                 "系统管理", "修改自身密码", null,
                 request != null ? RequestUtils.getClientIp(request) : null,
                 request != null ? request.getHeader("User-Agent") : null);
@@ -206,10 +222,11 @@ public class AuthService {
         loginLogService.recordAsync(entry);
     }
 
-    private void operationLog(String username, String roleNames, String module,
+    private void operationLog(String username, String realName, String roleNames, String module,
                               String action, String target, String ip, String userAgent) {
         OperationLog entry = new OperationLog();
         entry.setUsername(username);
+        entry.setRealName(realName);
         entry.setRoleNames(roleNames);
         entry.setModule(module);
         entry.setAction(action);

@@ -1,13 +1,18 @@
 package com.smms.sale.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.smms.common.api.ErrorCode;
+import com.smms.common.api.PageVO;
 import com.smms.common.exception.BusinessException;
 import com.smms.common.util.MaskUtils;
+import com.smms.goods.dto.CategoryNode;
 import com.smms.goods.entity.Goods;
 import com.smms.goods.entity.Promotion;
 import com.smms.goods.mapper.GoodsMapper;
 import com.smms.goods.mapper.PromotionMapper;
+import com.smms.goods.service.CategoryService;
 import com.smms.inv.dto.StockChange;
 import com.smms.inv.entity.Inventory;
 import com.smms.inv.mapper.InventoryMapper;
@@ -89,6 +94,7 @@ public class SalesCheckoutService {
     private final MemberBusinessService memberBusinessService;
     private final SensitiveAuthService sensitiveAuthService;
     private final SysDictService dictService;
+    private final CategoryService categoryService;
 
     // ==================== 结算（FR-SALE-06） ====================
 
@@ -189,9 +195,39 @@ public class SalesCheckoutService {
         return goodsMapper.searchForCashier(keyword.trim(), 20);
     }
 
+    // ==================== 收银台分类浏览（GAP-P0-06） ====================
+
+    /**
+     * 收银台分类树（GAP-P0-06）：仅启用分类；按 {@code sys:cashier:enter} 鉴权，
+     * 收银员无需商品/分类管理权限（sys:cat:list）即可使用"分类树浏览点选"录入方式（FR-SALE-02③）。
+     */
+    public List<CategoryNode> cashierCategories() {
+        return filterEnabledCategories(categoryService.tree());
+    }
+
+    /**
+     * 收银台分类浏览商品（GAP-P0-06）：仅启用商品，分类含子分类，分页返回（最多 100/页）；
+     * 无类目选中时返回全部启用商品，作为收银台的无检索兜底浏览入口。
+     */
+    public PageVO<CashierGoodsVO> browseCashierGoods(Long categoryId, int page, int size) {
+        List<Long> categoryIds = categoryId == null ? null : categoryService.resolveTreeIds(categoryId);
+        int pageNo = Math.max(page, 1);
+        int pageSize = size <= 0 ? 50 : Math.min(size, 100);
+        IPage<CashierGoodsVO> result = goodsMapper.selectCashierBrowsePage(
+                new Page<>(pageNo, pageSize), categoryIds);
+        return PageVO.of(result);
+    }
+
+    /** 过滤停用分类并按子节点递归重建（收银台只展示启用分类） */
+    private List<CategoryNode> filterEnabledCategories(List<CategoryNode> nodes) {
+        return nodes.stream()
+                .filter(n -> n.status() != null && n.status() == 1)
+                .map(n -> n.withChildren(filterEnabledCategories(n.children())))
+                .toList();
+    }
+
     /** 手机号/会员编号精确 + 姓名模糊检索，最多 10 条；停用会员返回且折扣率置 1（BR-MEM-03） */
-    public List<MemberSearchVO> searchMembers(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
+    public List<MemberSearchVO> searchMembers(String keyword) {        if (keyword == null || keyword.isBlank()) {
             return List.of();
         }
         String kw = keyword.trim();
@@ -337,12 +373,17 @@ public class SalesCheckoutService {
             return BigDecimal.ONE;
         }
         BigDecimal rate = cmd.orderDiscountRate();
-        BigDecimal min = new BigDecimal(configService.getStr(CONFIG_MIN_DISCOUNT, "0.7"));
+        BigDecimal min = minDiscountRate();
         if (rate.compareTo(min) < 0) {
             throw new BusinessException(ErrorCode.SALE_DISCOUNT_BELOW_MIN,
                     "整单折扣率不得低于 " + min.stripTrailingZeros().toPlainString());
         }
         return rate;
+    }
+
+    /** 最低整单折扣率参数（BR-SALE-05/10） */
+    private BigDecimal minDiscountRate() {
+        return new BigDecimal(configService.getStr(CONFIG_MIN_DISCOUNT, "0.7"));
     }
 
     /** 整单折扣原因校验（FR-SALE-07）：打折须填写原因（≤200 字符） */
@@ -446,6 +487,16 @@ public class SalesCheckoutService {
         BigDecimal goodsAmount = lines.stream().map(CalculatedLine::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalRate = memberRate.multiply(orderRate);
+        // GAP-P0-09（BR-SALE-10）：最终折扣率 = 会员等级折扣 × 整单折扣，同样不得低于系统下限
+        // （例：金卡 0.95 × 整单 0.7 = 0.665 < 0.70 拒绝，避免叠加后击穿折扣下限）
+        BigDecimal minRate = minDiscountRate();
+        if (totalRate.compareTo(minRate) < 0) {
+            throw new BusinessException(ErrorCode.SALE_DISCOUNT_BELOW_MIN,
+                    "会员折扣 × 整单折扣的最终折扣率 "
+                            + totalRate.stripTrailingZeros().toPlainString()
+                            + " 低于系统下限 " + minRate.stripTrailingZeros().toPlainString()
+                            + "（BR-SALE-10），请调整折扣率");
+        }
         BigDecimal targetDiscount = goodsAmount.multiply(BigDecimal.ONE.subtract(totalRate))
                 .setScale(2, RoundingMode.HALF_UP);
         BigDecimal allocated = BigDecimal.ZERO;

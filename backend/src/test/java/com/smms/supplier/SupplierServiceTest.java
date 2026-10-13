@@ -52,6 +52,7 @@ class SupplierServiceTest {
     @Mock private SupplierMapper supplierMapper;
     @Mock private SupplierGoodsMapper supplierGoodsMapper;
     @Mock private GoodsMapper goodsMapper;
+    @Mock private com.smms.sys.service.SysDictService dictService;
 
     private SupplierService service;
 
@@ -60,7 +61,7 @@ class SupplierServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Supplier.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), SupplierGoods.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Goods.class);
-        service = new SupplierService(supplierMapper, supplierGoodsMapper, goodsMapper);
+        service = new SupplierService(supplierMapper, supplierGoodsMapper, goodsMapper, dictService);
     }
 
     // ==================== 新增（FR-SUP-01 / BR-SUP-03） ====================
@@ -118,9 +119,22 @@ class SupplierServiceTest {
     }
 
     @Test
-    @DisplayName("新增供应商：固话格式合法通过（BR-SUP-01）")
-    void createAcceptsLandlinePhone() {
+    @DisplayName("GAP-P1-09：结算方式须为启用中的数据字典项（停用项不可被新档案选择）")
+    void createRejectsDisabledSettleType() {
         when(supplierMapper.selectCount(any())).thenReturn(0L);
+        when(dictService.enabledValues("settle_type")).thenReturn(java.util.Set.of("MONTHLY", "CREDIT"));
+
+        SupplierSaveRequest req = new SupplierSaveRequest();
+        req.setName("停用结算方式供应商");
+        req.setSettleType("CASH"); // 字典未启用 → 视为停用项
+        assertThatThrownBy(() -> service.create(req, "张店长"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("settle_type");
+    }
+
+    @Test
+    @DisplayName("新增供应商：固话格式合法通过（BR-SUP-01）")
+    void createAcceptsLandlinePhone() {        when(supplierMapper.selectCount(any())).thenReturn(0L);
         when(supplierMapper.selectLastSupplierCodeForUpdate()).thenReturn(null);
         when(supplierMapper.insert(any(Supplier.class))).thenReturn(1);
 

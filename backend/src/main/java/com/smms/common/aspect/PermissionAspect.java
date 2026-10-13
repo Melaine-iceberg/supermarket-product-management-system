@@ -33,18 +33,20 @@ public class PermissionAspect {
         if (user == null) {
             throw new AccessDeniedException("未登录");
         }
-        String code = requirePerm.value();
-        if (user.permCodes().contains(code)) {
+        String[] codes = requirePerm.value();
+        if (codes.length == 0 || java.util.Arrays.stream(codes).anyMatch(user.permCodes()::contains)) {
             return;
         }
         // 越权访问：记录安全日志（NFR-SEC-08 安全事件查询视图）
+        String target = codes.length == 1 ? codes[0] : String.join(" | ", codes);
         OperationLog sec = new OperationLog();
         sec.setUserId(user.userId());
         sec.setUsername(user.username());
+        sec.setRealName(user.realName());
         sec.setRoleNames(String.join(",", user.roleNames()));
         sec.setModule("安全审计");
         sec.setAction("越权访问");
-        sec.setTarget(code);
+        sec.setTarget(target);
         sec.setResult(0);
         sec.setErrorMsg("无权限执行该操作");
         sec.setOperateTime(LocalDateTime.now());

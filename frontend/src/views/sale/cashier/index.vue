@@ -2,18 +2,20 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import { getCategoryTree, pageGoods, type CategoryNode } from '@/api/goods'
 import { getBusinessParams, getDictItems } from '@/api/system'
 import {
   checkout,
   createHold,
   deleteHold,
+  getCashierCategoryTree,
   getSalesOrderDetail,
   listHolds,
+  pageCashierGoods,
   searchCashierGoods,
   searchMembers,
   takeHold,
   PAY_TYPE_MAP,
+  type CashierCategoryNode,
   type CashierGoodsVO,
   type CheckoutVO,
   type HoldVO,
@@ -173,13 +175,13 @@ function doAdd(goods: CashierGoodsVO, quantity: number) {
   }
 }
 
-// ---------- 分类树浏览点选（FR-SALE-02③） ----------
+// ---------- 分类树浏览点选（FR-SALE-02③，GAP-P0-06：收银专用只读接口，sys:cashier:enter 鉴权） ----------
 const browseDialog = reactive({
   visible: false,
   loading: false,
   /** 当前选中分类（含子分类，null = 全部） */
   categoryId: null as number | null,
-  categoryTree: [] as CategoryNode[],
+  categoryTree: [] as CashierCategoryNode[],
   goods: [] as CashierGoodsVO[],
 })
 
@@ -187,7 +189,7 @@ function openBrowse() {
   browseDialog.visible = true
   browseDialog.categoryId = null
   if (browseDialog.categoryTree.length === 0) {
-    getCategoryTree().then((data) => (browseDialog.categoryTree = data))
+    getCashierCategoryTree().then((data) => (browseDialog.categoryTree = data))
   }
   loadBrowseGoods()
 }
@@ -196,9 +198,8 @@ function openBrowse() {
 async function loadBrowseGoods() {
   browseDialog.loading = true
   try {
-    const data = await pageGoods({
+    const data = await pageCashierGoods({
       categoryId: browseDialog.categoryId ?? undefined,
-      status: 1,
       page: 1,
       size: 100,
     })
@@ -208,7 +209,7 @@ async function loadBrowseGoods() {
   }
 }
 
-function pickBrowseCategory(node: CategoryNode) {
+function pickBrowseCategory(node: CashierCategoryNode) {
   browseDialog.categoryId = node.id
   loadBrowseGoods()
 }
@@ -398,6 +399,15 @@ function confirmOrderRate() {
   const rate = orderRateDialog.rate
   if (rate == null || rate < bizParams.minDiscountRate || rate > 1) {
     ElMessage.warning(`整单折扣率须在 ${bizParams.minDiscountRate}~1 之间（BR-SALE-10）`)
+    return
+  }
+  // 最终折扣率 = 会员等级折扣 × 整单折扣，不得低于下限（BR-SALE-10，GAP-P0-09 后端强校验）
+  const memberRate = member.value ? Number(member.value.discountRate) : 1
+  const finalRate = Math.round(rate * memberRate * 10000) / 10000
+  if (finalRate < bizParams.minDiscountRate) {
+    ElMessage.warning(
+      `会员折扣 ${memberRate} × 整单折扣 ${rate} = 最终折扣率 ${finalRate}，低于下限 ${bizParams.minDiscountRate}（BR-SALE-10），请调整`,
+    )
     return
   }
   if (rate < 1) {

@@ -18,6 +18,11 @@ import com.smms.inv.mapper.InventoryRecordMapper;
 import com.smms.inv.mapper.StockCheckItemMapper;
 import com.smms.inv.mapper.StockCheckOrderMapper;
 import com.smms.inv.service.StockCheckService;
+import com.smms.security.LoginUser;
+import com.smms.sys.service.DutySeparationService;
+import com.smms.sys.service.OperationLogService;
+import com.smms.sys.service.SysConfigService;
+import com.smms.sys.service.SysDictService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +36,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,8 +59,12 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class StockCheckAuditServiceTest {
 
-    private static final String CHECKER = "keeper";
-    private static final String AUDITOR = "manager";
+    private static final LoginUser CHECKER = new LoginUser(4L, "keeper", "赵库管",
+            List.of("KEEPER"), List.of("库管员"), Set.of("sys:check:list"), "fp", false);
+    private static final LoginUser AUDITOR = new LoginUser(2L, "manager", "王店长",
+            List.of("MANAGER"), List.of("店长"), Set.of("sys:check:audit"), "fp", false);
+    private static final LoginUser SUPER_ADMIN = new LoginUser(1L, "admin", "系统管理员",
+            List.of("SUPER_ADMIN"), List.of("超级管理员"), Set.of(), "fp", false);
 
     @Mock private StockCheckOrderMapper orderMapper;
     @Mock private StockCheckItemMapper itemMapper;
@@ -62,6 +72,9 @@ class StockCheckAuditServiceTest {
     @Mock private InventoryRecordMapper inventoryRecordMapper;
     @Mock private CategoryMapper categoryMapper;
     @Mock private GoodsMapper goodsMapper;
+    @Mock private SysDictService dictService;
+    @Mock private SysConfigService configService;
+    @Mock private OperationLogService operationLogService;
 
     private StockCheckService service;
 
@@ -70,7 +83,8 @@ class StockCheckAuditServiceTest {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckOrder.class);
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), StockCheckItem.class);
         service = new StockCheckService(orderMapper, itemMapper, inventoryMapper,
-                inventoryRecordMapper, categoryMapper, goodsMapper);
+                inventoryRecordMapper, categoryMapper, goodsMapper, dictService,
+                new DutySeparationService(configService, operationLogService));
     }
 
     // ---------- 造数 ----------
@@ -80,7 +94,7 @@ class StockCheckAuditServiceTest {
         order.setId(1L);
         order.setOrderNo("PD202609190001");
         order.setStatus("PENDING_AUDIT");
-        order.setCheckerName(CHECKER);
+        order.setCheckerName(CHECKER.username());
         order.setBaseTime(LocalDateTime.now().minusHours(2));
         order.setItemCount(1);
         return order;
@@ -132,12 +146,12 @@ class StockCheckAuditServiceTest {
         assertThat(r.getUnitCost()).isEqualByComparingTo("2.5");
         assertThat(r.getBizType()).isEqualTo("PD");
         assertThat(r.getBizNo()).isEqualTo("PD202609190001");
-        assertThat(r.getOperatorName()).isEqualTo(AUDITOR);
+        assertThat(r.getOperatorName()).isEqualTo(AUDITOR.username());
         assertThat(r.getRemark()).contains("理货补录");
         verify(inventoryMapper).updateQuantityAndCost(9L, 1L,
                 new BigDecimal("12"), new BigDecimal("2.5"), new BigDecimal("30.00"));
         assertThat(vo.status()).isEqualTo("AUDITED");
-        assertThat(vo.auditorName()).isEqualTo(AUDITOR);
+        assertThat(vo.auditorName()).isEqualTo(AUDITOR.username());
         assertThat(vo.duringChangeCount()).isEqualTo(2);
         assertThat(vo.auditTime()).isNotNull();
     }
@@ -272,10 +286,11 @@ class StockCheckAuditServiceTest {
     // ---------- 审核约束（BR-SYS-01、§2.2.4） ----------
 
     @Test
-    @DisplayName("职责分离（BR-SYS-01/AC-12）：盘点人自审被拒绝，不产生任何库存变动")
+    @DisplayName("职责分离（BR-SYS-01/AC-12）：严格模式下盘点人自审被拒绝，不产生任何库存变动")
     void audit_selfAuditRejected() {
         StockCheckOrder order = pendingOrder();
         when(orderMapper.selectById(1L)).thenReturn(order);
+        when(configService.getBool(eq("duty_separation_strict"), eq(false))).thenReturn(true);
 
         assertThatThrownBy(() -> service.audit(1L, new CheckAuditRequest(true, null, null), CHECKER))
                 .isInstanceOf(BusinessException.class)
@@ -284,6 +299,42 @@ class StockCheckAuditServiceTest {
         verify(inventoryRecordMapper, never()).insert(any(InventoryRecord.class));
         verify(inventoryMapper, never()).updateQuantityAndCost(anyLong(), anyLong(), any(), any(), any());
         verify(orderMapper, never()).update(any(), any());
+    }
+
+    @Test
+    @DisplayName("GAP-P1-08：职责未分离非严格模式放行并记异常日志（BR-SYS-01）")
+    void audit_selfAuditLenientModeLogged() {
+        StockCheckOrder order = pendingOrder();
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(configService.getBool(eq("duty_separation_strict"), eq(false))).thenReturn(false);
+        when(itemMapper.countDuringChanges(eq(1L), any(), any())).thenReturn(0L);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(9L, "10", "12", "2.5", "COUNT_ERROR")));
+        when(inventoryMapper.selectByGoodsIdForUpdate(9L, 1L)).thenReturn(inv("10", "2.5"));
+        when(orderMapper.update(eq(null), any())).thenReturn(1);
+        when(itemMapper.selectCount(any())).thenReturn(1L, 0L);
+
+        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(true, null, null), CHECKER);
+
+        assertThat(vo.status()).isEqualTo("AUDITED");
+        verify(operationLogService).recordAsync(any()); // 异常日志留痕
+    }
+
+    @Test
+    @DisplayName("GAP-P1-08：超级管理员在严格模式下可代审（同样留痕）")
+    void audit_superAdminOverrideInStrictModeLogged() {
+        StockCheckOrder order = pendingOrder();
+        order.setCheckerName("admin"); // 超管本人创建
+        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(itemMapper.countDuringChanges(eq(1L), any(), any())).thenReturn(0L);
+        when(itemMapper.selectList(any())).thenReturn(List.of(item(9L, "10", "12", "2.5", "COUNT_ERROR")));
+        when(inventoryMapper.selectByGoodsIdForUpdate(9L, 1L)).thenReturn(inv("10", "2.5"));
+        when(orderMapper.update(eq(null), any())).thenReturn(1);
+        when(itemMapper.selectCount(any())).thenReturn(1L, 0L);
+
+        CheckOrderVO vo = service.audit(1L, new CheckAuditRequest(true, null, null), SUPER_ADMIN);
+
+        assertThat(vo.status()).isEqualTo("AUDITED");
+        verify(operationLogService).recordAsync(any()); // 代审留痕
     }
 
     @Test

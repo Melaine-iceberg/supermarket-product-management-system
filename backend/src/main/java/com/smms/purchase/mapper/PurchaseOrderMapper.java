@@ -20,11 +20,12 @@ public interface PurchaseOrderMapper extends BaseMapper<PurchaseOrder> {
     /** 当前最大采购单号（BR-PUR-01）：按前缀行锁取号，uk_po_no 兜底防重 */
     String selectLastOrderNoForUpdate(@Param("prefix") String prefix);
 
-    /** 采购单分页：列表展示总额、已入库数量、入库进度、结算状态 */
+    /** 采购单分页：列表展示总额、已入库数量、入库进度、结算状态；statuses 优先于 q.status（待入库选单多状态） */
     IPage<PurchaseOrderVO> selectOrderPage(IPage<PurchaseOrderVO> page,
                                            @Param("q") PurchaseOrderQuery q,
                                            @Param("beginTime") LocalDateTime beginTime,
-                                           @Param("endTime") LocalDateTime endTime);
+                                           @Param("endTime") LocalDateTime endTime,
+                                           @Param("statuses") java.util.List<String> statuses);
 
     /** 明细已入库数量原子累加（FR-PUR-06） */
     int addReceivedQty(@Param("id") Long id, @Param("qty") BigDecimal qty);

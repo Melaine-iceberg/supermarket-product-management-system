@@ -47,12 +47,21 @@ instance.interceptors.response.use(
       forceLogout()
       return Promise.reject(new Error(body.message))
     }
+    if (body.code === MUST_CHANGE_PWD_CODE) {
+      redirectChangePassword(body.message)
+      return Promise.reject(new Error(body.message))
+    }
     ElMessage.error(body.message || '请求失败')
     return Promise.reject(new Error(body.message))
   },
   (error) => {
     if (error.response?.status === 401) {
       forceLogout()
+      return Promise.reject(error)
+    }
+    // 初始/重置密码未修改：后端强制拦截业务接口（BR-SYS-02），前端跳转改密页
+    if (error.response?.data?.code === MUST_CHANGE_PWD_CODE) {
+      redirectChangePassword(error.response.data.message)
       return Promise.reject(error)
     }
     const msg =
@@ -63,6 +72,17 @@ instance.interceptors.response.use(
     return Promise.reject(error)
   },
 )
+
+/** 强制改密错误码（与后端 ErrorCode.MUST_CHANGE_PWD 对齐） */
+const MUST_CHANGE_PWD_CODE = 1114
+
+/** 1114：跳转强制改密页（保留登录态，不清 Token） */
+function redirectChangePassword(message?: string) {
+  if (router.currentRoute.value.name !== 'change-password') {
+    ElMessage.warning(message || '请先修改初始密码（BR-SYS-02）')
+    router.push({ name: 'change-password' })
+  }
+}
 
 /** 401：清除本地登录态并回到登录页（登录接口自身除外） */
 function forceLogout() {

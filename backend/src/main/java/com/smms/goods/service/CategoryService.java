@@ -61,6 +61,26 @@ public class CategoryService {
                 .toList();
     }
 
+    /**
+     * 分类子树 id 集合（含自身，GAP-P0-06）：按物化路径前缀匹配；分类不存在时抛参数错误。
+     * 供收银台分类浏览等跨模块只读查询复用。
+     */
+    public List<Long> resolveTreeIds(Long categoryId) {
+        Category category = categoryMapper.selectById(categoryId);
+        if (category == null) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "所选分类不存在");
+        }
+        String prefix = category.getPath() + "/";
+        List<Long> ids = new ArrayList<>();
+        ids.add(categoryId);
+        categoryMapper.selectList(Wrappers.<Category>lambdaQuery()
+                        .select(Category::getId, Category::getPath))
+                .stream()
+                .filter(c -> c.getPath().startsWith(prefix))
+                .forEach(c -> ids.add(c.getId()));
+        return ids;
+    }
+
     /** 各分类直接挂载的商品数（BR-CAT-04：商品只挂叶子分类） */
     private Map<Long, Long> countGoodsByCategory() {
         QueryWrapper<com.smms.goods.entity.Goods> qw = new QueryWrapper<>();

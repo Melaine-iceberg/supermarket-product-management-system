@@ -31,6 +31,7 @@ import {
 } from '@/api/purchase'
 import { pageSuppliers, type SupplierListVO } from '@/api/supplier'
 import { pageGoods, type GoodsListVO } from '@/api/goods'
+import { getDictItems } from '@/api/system'
 import { pMoney, pQty, printSheet } from '@/utils/print'
 
 const auth = useAuthStore()
@@ -410,6 +411,29 @@ async function removeOrder(row: PurchaseOrderVO) {
 }
 
 // ==================== 结算登记（FR-PUR-09） ====================
+/** 结算方式选项（FR-SYS-07/GAP-P1-09：取自数据字典 settle_type 启用项，字典缺失时回退内置展示） */
+const settleTypeOptions = ref<{ label: string; value: string }[]>(
+  Object.entries(SETTLE_METHOD_MAP).map(([value, label]) => ({ label, value })),
+)
+const settleTypeLabels = ref<Record<string, string>>({ ...SETTLE_METHOD_MAP })
+
+async function loadSettleTypes() {
+  try {
+    const items = await getDictItems('settle_type')
+    if (items.length) {
+      settleTypeOptions.value = items.map((i) => ({ label: i.label, value: i.value }))
+      settleTypeLabels.value = Object.fromEntries(items.map((i) => [i.value, i.label]))
+    }
+  } catch {
+    // 回退内置展示，后端保存时仍按字典校验
+  }
+}
+
+function settleLabel(code: string | null | undefined) {
+  if (!code) return ''
+  return settleTypeLabels.value[code] ?? code
+}
+
 const settleDialog = reactive({
   visible: false,
   saving: false,
@@ -444,6 +468,10 @@ function openSettle(row: PurchaseOrderVO) {
 async function saveSettle() {
   if (settleDialog.form.settleStatus !== 'UNSETTLED' && settleDialog.form.settleAmount == null) {
     ElMessage.warning('请填写结算金额')
+    return
+  }
+  if (settleDialog.form.settleStatus !== 'UNSETTLED' && !settleDialog.form.settleMethod) {
+    ElMessage.warning('请选择结算方式（数据字典 settle_type）')
     return
   }
   settleDialog.saving = true
@@ -631,6 +659,7 @@ async function bootstrap() {
 onMounted(() => {
   bootstrap()
   loadSuppliers()
+  loadSettleTypes()
 })
 </script>
 
@@ -846,7 +875,7 @@ onMounted(() => {
             <el-descriptions-item label="结算">
               {{ SETTLE_STATUS_MAP[detailDrawer.data.settleStatus] ?? detailDrawer.data.settleStatus }}
               <template v-if="detailDrawer.data.settleStatus !== 'UNSETTLED'">
-                （￥{{ money(detailDrawer.data.settleAmount) }} {{ SETTLE_METHOD_MAP[detailDrawer.data.settleMethod ?? ''] ?? '' }} {{ detailDrawer.data.settleDate ?? '' }} 经办：{{ detailDrawer.data.settleBy ?? '—' }}）
+                （￥{{ money(detailDrawer.data.settleAmount) }} {{ settleLabel(detailDrawer.data.settleMethod) }} {{ detailDrawer.data.settleDate ?? '' }} 经办：{{ detailDrawer.data.settleBy ?? '—' }}）
               </template>
             </el-descriptions-item>
             <el-descriptions-item v-if="detailDrawer.data.terminateReason" label="终止/作废原因" :span="2">
@@ -1024,7 +1053,7 @@ onMounted(() => {
           </el-form-item>
           <el-form-item label="结算方式" required>
             <el-select v-model="settleDialog.form.settleMethod" style="width: 180px">
-              <el-option v-for="(label, m) in SETTLE_METHOD_MAP" :key="m" :label="label" :value="m" />
+              <el-option v-for="m in settleTypeOptions" :key="m.value" :label="m.label" :value="m.value" />
             </el-select>
           </el-form-item>
           <el-form-item label="结算日期">

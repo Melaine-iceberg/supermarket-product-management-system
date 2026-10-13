@@ -7,6 +7,8 @@ import com.smms.inv.dto.CheckImportVO;
 import com.smms.inv.dto.CheckItemVO;
 import com.smms.inv.dto.CheckSummaryVO;
 import com.smms.inv.mapper.StockCheckItemMapper;
+import com.smms.sys.dto.DictVO;
+import com.smms.sys.service.SysDictService;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
@@ -21,12 +23,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 盘点实盘数 Excel 模板与导入（FR-INV-08）：
+ * 盘点实盘数 Excel 模板与导入（FR-INV-08、GAP-P1-09）：
  * 模板按盘点单明细导出（编码/条码/名称/单位/账面数量，实盘数量与差异原因留空），
- * 回传后按 编码/条码 定位明细行，复用统一录入入口（服务端计算差异、差异行原因必填）。
+ * 表头附差异原因可选值提示；回传后按 编码/条码 定位明细行，
+ * 差异原因支持填写字典名称或代码（自动归一为代码），复用统一录入入口（服务端计算差异、差异行原因必填）。
  */
 @Service
 @RequiredArgsConstructor
@@ -37,8 +42,12 @@ public class StockCheckExcelService {
             "商品编码", "商品条码", "商品名称", "单位", "账面数量", "实盘数量", "差异原因", "备注"
     };
 
+    /** 盘点差异原因字典（FR-SYS-07） */
+    private static final String DICT_CHECK_DIFF_REASON = "check_diff_reason";
+
     private final StockCheckItemMapper itemMapper;
     private final StockCheckService stockCheckService;
+    private final SysDictService dictService;
 
     /** 导出实盘录入模板（FR-INV-08）：仅盘点中的单据（状态校验由录入入口统一执行） */
     public byte[] template(Long orderId) {
@@ -46,12 +55,17 @@ public class StockCheckExcelService {
         if (items.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "盘点单不存在或没有明细");
         }
+        Map<String, String> reasons = reasonLabels();
         try (SXSSFWorkbook wb = new SXSSFWorkbook(200);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("盘点录入");
             Row head = sheet.createRow(0);
             for (int i = 0; i < COLUMNS.length; i++) {
-                head.createCell(i).setCellValue(COLUMNS[i]);
+                if (i == 6 && !reasons.isEmpty()) {
+                    head.createCell(i).setCellValue(COLUMNS[i] + "（可选：" + String.join("/", reasons.values()) + "）");
+                } else {
+                    head.createCell(i).setCellValue(COLUMNS[i]);
+                }
                 sheet.setColumnWidth(i, 16 * 256);
             }
             int r = 1;
@@ -111,7 +125,7 @@ public class StockCheckExcelService {
                     continue;
                 }
                 lines.add(new CheckEntryRequest.Item(target.goodsId(), actual,
-                        cellString(row.getCell(6)), cellString(row.getCell(7))));
+                        normalizeReason(cellString(row.getCell(6))), cellString(row.getCell(7))));
             }
         } catch (IOException e) {
             throw new BusinessException(ErrorCode.PARAM_INVALID, "读取上传文件失败");
@@ -139,6 +153,40 @@ public class StockCheckExcelService {
             }
         }
         return null;
+    }
+
+    /** 差异原因字典：代码 → 名称（模板表头提示用）；字典缺失时不阻断模板下载 */
+    private Map<String, String> reasonLabels() {
+        try {
+            Map<String, String> map = new LinkedHashMap<>();
+            for (DictVO.ItemVO item : dictService.enabledItems(DICT_CHECK_DIFF_REASON)) {
+                map.put(item.value(), item.label());
+            }
+            return map;
+        } catch (BusinessException e) {
+            return Map.of();
+        }
+    }
+
+    /** 差异原因归一（FR-SYS-07）：字典名称 → 代码；已是代码或未知值原样返回，由录入入口统一校验 */
+    private String normalizeReason(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isEmpty()) {
+            return value;
+        }
+        try {
+            for (DictVO.ItemVO item : dictService.enabledItems(DICT_CHECK_DIFF_REASON)) {
+                if (value.equals(item.value())) {
+                    return value;
+                }
+                if (value.equals(item.label())) {
+                    return item.value();
+                }
+            }
+        } catch (BusinessException e) {
+            // 字典未初始化：原样返回，录入入口报"字典未初始化"
+        }
+        return value;
     }
 
     private boolean isBlankCell(Row row, int col) {

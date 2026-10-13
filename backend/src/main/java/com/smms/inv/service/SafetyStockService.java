@@ -10,6 +10,8 @@ import com.smms.goods.mapper.GoodsMapper;
 import com.smms.inv.dto.CategoryThresholdRequest;
 import com.smms.inv.dto.SafetyStockItem;
 import com.smms.inv.dto.SafetyStockUpdateRequest;
+import com.smms.security.LoginUser;
+import com.smms.security.SecurityUtils;
 import com.smms.sys.entity.OperationLog;
 import com.smms.sys.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
@@ -197,10 +199,12 @@ public class SafetyStockService {
 
     // ==================== 留痕（FR-INV-06：操作人、前值、后值、时间） ====================
 
-    /** 逐商品写操作日志：前值 → 后值，异步执行不阻断业务 */
+    /** 逐商品写操作日志：前值 → 后值，异步执行不阻断业务；同时记录真实姓名（BR-SYS-07/GAP-P1-10） */
     private void logChange(Goods goods, BigDecimal newLower, BigDecimal newUpper, String operator) {
         OperationLog log = new OperationLog();
         log.setUsername(operator);
+        LoginUser user = SecurityUtils.getLoginUserOrNull();
+        log.setRealName(user == null ? null : user.realName());
         log.setModule("库存管理");
         log.setAction("修改安全库存阈值");
         log.setTarget(goods.getGoodsCode());

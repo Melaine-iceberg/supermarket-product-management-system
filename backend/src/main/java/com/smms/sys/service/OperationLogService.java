@@ -73,10 +73,11 @@ public class OperationLogService {
                         .orderByDesc(OperationLog::getId)
                         .last("LIMIT " + maxRows));
         StringBuilder sb = new StringBuilder("\uFEFF"); // BOM 保证 Excel 中文不乱码
-        sb.append("操作时间,操作人,角色,模块,动作,目标对象,请求方法,请求URL,结果,错误信息,耗时(ms),IP\r\n");
+        sb.append("操作时间,操作人,真实姓名,角色,模块,动作,目标对象,请求方法,请求URL,结果,错误信息,耗时(ms),IP\r\n");
         for (OperationLog r : rows) {
             sb.append(csv(r.getOperateTime() == null ? "" : r.getOperateTime().format(TS))).append(',')
                     .append(csv(r.getUsername())).append(',')
+                    .append(csv(r.getRealName())).append(',')
                     .append(csv(r.getRoleNames())).append(',')
                     .append(csv(r.getModule())).append(',')
                     .append(csv(r.getAction())).append(',')
