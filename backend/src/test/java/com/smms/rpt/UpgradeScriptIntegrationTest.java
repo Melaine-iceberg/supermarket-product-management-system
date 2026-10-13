@@ -39,12 +39,20 @@ class UpgradeScriptIntegrationTest {
                     .withUsername("smms")
                     .withPassword("smms");
 
+    /** V1.5 升级脚本覆盖的 17 张补齐审计字段的表（DR-C-08 / GAP-P2-28） */
+    private static final List<String> AUDIT_TABLES = List.of(
+            "sys_user_role", "sys_role_permission", "operation_log", "login_log",
+            "purchase_order_item", "receipt_order", "receipt_order_item", "purchase_return_item",
+            "inventory_record", "stock_check_item", "sales_order", "sales_order_item",
+            "payment_record", "return_order", "return_order_item", "hold_order", "cashier_shift");
+
     static {
         if (DockerClientFactory.instance().isDockerAvailable()) {
             if (!MARIADB.isRunning()) {
                 MARIADB.start();
             }
             preparePreUpgradeSchema();
+            preparePreUpgrade15Schema();
         }
     }
 
@@ -93,6 +101,68 @@ class UpgradeScriptIntegrationTest {
                                'idx_ir_biz_date','idx_sc_biz_date','idx_lo_biz_date','idx_rt_biz_date')
                     ) t
                     """)).isEqualTo(7L);
+        }
+    }
+
+    @Test
+    @DisplayName("V1.5 升级脚本：建表/权限/参数/审计字段/成本精度，存量行按默认时间补齐")
+    void upgradeScript15AddsBatchFourArtifacts() throws Exception {
+        try (Connection conn = open()) {
+            // 新表：定时任务日志、数据备份记录
+            assertThat(queryLong(conn, """
+                    SELECT COUNT(*) FROM information_schema.TABLES
+                    WHERE TABLE_SCHEMA = 'smms' AND TABLE_NAME IN ('scheduled_task_log', 'sys_backup_record')
+                    """)).isEqualTo(2);
+
+            // 权限点与超管授权（升级脚本以 INSERT IGNORE 补齐）
+            assertThat(queryLong(conn, "SELECT COUNT(*) FROM sys_permission WHERE id IN (16,161,17,171)"))
+                    .isEqualTo(4);
+            assertThat(queryLong(conn,
+                    "SELECT COUNT(*) FROM sys_role_permission WHERE role_id = 1 AND perm_id IN (16,161,17,171)"))
+                    .isEqualTo(4);
+
+            // 扫码自动查询参数
+            assertThat(queryString(conn, "SELECT config_value FROM sys_config WHERE config_key = 'barcode_auto_query'"))
+                    .isEqualTo("true");
+
+            // 供货价与建议采购原值列
+            assertThat(queryLong(conn, """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = 'smms' AND TABLE_NAME = 'supplier_goods'
+                      AND COLUMN_NAME = 'last_supply_price'
+                    """)).isEqualTo(1);
+            assertThat(queryLong(conn, """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = 'smms' AND TABLE_NAME = 'purchase_order_item'
+                      AND COLUMN_NAME IN ('suggested_qty', 'suggested_price')
+                    """)).isEqualTo(2);
+
+            // 审计字段：17 张表 × 4 列 = 68；存量行按默认时间补齐、创建人待后续业务写入为空
+            String tableList = AUDIT_TABLES.stream().map(t -> "'" + t + "'")
+                    .collect(java.util.stream.Collectors.joining(","));
+            assertThat(queryLong(conn, """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = 'smms'
+                      AND COLUMN_NAME IN ('create_by','create_time','update_by','update_time')
+                      AND TABLE_NAME IN (%s)
+                    """.formatted(tableList))).isEqualTo(68);
+            assertThat(queryLong(conn,
+                    "SELECT COUNT(*) FROM stock_check_item WHERE order_id = 1 AND create_time IS NOT NULL AND create_by IS NULL"))
+                    .isEqualTo(1);
+
+            // 成本精度：实收单价/退货单价 12,4
+            assertThat(queryLong(conn, """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = 'smms' AND DATA_TYPE = 'decimal' AND NUMERIC_SCALE = 4
+                      AND ((TABLE_NAME = 'receipt_order_item' AND COLUMN_NAME = 'received_price')
+                        OR (TABLE_NAME = 'purchase_return_item' AND COLUMN_NAME = 'return_price'))
+                    """)).isEqualTo(2);
+
+            // 存量手工采购明细：建议列为空（不受升级影响）
+            assertThat(queryLong(conn, """
+                    SELECT COUNT(*) FROM purchase_order_item
+                    WHERE order_id = 1 AND suggested_qty IS NULL AND suggested_price IS NULL
+                    """)).isEqualTo(1);
         }
     }
 
@@ -147,6 +217,39 @@ class UpgradeScriptIntegrationTest {
                 """);
         // 执行升级脚本
         execute(read(locate("db", "upgrade-1.4-report-audit.sql")));
+    }
+
+    // ==================== 老结构（V1.5 之前）与造数 ====================
+
+    /** 退回 V1.5 之前：删除新表/新列/权限/参数，模拟存量数据库后执行 db/upgrade-1.5-feature-completion.sql */
+    private static void preparePreUpgrade15Schema() {
+        execute("""
+                DROP TABLE IF EXISTS scheduled_task_log;
+                DROP TABLE IF EXISTS sys_backup_record;
+                DELETE FROM sys_role_permission WHERE perm_id IN (16, 161, 17, 171);
+                DELETE FROM sys_permission WHERE id IN (16, 161, 17, 171);
+                DELETE FROM sys_config WHERE config_key = 'barcode_auto_query';
+                ALTER TABLE supplier_goods DROP COLUMN last_supply_price;
+                ALTER TABLE purchase_order_item DROP COLUMN suggested_qty, DROP COLUMN suggested_price;
+                ALTER TABLE receipt_order_item MODIFY COLUMN received_price DECIMAL(12,2) NOT NULL COMMENT '实收单价';
+                ALTER TABLE purchase_return_item MODIFY COLUMN return_price DECIMAL(12,2) NOT NULL COMMENT '退货单价';
+                """);
+        // 17 张表删除审计四字段
+        StringBuilder dropAudit = new StringBuilder();
+        for (String table : AUDIT_TABLES) {
+            dropAudit.append("ALTER TABLE ").append(table)
+                    .append(" DROP COLUMN create_by, DROP COLUMN create_time,")
+                    .append(" DROP COLUMN update_by, DROP COLUMN update_time;\n");
+        }
+        execute(dropAudit.toString());
+        // 造存量数据：待升级后校验"存量行按默认时间补齐、创建人为空"与精度/建议列
+        execute("""
+                INSERT INTO supplier_goods (supplier_id, goods_id, supply_price, is_default) VALUES (1, 1, 9.50, 1);
+                INSERT INTO purchase_order_item (order_id, goods_id, quantity, price, amount, received_qty, returned_qty)
+                VALUES (1, 1, 10, 9.50, 95.00, 0, 0);
+                INSERT INTO stock_check_item (order_id, goods_id, book_qty, cost_price) VALUES (1, 1, 1, 1);
+                """);
+        execute(read(locate("db", "upgrade-1.5-feature-completion.sql")));
     }
 
     // ==================== JDBC 工具 ====================
