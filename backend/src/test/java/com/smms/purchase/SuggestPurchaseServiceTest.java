@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -115,6 +116,23 @@ class SuggestPurchaseServiceTest {
         PageVO<SuggestItemVO> vo = service.page(null, null, null, null, 1, 20);
 
         assertThat(vo.list().get(0).suggestQty()).isEqualByComparingTo("11.3");
+    }
+
+    @Test
+    @DisplayName("全部明细无默认供应商：跳过供应商批量查询（空 IN 会致 SQL 500）")
+    void pageSkipsSupplierBatchQueryWhenAllSupplierIdsNull() {
+        SuggestItemVO row = row("10", "28", "0", "0", false, null);
+        Page<SuggestItemVO> page = new Page<>(1, 20);
+        page.setRecords(List.of(row));
+        when(suggestMapper.selectSuggestPage(any(), any(), any(), any(), any(), eq(28))).thenReturn(page);
+        stubConfig();
+
+        PageVO<SuggestItemVO> vo = service.page(null, null, null, null, 1, 20);
+
+        // raw = 10×1.5 + 1×3（默认提前期）− 0 − 0 = 18
+        assertThat(vo.list().get(0).suggestQty()).isEqualByComparingTo("18");
+        assertThat(vo.list().get(0).leadTimeDays()).isEqualTo(3);
+        verifyNoInteractions(supplierMapper);
     }
 
     // ==================== 一键生成草稿（FR-PUR-02） ====================

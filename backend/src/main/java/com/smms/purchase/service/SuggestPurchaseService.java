@@ -155,10 +155,12 @@ public class SuggestPurchaseService {
         BigDecimal k = new BigDecimal(configService.getStr(CFG_SUGGEST_K, "1.5"));
         int days = suggestDays();
         int defaultLeadTime = configService.getInt(CFG_DEFAULT_LEAD_TIME, 3);
-        Map<Long, Supplier> supplierMap = supplierMapper.selectBatchIds(
-                        rows.stream().map(SuggestItemVO::supplierId)
-                                .filter(Objects::nonNull).distinct().toList())
-                .stream().collect(Collectors.toMap(Supplier::getId, s -> s));
+        // 全部行都无默认供应商时不得发起空 IN 查询（否则 SQL 语法错误 500）
+        List<Long> supplierIds = rows.stream().map(SuggestItemVO::supplierId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, Supplier> supplierMap = supplierIds.isEmpty() ? Map.of()
+                : supplierMapper.selectBatchIds(supplierIds).stream()
+                .collect(Collectors.toMap(Supplier::getId, s -> s));
 
         List<SuggestItemVO> computed = new ArrayList<>(rows.size());
         for (SuggestItemVO row : rows) {
