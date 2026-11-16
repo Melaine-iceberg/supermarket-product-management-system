@@ -1,18 +1,21 @@
+import './assets/main.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import ui from '@nuxt/ui/vue-plugin'
 import App from './App.vue'
 import router from './router'
-import './assets/main.css'
+import { useColorScheme } from './composables/useColorScheme'
+import { vLoading } from './directives/loading'
+
+// 初始化主题（跟随系统 + 用户覆盖），并挂载跨标签页同步监听
+useColorScheme()
 
 const app = createApp(App)
 
-// 全局注册 Element Plus 图标（菜单 icon 按名称动态渲染）
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
-
 app.use(createPinia())
 app.use(router)
+// Nuxt UI：注册组件、指令与 Toast/Tooltip/Overlay 等全局能力
+app.use(ui)
+app.directive('loading', vLoading)
 
 app.mount('#app')

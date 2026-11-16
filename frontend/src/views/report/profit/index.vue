@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
@@ -118,7 +119,7 @@ async function handleExport() {
   exporting.value = true
   try {
     await exportProfitReport(view.value, range, { categoryId: categoryId.value })
-    ElMessage.success('导出成功')
+    notify.success('导出成功')
   } finally {
     exporting.value = false
   }
@@ -262,29 +263,28 @@ onMounted(async () => {
 <template>
   <div class="page">
     <!-- 筛选区 -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="维度">
-          <el-radio-group v-model="view" @change="search">
-            <el-radio-button v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="维度">
+          <AppRadioGroup v-model="view" @change="search">
+            <AppRadioButton v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
               {{ label }}
-            </el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="view === 'by-goods'" label="分类">
-          <el-tree-select
+            </AppRadioButton>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="view === 'by-goods'" label="分类">
+          <AppTreeSelect
             v-model="categoryId"
             :data="categoryTree"
             :props="{ label: 'name', children: 'children' }"
             node-key="id"
-            check-strictly
             clearable
             placeholder="全部分类"
             style="width: 180px"
           />
-        </el-form-item>
-        <el-form-item label="日期区间">
-          <el-date-picker
+        </AppFormItem>
+        <AppFormItem label="日期区间">
+          <AppDatePicker
             v-model="dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -292,59 +292,68 @@ onMounted(async () => {
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button :loading="exporting" @click="handleExport">导出</el-button>
-          <el-button @click="handlePrint">打印</el-button>
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex items-center gap-2">
+            <UButton @click="search">查询</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
+          </div>
+        </AppFormItem>
+      </AppForm>
       <div class="presets">
-        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+        <UButton
+          v-for="p in RANGE_PRESETS"
+          :key="p.key"
+          size="sm"
+          color="neutral"
+          variant="outline"
+          @click="setRange(p.key)"
+        >
           {{ p.label }}
-        </el-button>
+        </UButton>
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 按商品毛利 -->
-    <el-card v-if="view === 'by-goods'">
+    <UCard v-if="view === 'by-goods'">
       <template #header><span>商品毛利分析</span></template>
-      <el-table v-loading="loading" border :data="goodsRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="goodsCode" label="商品编码" width="120" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column prop="brandName" label="品牌" width="100" show-overflow-tooltip />
-        <el-table-column label="单数" prop="orderCount" width="70" align="right" />
-        <el-table-column label="销量" width="80" align="right">
+      <AppTable :loading="loading" border :data="goodsRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="goodsCode" label="商品编码" width="120" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <AppTableColumn prop="brandName" label="品牌" width="100" show-overflow-tooltip />
+        <AppTableColumn label="单数" prop="orderCount" width="70" align="right" />
+        <AppTableColumn label="销量" width="80" align="right">
           <template #default="{ row }">{{ qty(row.qty) }}</template>
-        </el-table-column>
-        <el-table-column label="净销售额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="净销售额" width="100" align="right">
           <template #default="{ row }">{{ money(row.netSalesAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="销售成本" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售成本" width="100" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="毛利额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利额" width="100" align="right">
           <template #default="{ row }">
             <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
               {{ money(row.profitAmount) }}
             </span>
           </template>
-        </el-table-column>
-        <el-table-column label="毛利率" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利率" width="80" align="right">
           <template #default="{ row }">{{ percent(row.profitRate) }}</template>
-        </el-table-column>
-        <el-table-column label="占比" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="占比" width="80" align="right">
           <template #default="{ row }">{{ percent(row.shareRate) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="drillGoodsRow(row as GoodsRankRow)">下钻</el-button>
+            <UButton variant="link" @click="drillGoodsRow(row as GoodsRankRow)">下钻</UButton>
           </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="page"
         v-model:page-size="size"
         :total="goodsTotal"
@@ -353,147 +362,147 @@ onMounted(async () => {
         class="pager"
         @current-change="handlePageChange"
       />
-    </el-card>
+    </UCard>
 
     <!-- 按分类毛利 -->
-    <el-card v-if="view === 'by-category'">
+    <UCard v-if="view === 'by-category'">
       <template #header><span>分类毛利分析</span></template>
-      <el-table v-loading="loading" border :data="categoryRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="categoryName" label="分类" min-width="160" />
-        <el-table-column label="单数" prop="orderCount" width="80" align="right" />
-        <el-table-column label="销量" width="90" align="right">
+      <AppTable :loading="loading" border :data="categoryRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="categoryName" label="分类" min-width="160" />
+        <AppTableColumn label="单数" prop="orderCount" width="80" align="right" />
+        <AppTableColumn label="销量" width="90" align="right">
           <template #default="{ row }">{{ qty(row.qty) }}</template>
-        </el-table-column>
-        <el-table-column label="销售额" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售额" width="110" align="right">
           <template #default="{ row }">{{ money(row.salesAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="净销售额" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="净销售额" width="110" align="right">
           <template #default="{ row }">{{ money(row.netSalesAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="销售成本" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售成本" width="110" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="毛利额" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利额" width="110" align="right">
           <template #default="{ row }">
             <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
               {{ money(row.profitAmount) }}
             </span>
           </template>
-        </el-table-column>
-        <el-table-column label="毛利率" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利率" width="90" align="right">
           <template #default="{ row }">{{ percent(row.profitRate) }}</template>
-        </el-table-column>
-        <el-table-column label="占比" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="占比" width="80" align="right">
           <template #default="{ row }">{{ percent(row.shareRate) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="drillCategoryRow(row as GoodsRankRow)">下钻</el-button>
+            <UButton variant="link" @click="drillCategoryRow(row as GoodsRankRow)">下钻</UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 按时段毛利 -->
-    <el-card v-if="view === 'by-day'">
+    <UCard v-if="view === 'by-day'">
       <template #header><span>时段毛利分析（按营业日）</span></template>
-      <el-table v-loading="loading" border :data="dayData?.rows ?? []" stripe>
-        <el-table-column prop="bizDate" label="日期" width="110" />
-        <el-table-column label="单数" prop="orderCount" width="70" align="right" />
-        <el-table-column label="件数" width="70" align="right">
+      <AppTable :loading="loading" border :data="dayData?.rows ?? []" stripe>
+        <AppTableColumn prop="bizDate" label="日期" width="110" />
+        <AppTableColumn label="单数" prop="orderCount" width="70" align="right" />
+        <AppTableColumn label="件数" width="70" align="right">
           <template #default="{ row }">{{ row.itemCount ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column label="销售额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售额" width="100" align="right">
           <template #default="{ row }">{{ money(row.salesAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="净销售额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="净销售额" width="100" align="right">
           <template #default="{ row }">{{ money(row.netSalesAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="退货额" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="退货额" width="90" align="right">
           <template #default="{ row }">{{ money(row.refundAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="净销售" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="净销售" width="100" align="right">
           <template #default="{ row }">
             <b>{{ money(row.netAmount) }}</b>
           </template>
-        </el-table-column>
-        <el-table-column label="销售成本" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售成本" width="100" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="毛利额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利额" width="100" align="right">
           <template #default="{ row }">
             <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
               {{ money(row.profitAmount) }}
             </span>
           </template>
-        </el-table-column>
-        <el-table-column label="毛利率" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利率" width="80" align="right">
           <template #default="{ row }">{{ percent(row.profitRate) }}</template>
-        </el-table-column>
-        <el-table-column label="客单价" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="客单价" width="90" align="right">
           <template #default="{ row }">{{ money(row.avgOrderAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="drillDayRow(row as SalesReportRow)">下钻</el-button>
+            <UButton variant="link" @click="drillDayRow(row as SalesReportRow)">下钻</UButton>
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
       <div v-if="dayData?.total" class="total-row">
         <span class="total-label">合计</span>
         <span>单数: {{ dayData.total.orderCount }}</span>
         <span>净销售: ￥{{ money(dayData.total.netAmount) }}</span>
         <span>毛利额: ￥{{ money(dayData.total.profitAmount) }}</span>
         <span>毛利率: {{ percent(dayData.total.profitRate) }}</span>
-        <el-button link type="primary" @click="drillTotalRow">下钻</el-button>
+        <UButton variant="link" @click="drillTotalRow">下钻</UButton>
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 负毛利清单 -->
-    <el-card v-if="view === 'negative'">
+    <UCard v-if="view === 'negative'">
       <template #header>
         <span>负毛利商品清单</span>
-        <el-tag type="danger" size="small" class="header-tag">成交价低于成本价</el-tag>
+        <UBadge color="error" variant="soft" size="sm" class="header-tag">成交价低于成本价</UBadge>
       </template>
-      <el-table v-loading="loading" border :data="negativeRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="goodsCode" label="商品编码" width="120" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column label="成交单价" width="90" align="right">
+      <AppTable :loading="loading" border :data="negativeRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="goodsCode" label="商品编码" width="120" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <AppTableColumn label="成交单价" width="90" align="right">
           <template #default="{ row }">{{ money(row.unitPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="成本单价" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="成本单价" width="90" align="right">
           <template #default="{ row }">{{ money(row.costPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="单位毛利" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="单位毛利" width="90" align="right">
           <template #default="{ row }">
             <span class="loss">{{ money(row.unitProfit) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="销量" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销量" width="80" align="right">
           <template #default="{ row }">{{ qty(row.qty) }}</template>
-        </el-table-column>
-        <el-table-column label="单数" prop="orderCount" width="70" align="right" />
-        <el-table-column label="实付金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="单数" prop="orderCount" width="70" align="right" />
+        <AppTableColumn label="实付金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.paidAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="销售成本" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售成本" width="100" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="毛利额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利额" width="100" align="right">
           <template #default="{ row }">
             <span class="loss">{{ money(row.profitAmount) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="drillGoodsRow(row as NegativeProfitRow)">下钻</el-button>
+            <UButton variant="link" @click="drillGoodsRow(row as NegativeProfitRow)">下钻</UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 下钻单据列表（BR-RPT-06） -->
     <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
@@ -526,22 +535,22 @@ onMounted(async () => {
     display: flex;
     gap: 24px;
     padding: 12px 16px;
-    background: #f5f7fa;
-    border-top: 1px solid #ebeef5;
+    background: var(--el-bg-color-page);
+    border-top: 1px solid var(--el-border-color-lighter);
     font-size: 13px;
     font-weight: 600;
 
     .total-label {
-      color: #409eff;
+      color: var(--el-color-primary);
     }
   }
 
   .profit {
-    color: #67c23a;
+    color: var(--el-color-success);
   }
 
   .loss {
-    color: #f56c6c;
+    color: var(--el-color-danger);
   }
 }
 </style>

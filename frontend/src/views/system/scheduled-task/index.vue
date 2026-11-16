@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm } from '@/utils/confirm'
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   listScheduledTasks,
@@ -61,7 +62,7 @@ function resetLogQuery() {
 /** 手工触发补跑（NFR-REL-07）：执行结果入日志表，失败含原因 */
 async function confirmRun(task: ScheduledTaskVO) {
   try {
-    await ElMessageBox.confirm(
+    await confirm(
       `确定立即执行「${task.name}」？任务幂等，补跑不会产生重复数据；执行结果将记录在执行日志中。`,
       '手工触发任务',
       { type: 'warning', confirmButtonText: '立即执行' },
@@ -73,9 +74,9 @@ async function confirmRun(task: ScheduledTaskVO) {
   try {
     const log = await runScheduledTask(task.code)
     if (log.status === 'SUCCESS') {
-      ElMessage.success(`执行成功：${log.resultSummary || '完成'}（耗时 ${fmtDuration(log.durationMs)}）`)
+      notify.success(`执行成功：${log.resultSummary || '完成'}（耗时 ${fmtDuration(log.durationMs)}）`)
     } else {
-      ElMessage.error(`执行失败：${log.errorMessage || '未知原因'}`)
+      notify.error(`执行失败：${log.errorMessage || '未知原因'}`)
     }
     await Promise.all([loadTasks(), loadLogs()])
   } catch {
@@ -91,9 +92,9 @@ function fmtDuration(ms: number | null | undefined) {
 }
 
 function statusTag(status: string | null) {
-  if (status === 'SUCCESS') return { type: 'success' as const, label: '成功' }
-  if (status === 'FAILED') return { type: 'danger' as const, label: '失败' }
-  return { type: 'info' as const, label: '未执行' }
+  if (status === 'SUCCESS') return { color: 'success' as const, label: '成功' }
+  if (status === 'FAILED') return { color: 'error' as const, label: '失败' }
+  return { color: 'neutral' as const, label: '未执行' }
 }
 
 onMounted(() => {
@@ -104,99 +105,101 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <el-card>
+    <UCard>
       <template #header>
         定时任务一览（IR-SW-06：执行结果与耗时入日志，失败自动重试 2 次；任务幂等，支持手工补跑）
       </template>
-      <el-table v-loading="loading" border :data="tasks" stripe>
-        <el-table-column prop="name" label="任务" width="150" />
-        <el-table-column prop="code" label="代码" width="200" />
-        <el-table-column prop="cron" label="调度（cron）" width="140" />
-        <el-table-column prop="description" label="说明" min-width="260" show-overflow-tooltip />
-        <el-table-column label="最近执行" width="170">
+      <AppTable :data="tasks" :loading="loading" border stripe>
+        <AppTableColumn prop="name" label="任务" width="150" />
+        <AppTableColumn prop="code" label="代码" width="200" />
+        <AppTableColumn prop="cron" label="调度（cron）" width="140" />
+        <AppTableColumn prop="description" label="说明" min-width="260" show-overflow-tooltip />
+        <AppTableColumn label="最近执行" width="170">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.lastStatus).type" size="small">
+            <UBadge :color="statusTag(row.lastStatus).color" size="sm" variant="soft">
               {{ statusTag(row.lastStatus).label }}
-            </el-tag>
+            </UBadge>
             <span class="time">{{ row.lastStartedAt ?? '—' }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="耗时" width="90">
+        </AppTableColumn>
+        <AppTableColumn label="耗时" width="90">
           <template #default="{ row }">{{ fmtDuration(row.lastDurationMs) }}</template>
-        </el-table-column>
-        <el-table-column label="结果摘要" min-width="220">
+        </AppTableColumn>
+        <AppTableColumn label="结果摘要" min-width="220">
           <template #default="{ row }">
             <span v-if="row.lastError" class="error">{{ row.lastError }}</span>
             <span v-else>{{ row.lastResultSummary || '—' }}</span>
           </template>
-        </el-table-column>
-        <el-table-column v-if="auth.hasPerm('sys:sched:run')" label="操作" width="110" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="auth.hasPerm('sys:sched:run')" label="操作" width="110" fixed="right">
           <template #default="{ row }">
-            <el-button
-              size="small"
-              type="primary"
-              plain
+            <UButton
+              size="sm"
+              variant="outline"
+              label="立即执行"
               :loading="runningCode === row.code"
               @click="confirmRun(row as ScheduledTaskVO)"
-            >
-              立即执行
-            </el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
-    <el-card class="log-card">
+    <UCard class="log-card">
       <template #header>执行日志（定时触发与手工补跑同表记录）</template>
-      <el-form inline @submit.prevent>
-        <el-form-item label="任务">
-          <el-select v-model="logs.taskCode" clearable placeholder="全部" style="width: 220px">
-            <el-option v-for="t in tasks" :key="t.code" :label="t.name" :value="t.code" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="结果">
-          <el-select v-model="logs.status" clearable placeholder="全部" style="width: 110px">
-            <el-option label="成功" value="SUCCESS" />
-            <el-option label="失败" value="FAILED" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="logs.page = 1; loadLogs()">查询</el-button>
-          <el-button @click="resetLogQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-      <el-table v-loading="logs.loading" :data="logs.list" stripe>
-        <el-table-column prop="startedAt" label="开始时间" width="170" />
-        <el-table-column prop="taskName" label="任务" width="140" />
-        <el-table-column label="触发" width="110">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="任务">
+          <AppSelect v-model="logs.taskCode" clearable placeholder="全部" style="width: 220px">
+            <AppOption v-for="t in tasks" :key="t.code" :label="t.name" :value="t.code" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="结果">
+          <AppSelect v-model="logs.status" clearable placeholder="全部" style="width: 110px">
+            <AppOption label="成功" value="SUCCESS" />
+            <AppOption label="失败" value="FAILED" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="logs.page = 1; loadLogs()" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetLogQuery" />
+        </AppFormItem>
+      </AppForm>
+      <AppTable :data="logs.list" :loading="logs.loading" stripe>
+        <AppTableColumn prop="startedAt" label="开始时间" width="170" />
+        <AppTableColumn prop="taskName" label="任务" width="140" />
+        <AppTableColumn label="触发" width="110">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.triggerType === 'MANUAL' ? 'warning' : 'info'">
+            <UBadge
+              size="sm"
+              :color="row.triggerType === 'MANUAL' ? 'warning' : 'neutral'"
+              variant="soft"
+            >
               {{ row.triggerType === 'MANUAL' ? '手工补跑' : '定时' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="triggerBy" label="触发人" width="110">
+        </AppTableColumn>
+        <AppTableColumn prop="triggerBy" label="触发人" width="110">
           <template #default="{ row }">{{ row.triggerBy ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column label="结果" width="90">
+        </AppTableColumn>
+        <AppTableColumn label="结果" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'SUCCESS' ? 'success' : 'danger'" size="small">
+            <UBadge :color="row.status === 'SUCCESS' ? 'success' : 'error'" size="sm" variant="soft">
               {{ row.status === 'SUCCESS' ? '成功' : '失败' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="耗时" width="90">
+        </AppTableColumn>
+        <AppTableColumn label="耗时" width="90">
           <template #default="{ row }">{{ fmtDuration(row.durationMs) }}</template>
-        </el-table-column>
-        <el-table-column prop="retryCount" label="重试" width="70" />
-        <el-table-column label="摘要 / 失败原因" min-width="240">
+        </AppTableColumn>
+        <AppTableColumn prop="retryCount" label="重试" width="70" />
+        <AppTableColumn label="摘要 / 失败原因" min-width="240">
           <template #default="{ row }">
             <span v-if="row.errorMessage" class="error">{{ row.errorMessage }}</span>
             <span v-else>{{ row.resultSummary || '—' }}</span>
           </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="logs.page"
         v-model:page-size="logs.size"
         :total="logs.total"
@@ -205,7 +208,7 @@ onMounted(() => {
         class="pager"
         @change="loadLogs"
       />
-    </el-card>
+    </UCard>
   </div>
 </template>
 
@@ -218,7 +221,7 @@ onMounted(() => {
   .time {
     margin-left: 8px;
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .error {

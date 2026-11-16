@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance, UploadRequestOptions } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { saveBlob } from '@/api/request'
 import { useUnsavedGuard } from '@/utils/unsavedGuard'
@@ -70,11 +70,11 @@ const query = reactive({
 const SORTABLE = new Set(['goodsCode', 'name', 'quantity', 'retailPrice', 'createTime'])
 const sort = reactive<{ by?: string; dir?: 'asc' | 'desc' }>({})
 
-const stockStatusMap: Record<string, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }> = {
+const stockStatusMap: Record<string, { label: string; type: 'success' | 'warning' | 'error' | 'neutral' }> = {
   NORMAL: { label: '正常', type: 'success' },
   WARNING: { label: '预警', type: 'warning' },
-  OUT: { label: '缺货', type: 'danger' },
-  OVERSTOCK: { label: '积压', type: 'info' },
+  OUT: { label: '缺货', type: 'error' },
+  OVERSTOCK: { label: '积压', type: 'neutral' },
 }
 
 async function load() {
@@ -157,16 +157,39 @@ onMounted(() => {
 const dialogVisible = ref(false)
 const editing = ref<GoodsListVO | null>(null)
 const editingDetail = ref<{ barcode: string; prices: number[]; image: string | null } | null>(null)
-const formRef = ref<FormInstance>()
+const formRef = ref()
 const saving = ref(false)
 const detailLoading = ref(false)
 /** 条码占用高亮与聚焦（UC-GOODS-001 E1） */
 const barcodeInvalid = ref(false)
-const barcodeInputRef = ref<{ focus: () => void }>()
-const goodsCodeInputRef = ref<{ focus: () => void }>()
+const barcodeInputRef = ref()
+const goodsCodeInputRef = ref()
+
+/** AppInput 未暴露 focus()：从组件根节点定位原生 input 聚焦 */
+function focusInputField(target: unknown) {
+  const root = (target as { $el?: HTMLElement } | null | undefined)?.$el
+  root?.querySelector<HTMLInputElement>('input')?.focus()
+}
+
 /** 商品图片（IR-SW-05）：存储相对路径 + 本地/受控预览 URL */
 const imagePreview = ref('')
 const imageUploading = ref(false)
+const imageFileInputRef = ref<HTMLInputElement>()
+
+/** 隐藏 file input 触发选择（替代 el-upload 的点击区域） */
+function pickImageFile() {
+  imageFileInputRef.value?.click()
+}
+
+/** 选择文件后本地校验并直接走原自定义上传逻辑 */
+async function onImageFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!beforeImageUpload(file)) return
+  await doUploadImage({ file })
+}
 
 const form = reactive({
   name: '',
@@ -332,25 +355,25 @@ function beforeImageUpload(file: File) {
   const okType = ['image/jpeg', 'image/png'].includes(file.type)
   const okExt = /\.(jpe?g|png)$/i.test(file.name)
   if (!okType || !okExt) {
-    ElMessage.error('商品图片仅支持 jpg/png 格式（IR-SW-05）')
+    notify.error('商品图片仅支持 jpg/png 格式（IR-SW-05）')
     return false
   }
   if (file.size > 2 * 1024 * 1024) {
-    ElMessage.error('商品图片大小不能超过 2MB（IR-SW-05）')
+    notify.error('商品图片大小不能超过 2MB（IR-SW-05）')
     return false
   }
   return true
 }
 
 /** 自定义上传：调用受控上传接口，成功后回填相对路径并用本地文件即时预览 */
-async function doUploadImage(options: UploadRequestOptions) {
+async function doUploadImage(options: { file: File }) {
   imageUploading.value = true
   try {
     const { path } = await uploadGoodsImage(options.file)
     form.image = path
     revokeImagePreview()
     imagePreview.value = URL.createObjectURL(options.file)
-    ElMessage.success('图片已上传，保存商品后生效')
+    notify.success('图片已上传，保存商品后生效')
   } catch {
     // 拦截器已提示
   } finally {
@@ -429,14 +452,14 @@ async function fillInStoreBarcode() {
   const { barcode } = await nextBarcode()
   form.barcode = barcode
   barcodeInvalid.value = false
-  ElMessage.info(`已生成店内码预览：${barcode}`)
+  notify.info(`已生成店内码预览：${barcode}`)
 }
 
 /** UC-GOODS-001 E2：清空手工编码，保存时由系统按"分类码+流水"自动生成 */
 function regenerateGoodsCode() {
   form.goodsCode = ''
-  ElMessage.info('已清空手工编码，保存时按"分类码+流水"自动生成')
-  nextTick(() => goodsCodeInputRef.value?.focus())
+  notify.info('已清空手工编码，保存时按"分类码+流水"自动生成')
+  nextTick(() => focusInputField(goodsCodeInputRef.value))
 }
 
 function num(v: number | null | undefined) {
@@ -444,7 +467,11 @@ function num(v: number | null | undefined) {
 }
 
 async function save() {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   const base = {
     name: form.name.trim(),
     categoryId: form.categoryId as number,
@@ -470,7 +497,7 @@ async function save() {
       const newBarcode = form.barcode.trim()
       let confirmed = false
       if (newBarcode !== editingDetail.value?.barcode) {
-        await ElMessageBox.confirm(
+        await confirm(
           '条码是收银扫码的关键标识，修改后旧条码将立即失效，确定修改？',
           '条码变更确认',
           { type: 'warning' },
@@ -484,7 +511,7 @@ async function save() {
         image: form.image || undefined,
         priceChangeReason: priceChanged.value ? form.priceChangeReason.trim() || undefined : undefined,
       })
-      ElMessage.success('商品已更新')
+      notify.success('商品已更新')
     } else {
       const created = await createGoods({
         ...base,
@@ -503,11 +530,11 @@ async function save() {
       // E1：高亮并聚焦条码字段，提示文案（含占用商品名称）已由拦截器展示
       barcodeInvalid.value = true
       await nextTick()
-      barcodeInputRef.value?.focus()
+      focusInputField(barcodeInputRef.value)
     } else if (bizCode === GOODS_CODE_EXISTS && !editing.value) {
       // E2：提供【重新生成编码】入口（清空手工编码 → 保存时自动生成）
       try {
-        await ElMessageBox.confirm(
+        await confirm(
           '该商品编码已被占用。点击「重新生成编码」将清空手工编码，保存时由系统按分类码+流水自动生成；也可选择「手动修改」自行更换编码。',
           '商品编码重复',
           { confirmButtonText: '重新生成编码', cancelButtonText: '手动修改', type: 'warning' },
@@ -535,7 +562,7 @@ function showCreated(data: GoodsCreatedVO) {
 
 async function copyText(text: string) {
   await navigator.clipboard.writeText(text)
-  ElMessage.success('已复制到剪贴板')
+  notify.success('已复制到剪贴板')
 }
 
 // ---------- 停用 / 启用（FR-GOODS-05） ----------
@@ -544,21 +571,21 @@ async function toggleStatus(row: GoodsListVO) {
   const tip = disabling
     ? `停用后「${row.name}」不可再销售/采购，档案将永久保留，确定停用？`
     : `确定启用商品「${row.name}」？`
-  await ElMessageBox.confirm(tip, disabling ? '停用商品' : '启用商品', { type: 'warning' })
+  await confirm(tip, disabling ? '停用商品' : '启用商品', { type: 'warning' })
   await updateGoodsStatus(row.id, disabling ? 0 : 1)
-  ElMessage.success(disabling ? '已停用' : '已启用')
+  notify.success(disabling ? '已停用' : '已启用')
   load()
 }
 
 // ---------- 删除（FR-GOODS-06，仅从未发生业务的商品可删） ----------
 async function handleDelete(row: GoodsListVO) {
-  await ElMessageBox.confirm(
+  await confirm(
     `删除后不可恢复，仅从未发生过业务的商品可删除，确定删除「${row.name}」？`,
     '删除商品',
     { type: 'warning' },
   )
   await deleteGoods(row.id)
-  ElMessage.success('已删除')
+  notify.success('已删除')
   load()
 }
 
@@ -582,6 +609,15 @@ const exportFieldsIndeterminate = computed(
   () => exportDialog.fields.length > 0 && exportDialog.fields.length < exportDialog.options.length,
 )
 
+/** 全选复选框三态（UCheckbox 用 modelValue='indeterminate' 表达半选） */
+const allExportFieldsModel = computed(() =>
+  exportFieldsIndeterminate.value ? ('indeterminate' as const) : allExportFields.value,
+)
+
+function onToggleAllExportFields(value: boolean | 'indeterminate') {
+  allExportFields.value = value === true
+}
+
 async function openExportDialog() {
   exportDialog.visible = true
   if (exportDialog.options.length === 0) {
@@ -597,7 +633,7 @@ async function openExportDialog() {
 
 async function confirmExport() {
   if (exportDialog.fields.length === 0) {
-    ElMessage.warning('请至少勾选一个导出字段')
+    notify.warning('请至少勾选一个导出字段')
     return
   }
   exportDialog.exporting = true
@@ -618,7 +654,7 @@ async function confirmExport() {
     })
     const ts = new Date().toISOString().slice(0, 19).replace(/[-T:]/g, '')
     saveBlob(blob, `商品清单_${ts}.xlsx`)
-    ElMessage.success('导出成功')
+    notify.success('导出成功')
     exportDialog.visible = false
   } finally {
     exportDialog.exporting = false
@@ -660,8 +696,26 @@ function openImport() {
   })
 }
 
-function onImportFileChange(file: { raw?: File }) {
-  importDialog.file = file.raw ?? null
+function onImportFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  importDialog.file = input.files?.[0] ?? null
+  input.value = ''
+}
+
+const importFileInputRef = ref<HTMLInputElement>()
+
+/** 隐藏 file input 触发选择（替代 el-upload 的拖拽/点击区域） */
+function pickImportFile() {
+  importFileInputRef.value?.click()
+}
+
+function onImportDrop(e: DragEvent) {
+  importDialog.file = e.dataTransfer?.files?.[0] ?? null
+}
+
+function clearImportFile() {
+  importDialog.file = null
+  if (importFileInputRef.value) importFileInputRef.value.value = ''
 }
 
 function onImportProgress(percent: number) {
@@ -678,7 +732,7 @@ const importProgressText = computed(() => {
 
 async function doValidate() {
   if (!importDialog.file) {
-    ElMessage.warning('请先选择导入文件')
+    notify.warning('请先选择导入文件')
     return
   }
   importDialog.validating = true
@@ -719,7 +773,7 @@ async function doCommit() {
     )
     importDialog.step = 'done'
     if (importDialog.result.imported > 0) {
-      ElMessage.success(`成功导入 ${importDialog.result.imported} 个商品`)
+      notify.success(`成功导入 ${importDialog.result.imported} 个商品`)
       load()
     }
   } finally {
@@ -771,10 +825,10 @@ const PRICE_TYPE_MAP: Record<string, string> = {
   PURCHASE: '进货价',
 }
 
-const promoStatusMap: Record<string, { label: string; type: 'success' | 'info' }> = {
+const promoStatusMap: Record<string, { label: string; type: 'success' | 'neutral' }> = {
   ACTIVE: { label: '生效中', type: 'success' },
-  EXPIRED: { label: '已过期', type: 'info' },
-  DISABLED: { label: '已停用', type: 'info' },
+  EXPIRED: { label: '已过期', type: 'neutral' },
+  DISABLED: { label: '已停用', type: 'neutral' },
 }
 
 const detailDrawer = reactive({
@@ -852,7 +906,7 @@ function onSelectionChange(rows: GoodsListVO[]) {
 
 function openPromote(ids: number[], names: string[]) {
   if (!ids.length) {
-    ElMessage.warning('请先勾选需要设置促销的商品')
+    notify.warning('请先勾选需要设置促销的商品')
     return
   }
   Object.assign(promoteDialog, {
@@ -880,11 +934,11 @@ function openPromoteForDetail() {
 
 async function confirmPromote() {
   if (promoteDialog.promoPrice == null || promoteDialog.promoPrice <= 0) {
-    ElMessage.warning('请输入大于 0 的促销价')
+    notify.warning('请输入大于 0 的促销价')
     return
   }
   if (!promoteDialog.timeRange || promoteDialog.timeRange.length !== 2) {
-    ElMessage.warning('请选择促销生效起止时间')
+    notify.warning('请选择促销生效起止时间')
     return
   }
   promoteDialog.saving = true
@@ -896,7 +950,7 @@ async function confirmPromote() {
       endTime: promoteDialog.timeRange[1],
       remark: promoteDialog.remark.trim() || undefined,
     })
-    ElMessage.success(`已为 ${promoteDialog.goodsIds.length} 个商品设置促销`)
+    notify.success(`已为 ${promoteDialog.goodsIds.length} 个商品设置促销`)
     promoteDialog.visible = false
     load()
     if (detailDrawer.visible && promoteDialog.goodsIds.includes(detailDrawer.goodsId)) {
@@ -909,13 +963,13 @@ async function confirmPromote() {
 }
 
 async function handleDisablePromotion(promo: PromotionVO) {
-  await ElMessageBox.confirm(
+  await confirm(
     `停用后促销价 ${money(promo.promoPrice)} 元立即失效，确定停用？`,
     '停用促销',
     { type: 'warning' },
   )
   await disablePromotion(promo.id)
-  ElMessage.success('促销已停用')
+  notify.success('促销已停用')
   loadPromotions()
   loadDetail()
   load()
@@ -925,223 +979,238 @@ async function handleDisablePromotion(promo: PromotionVO) {
 <template>
   <div class="page">
     <!-- 多维检索（FR-GOODS-03） -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="商品名称">
-          <el-input v-model="query.name" placeholder="名称模糊查询" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="商品编码">
-          <el-input v-model="query.goodsCode" placeholder="编码模糊查询" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="条码">
-          <el-input v-model="query.barcode" placeholder="条码模糊查询" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-tree-select
+    <UCard class="search-card" :ui="{ body: 'pb-0.5' }">
+      <AppForm inline>
+        <AppFormItem label="商品名称">
+          <AppInput v-model="query.name" placeholder="名称模糊查询" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="商品编码">
+          <AppInput v-model="query.goodsCode" placeholder="编码模糊查询" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="条码">
+          <AppInput v-model="query.barcode" placeholder="条码模糊查询" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="分类">
+          <AppTreeSelect
             v-model="query.categoryId"
             :data="categoryTree"
             :props="{ label: 'name', children: 'children' }"
             node-key="id"
-            check-strictly
             clearable
             placeholder="含子分类"
             style="width: 180px"
           />
-        </el-form-item>
-        <el-form-item label="品牌">
-          <el-select v-model="query.brandId" clearable placeholder="全部" style="width: 140px">
-            <el-option
+        </AppFormItem>
+        <AppFormItem label="品牌">
+          <AppSelect v-model="query.brandId" clearable placeholder="全部" style="width: 140px">
+            <AppOption
               v-for="b in brands"
               :key="b.id"
               :label="b.status === 1 ? b.name : `${b.name}（停用）`"
               :value="b.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 100px">
-            <el-option label="启用" :value="1" />
-            <el-option label="停用" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="库存状态">
-          <el-select v-model="query.stockStatus" clearable placeholder="全部" style="width: 100px">
-            <el-option label="正常" value="NORMAL" />
-            <el-option label="预警" value="WARNING" />
-            <el-option label="缺货" value="OUT" />
-            <el-option label="积压" value="OVERSTOCK" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="称重商品">
-          <el-select v-model="query.isWeighed" clearable placeholder="全部" style="width: 100px">
-            <el-option label="是" :value="1" />
-            <el-option label="否" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="允许退货">
-          <el-select v-model="query.allowReturn" clearable placeholder="全部" style="width: 100px">
-            <el-option label="允许" :value="1" />
-            <el-option label="不允许" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppSelect v-model="query.status" clearable placeholder="全部" style="width: 100px">
+            <AppOption label="启用" :value="1" />
+            <AppOption label="停用" :value="0" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="库存状态">
+          <AppSelect v-model="query.stockStatus" clearable placeholder="全部" style="width: 100px">
+            <AppOption label="正常" value="NORMAL" />
+            <AppOption label="预警" value="WARNING" />
+            <AppOption label="缺货" value="OUT" />
+            <AppOption label="积压" value="OVERSTOCK" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="称重商品">
+          <AppSelect v-model="query.isWeighed" clearable placeholder="全部" style="width: 100px">
+            <AppOption label="是" :value="1" />
+            <AppOption label="否" :value="0" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="允许退货">
+          <AppSelect v-model="query.allowReturn" clearable placeholder="全部" style="width: 100px">
+            <AppOption label="允许" :value="1" />
+            <AppOption label="不允许" :value="0" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex items-center gap-2">
+            <UButton label="查询" @click="search" />
+            <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+          </div>
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>商品列表</span>
-          <div>
-            <el-button
+          <div class="flex flex-wrap items-center gap-2">
+            <UButton
               v-if="auth.hasPerm('sys:goods:create')"
-              type="primary"
+              icon="i-lucide-plus"
+              label="新增商品"
               @click="openCreate"
-            >
-              <el-icon><Plus /></el-icon>新增商品
-            </el-button>
-            <el-button
+            />
+            <UButton
               v-if="auth.hasPerm('sys:goods:import')"
+              icon="i-lucide-upload"
+              label="批量导入"
+              color="neutral"
+              variant="outline"
               @click="openImport"
-            >
-              <el-icon><Upload /></el-icon>批量导入
-            </el-button>
-            <el-button
+            />
+            <UButton
               v-if="auth.hasPerm('sys:goods:update')"
+              icon="i-lucide-tag"
+              label="设置促销"
+              color="neutral"
+              variant="outline"
               @click="openPromoteForSelection"
-            >
-              <el-icon><PriceTag /></el-icon>设置促销
-            </el-button>
-            <el-button
+            />
+            <UButton
               v-if="auth.hasPerm('sys:goods:export')"
+              icon="i-lucide-download"
+              label="导出清单"
+              color="neutral"
+              variant="outline"
               :loading="exportDialog.exporting"
               @click="openExportDialog"
-            >
-              <el-icon><Download /></el-icon>导出清单
-            </el-button>
+            />
           </div>
         </div>
       </template>
 
-      <el-table
-ref="tableRef"
-        v-loading="loading"
+      <AppTable
+        ref="tableRef"
+        :loading="loading"
         border
         :data="list"
         stripe
         @sort-change="onSortChange"
         @selection-change="onSelectionChange"
       >
-        <el-table-column type="selection" width="36" />
-        <el-table-column prop="goodsCode" label="商品编码" width="130" sortable="custom" />
-        <el-table-column prop="barcode" label="条码" width="150">
+        <AppTableColumn type="selection" width="36" />
+        <AppTableColumn prop="goodsCode" label="商品编码" width="130" sortable="custom" />
+        <AppTableColumn prop="barcode" label="条码" width="150">
           <template #default="{ row }">{{ row.barcode || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="name" label="商品名称" min-width="170" sortable="custom">
+        </AppTableColumn>
+        <AppTableColumn prop="name" label="商品名称" min-width="170" sortable="custom">
           <template #default="{ row }">
             <div class="goods-name">{{ row.name }}</div>
             <div v-if="row.spec" class="goods-spec">{{ row.spec }}</div>
           </template>
-        </el-table-column>
-        <el-table-column prop="categoryName" label="分类" width="110">
+        </AppTableColumn>
+        <AppTableColumn prop="categoryName" label="分类" width="110">
           <template #default="{ row }">
             {{ row.categoryName }}
-            <el-tooltip
+            <UTooltip
               v-if="row.categoryStatus === 0"
-              content="所属分类已停用：不可再被新商品选择，存量商品保留（FR-CAT-04）"
+              text="所属分类已停用：不可再被新商品选择，存量商品保留（FR-CAT-04）"
               placement="top"
             >
-              <el-tag size="small" type="danger" class="cat-disabled-tag">已停用</el-tag>
-            </el-tooltip>
+              <UBadge color="error" variant="soft" size="sm" class="cat-disabled-tag">已停用</UBadge>
+            </UTooltip>
           </template>
-        </el-table-column>
-        <el-table-column label="品牌" width="100">
+        </AppTableColumn>
+        <AppTableColumn label="品牌" width="100">
           <template #default="{ row }">{{ row.brandName || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="unitName" label="单位" width="64" />
-        <el-table-column label="进货价" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn prop="unitName" label="单位" width="64" />
+        <AppTableColumn label="进货价" width="90" align="right">
           <template #default="{ row }">{{ money(row.purchasePrice) }}</template>
-        </el-table-column>
-        <el-table-column prop="retailPrice" label="零售价" width="90" align="right" sortable="custom">
+        </AppTableColumn>
+        <AppTableColumn prop="retailPrice" label="零售价" width="90" align="right" sortable="custom">
           <template #default="{ row }">{{ money(row.retailPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="会员价" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="会员价" width="90" align="right">
           <template #default="{ row }">{{ money(row.memberPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="促销价" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="促销价" width="100" align="right">
           <template #default="{ row }">
-            <el-tooltip
+            <UTooltip
               v-if="row.promoPrice != null"
-              :content="`促销截止：${row.promoEndTime}`"
+              :text="`促销截止：${row.promoEndTime}`"
               placement="top"
             >
-              <el-tag type="danger" size="small" class="promo-tag">
+              <UBadge color="error" variant="soft" size="sm" class="promo-tag">
                 {{ money(row.promoPrice) }}
-              </el-tag>
-            </el-tooltip>
+              </UBadge>
+            </UTooltip>
             <span v-else>—</span>
           </template>
-        </el-table-column>
-        <el-table-column prop="quantity" label="库存" width="110" align="right" sortable="custom">
+        </AppTableColumn>
+        <AppTableColumn prop="quantity" label="库存" width="110" align="right" sortable="custom">
           <template #default="{ row }">
             <span class="qty" :class="{ 'qty-negative': Number(row.quantity) < 0 }">{{ row.quantity }} {{ row.unitName }}</span>
-            <el-tag
+            <UBadge
               v-if="row.stockStatus !== 'NORMAL'"
-              :type="stockStatusMap[row.stockStatus]?.type ?? 'info'"
-              size="small"
+              :color="stockStatusMap[row.stockStatus]?.type ?? 'neutral'"
+              variant="soft"
+              size="sm"
               class="stock-tag"
             >
               {{ stockStatusMap[row.stockStatus]?.label ?? row.stockStatus }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="称重" width="64" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="称重" width="64" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.isWeighed === 1" size="small" effect="plain">称重</el-tag>
+            <UBadge v-if="row.isWeighed === 1" color="neutral" variant="outline" size="sm">称重</UBadge>
             <span v-else>—</span>
           </template>
-        </el-table-column>
-        <el-table-column label="状态" width="72" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="72" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'">
+            <UBadge :color="row.status === 1 ? 'success' : 'neutral'" variant="soft" size="sm">
               {{ row.status === 1 ? '启用' : '停用' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="170" sortable="custom" />
-        <el-table-column label="操作" width="240" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn prop="createTime" label="创建时间" width="170" sortable="custom" />
+        <AppTableColumn label="操作" width="240" fixed="right">
           <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
-              @click="openDetail(row as GoodsListVO)"
-            >详情</el-button>
-            <el-button
-              v-if="auth.hasPerm('sys:goods:update')"
-              link
-              type="primary"
-              @click="openEdit(row as GoodsListVO)"
-            >编辑</el-button>
-            <el-button
-              v-if="auth.hasPerm('sys:goods:status')"
-              link
-              :type="row.status === 1 ? 'danger' : 'success'"
-              @click="toggleStatus(row as GoodsListVO)"
-            >{{ row.status === 1 ? '停用' : '启用' }}</el-button>
-            <el-button
-              v-if="auth.hasPerm('sys:goods:delete')"
-              link
-              type="danger"
-              @click="handleDelete(row as GoodsListVO)"
-            >删除</el-button>
+            <div class="flex items-center gap-1">
+              <UButton
+                variant="link"
+                size="sm"
+                label="详情"
+                @click="openDetail(row as GoodsListVO)"
+              />
+              <UButton
+                v-if="auth.hasPerm('sys:goods:update')"
+                variant="link"
+                size="sm"
+                label="编辑"
+                @click="openEdit(row as GoodsListVO)"
+              />
+              <UButton
+                v-if="auth.hasPerm('sys:goods:status')"
+                variant="link"
+                size="sm"
+                :color="row.status === 1 ? 'error' : 'success'"
+                :label="row.status === 1 ? '停用' : '启用'"
+                @click="toggleStatus(row as GoodsListVO)"
+              />
+              <UButton
+                v-if="auth.hasPerm('sys:goods:delete')"
+                variant="link"
+                size="sm"
+                color="error"
+                label="删除"
+                @click="handleDelete(row as GoodsListVO)"
+              />
+            </div>
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -1150,118 +1219,127 @@ ref="tableRef"
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
 
     <!-- 新增 / 编辑对话框（FR-GOODS-01/02） -->
-    <el-dialog
+    <AppModal
       v-model="dialogVisible"
       :title="editing ? `编辑商品：${editing.name}` : '新增商品'"
       width="720px"
       :close-on-click-modal="false"
       @closed="revokeImagePreview"
     >
-      <el-alert
+      <UAlert
         v-if="!editing"
-        type="info"
-        :closable="false"
-        show-icon
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="商品编码/条码留空时由系统自动生成；初始库存 >0 将生成「期初建账」库存流水"
         class="dialog-alert"
       />
-      <el-form ref="formRef" v-loading="detailLoading" :model="form" :rules="rules" label-width="96px">
-        <el-row :gutter="12">
-          <el-col :span="24">
-            <el-form-item label="商品图片">
+      <AppForm ref="formRef" v-loading="detailLoading" :model="form" :rules="rules" label-width="96px">
+        <AppRow :gutter="12">
+          <AppCol :span="24">
+            <AppFormItem label="商品图片">
               <div v-loading="imageUploading" class="image-uploader">
-                <el-image v-if="imagePreview" :src="imagePreview" fit="cover" class="image-preview" />
+                <img v-if="imagePreview" :src="imagePreview" alt="商品图片" class="image-preview" />
                 <div v-else class="image-placeholder">暂无图片</div>
                 <div class="image-actions">
-                  <el-upload
-                    :show-file-list="false"
+                  <input
+                    ref="imageFileInputRef"
+                    type="file"
                     accept=".jpg,.jpeg,.png"
-                    :before-upload="beforeImageUpload"
-                    :http-request="doUploadImage"
-                  >
-                    <el-button size="small">{{ form.image ? '更换图片' : '上传图片' }}</el-button>
-                  </el-upload>
-                  <el-button v-if="form.image" size="small" text type="danger" @click="clearImage">
-                    移除
-                  </el-button>
+                    hidden
+                    @change="onImageFileChange"
+                  />
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="outline"
+                    :label="form.image ? '更换图片' : '上传图片'"
+                    @click="pickImageFile"
+                  />
+                  <UButton
+                    v-if="form.image"
+                    size="sm"
+                    color="error"
+                    variant="ghost"
+                    label="移除"
+                    @click="clearImage"
+                  />
                   <div class="image-tip">支持 jpg/png，单张不超过 2MB（IR-SW-05）</div>
                 </div>
               </div>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="商品名称" prop="name">
-              <el-input v-model="form.name" maxlength="100" placeholder="1~100 个字符" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="所属分类" prop="categoryId">
-              <el-tree-select
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="12">
+            <AppFormItem label="商品名称" prop="name">
+              <AppInput v-model="form.name" maxlength="100" placeholder="1~100 个字符" />
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="12">
+            <AppFormItem label="所属分类" prop="categoryId">
+              <AppTreeSelect
                 v-model="form.categoryId"
                 :data="categoryOptions"
                 :props="{ label: 'name', children: 'children', disabled: 'disabled' }"
                 node-key="id"
-                check-strictly
-                default-expand-all
-                :render-after-expand="false"
+                :clearable="false"
                 placeholder="仅启用的叶子分类可选"
                 style="width: 100%"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="计量单位" prop="unitId">
-              <el-select v-model="form.unitId" placeholder="必选" style="width: 100%">
-                <el-option
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="计量单位" prop="unitId">
+              <AppSelect v-model="form.unitId" placeholder="必选" style="width: 100%">
+                <AppOption
                   v-for="u in unitOptions"
                   :key="u.id"
                   :label="`${u.name}（${u.symbol ?? u.name}）`"
                   :value="u.id"
                 />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="品牌">
-              <el-select v-model="form.brandId" clearable placeholder="选填" style="width: 100%">
-                <el-option
+              </AppSelect>
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="品牌">
+              <AppSelect v-model="form.brandId" clearable placeholder="选填" style="width: 100%">
+                <AppOption
                   v-for="b in brands.filter((b) => b.status === 1)"
                   :key="b.id"
                   :label="b.name"
                   :value="b.id"
                 />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="称重商品">
-              <el-radio-group v-model="form.isWeighed">
-                <el-radio :value="1">是</el-radio>
-                <el-radio :value="0">否</el-radio>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="form.isWeighed === 1" :span="8">
-            <el-form-item label="PLU 码" prop="pluCode">
-              <el-input v-model="form.pluCode" maxlength="10" placeholder="称重商品必填" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="规格">
-              <el-input v-model="form.spec" maxlength="50" placeholder="如 330ml" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="产地">
-              <el-input v-model="form.origin" maxlength="100" placeholder="选填" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="进货参考价">
-              <el-input-number
+              </AppSelect>
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="称重商品">
+              <AppRadioGroup v-model="form.isWeighed">
+                <AppRadio :value="1">是</AppRadio>
+                <AppRadio :value="0">否</AppRadio>
+              </AppRadioGroup>
+            </AppFormItem>
+          </AppCol>
+          <AppCol v-if="form.isWeighed === 1" :span="8">
+            <AppFormItem label="PLU 码" prop="pluCode">
+              <AppInput v-model="form.pluCode" maxlength="10" placeholder="称重商品必填" />
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="规格">
+              <AppInput v-model="form.spec" maxlength="50" placeholder="如 330ml" />
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="产地">
+              <AppInput v-model="form.origin" maxlength="100" placeholder="选填" />
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="进货参考价">
+              <AppInputNumber
                 v-model="form.purchasePrice"
                 :min="0"
                 :precision="2"
@@ -1269,11 +1347,11 @@ ref="tableRef"
                 placeholder="≥0"
                 style="width: 100%"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="零售单价" prop="retailPrice">
-              <el-input-number
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="零售单价" prop="retailPrice">
+              <AppInputNumber
                 v-model="form.retailPrice"
                 :min="0.01"
                 :precision="2"
@@ -1281,11 +1359,11 @@ ref="tableRef"
                 placeholder=">0"
                 style="width: 100%"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="会员价" prop="memberPrice">
-              <el-input-number
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="会员价" prop="memberPrice">
+              <AppInputNumber
                 v-model="form.memberPrice"
                 :min="0"
                 :precision="2"
@@ -1293,11 +1371,11 @@ ref="tableRef"
                 placeholder="≤零售价"
                 style="width: 100%"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="安全下限">
-              <el-input-number
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="安全下限">
+              <AppInputNumber
                 v-model="form.safetyStockLower"
                 :min="0"
                 :precision="2"
@@ -1305,11 +1383,11 @@ ref="tableRef"
                 placeholder="≥0"
                 style="width: 100%"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="库存上限" prop="safetyStockUpper">
-              <el-input-number
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="库存上限" prop="safetyStockUpper">
+              <AppInputNumber
                 v-model="form.safetyStockUpper"
                 :min="0"
                 :precision="2"
@@ -1317,11 +1395,11 @@ ref="tableRef"
                 placeholder="积压预警"
                 style="width: 100%"
               />
-            </el-form-item>
-          </el-col>
-          <el-col v-if="!editing" :span="8">
-            <el-form-item label="初始库存">
-              <el-input-number
+            </AppFormItem>
+          </AppCol>
+          <AppCol v-if="!editing" :span="8">
+            <AppFormItem label="初始库存">
+              <AppInputNumber
                 v-model="form.initialStock"
                 :min="0"
                 :precision="2"
@@ -1329,77 +1407,87 @@ ref="tableRef"
                 placeholder="留空为 0"
                 style="width: 100%"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="商品编码">
-              <el-input
-                ref="goodsCodeInputRef"
-                v-model="form.goodsCode"
-                :disabled="!!editing"
-                maxlength="20"
-                :placeholder="editing ? '创建后不可修改' : '留空自动生成（分类码+流水）'"
-              >
-                <template v-if="!editing" #append>
-                  <el-button @click="regenerateGoodsCode">重新生成</el-button>
-                </template>
-              </el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="商品条码" prop="barcode">
-              <el-input
-                ref="barcodeInputRef"
-                v-model="form.barcode"
-                maxlength="20"
-                :class="{ 'barcode-error': barcodeInvalid }"
-                placeholder="1~20 位数字"
-                @input="barcodeInvalid = false"
-              >
-                <template v-if="!editing" #append>
-                  <el-button @click="fillInStoreBarcode">店内码</el-button>
-                </template>
-              </el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="允许退货">
-              <el-radio-group v-model="form.allowReturn">
-                <el-radio :value="1">允许</el-radio>
-                <el-radio :value="0">不允许</el-radio>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="editing && priceChanged" :span="16">
-            <el-form-item label="调价原因">
-              <el-input
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="12">
+            <AppFormItem label="商品编码">
+              <div class="input-with-append">
+                <AppInput
+                  ref="goodsCodeInputRef"
+                  v-model="form.goodsCode"
+                  class="flex-1"
+                  :disabled="!!editing"
+                  maxlength="20"
+                  :placeholder="editing ? '创建后不可修改' : '留空自动生成（分类码+流水）'"
+                />
+                <UButton
+                  v-if="!editing"
+                  color="neutral"
+                  variant="outline"
+                  label="重新生成"
+                  @click="regenerateGoodsCode"
+                />
+              </div>
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="12">
+            <AppFormItem label="商品条码" prop="barcode">
+              <div class="input-with-append">
+                <AppInput
+                  ref="barcodeInputRef"
+                  v-model="form.barcode"
+                  class="flex-1"
+                  maxlength="20"
+                  :class="{ 'barcode-error': barcodeInvalid }"
+                  placeholder="1~20 位数字"
+                  @input="barcodeInvalid = false"
+                />
+                <UButton
+                  v-if="!editing"
+                  color="neutral"
+                  variant="outline"
+                  label="店内码"
+                  @click="fillInStoreBarcode"
+                />
+              </div>
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="允许退货">
+              <AppRadioGroup v-model="form.allowReturn">
+                <AppRadio :value="1">允许</AppRadio>
+                <AppRadio :value="0">不允许</AppRadio>
+              </AppRadioGroup>
+            </AppFormItem>
+          </AppCol>
+          <AppCol v-if="editing && priceChanged" :span="16">
+            <AppFormItem label="调价原因">
+              <AppInput
                 v-model="form.priceChangeReason"
                 maxlength="200"
                 placeholder="将随调价历史留痕（FR-GOODS-10），选填"
               />
-            </el-form-item>
-          </el-col>
-          <el-col :span="24">
-            <el-form-item label="备注">
-              <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-form>
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="24">
+            <AppFormItem label="备注">
+              <AppInput v-model="form.remark" type="textarea" :rows="2" maxlength="500" />
+            </AppFormItem>
+          </AppCol>
+        </AppRow>
+      </AppForm>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" :disabled="detailLoading" @click="save">
-          保存
-        </el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="dialogVisible = false" />
+        <UButton :loading="saving" :disabled="detailLoading" label="保存" @click="save" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 新增成功：回显生成的编码/店内码 -->
-    <el-dialog v-model="createdDialog.visible" title="商品创建成功" width="440px">
-      <el-alert
-        type="success"
-        :closable="false"
-        show-icon
+    <AppModal v-model="createdDialog.visible" title="商品创建成功" width="440px">
+      <UAlert
+        color="success"
+        variant="soft"
+        icon="i-lucide-circle-check-big"
         :title="`「${form.name}」已创建`"
         class="dialog-alert"
       />
@@ -1407,68 +1495,99 @@ ref="tableRef"
         <div class="created-row">
           <span class="created-label">商品编码</span>
           <span class="created-value">{{ createdDialog.data?.goodsCode }}</span>
-          <el-button link type="primary" @click="copyText(createdDialog.data?.goodsCode ?? '')">
-            复制
-          </el-button>
+          <UButton
+            variant="link"
+            size="sm"
+            label="复制"
+            @click="copyText(createdDialog.data?.goodsCode ?? '')"
+          />
         </div>
         <div class="created-row">
           <span class="created-label">商品条码</span>
           <span class="created-value">{{ createdDialog.data?.barcode }}</span>
-          <el-button link type="primary" @click="copyText(createdDialog.data?.barcode ?? '')">
-            复制
-          </el-button>
+          <UButton
+            variant="link"
+            size="sm"
+            label="复制"
+            @click="copyText(createdDialog.data?.barcode ?? '')"
+          />
         </div>
       </div>
-    </el-dialog>
+    </AppModal>
 
     <!-- Excel 批量导入（FR-GOODS-11：模板下载 → 上传校验 → 确认提交 → 失败行导出） -->
-    <el-dialog
+    <AppModal
       v-model="importDialog.visible"
       title="商品批量导入（Excel）"
       width="760px"
       :close-on-click-modal="false"
     >
       <div v-if="importDialog.validating || importDialog.committing" class="import-progress">
-        <el-progress :percentage="importDialog.percent" :stroke-width="10" />
+        <UProgress
+          :model-value="importDialog.percent"
+          :max="100"
+          :ui="{ base: 'h-2.5' }"
+        />
         <div class="import-progress-text">{{ importProgressText }}</div>
       </div>
 
       <!-- 第一步：下载模板 + 选择文件 -->
       <template v-if="importDialog.step === 'upload'">
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
+        <UAlert
+          color="info"
+          variant="soft"
+          icon="i-lucide-info"
           title="流程：下载模板 → 填写商品信息 → 上传校验（不写库）→ 确认提交（仅导入校验通过的行）"
           class="dialog-alert"
         />
         <div class="import-actions">
-          <el-button @click="doDownloadTemplate">
-            <el-icon><Download /></el-icon>下载导入模板
-          </el-button>
+          <UButton
+            icon="i-lucide-download"
+            color="neutral"
+            variant="outline"
+            label="下载导入模板"
+            @click="doDownloadTemplate"
+          />
         </div>
-        <el-upload
-          drag
-          :auto-upload="false"
-          :limit="1"
-          accept=".xlsx"
-          :on-change="onImportFileChange"
-          :on-remove="() => (importDialog.file = null)"
+        <div
+          class="import-drop"
+          role="button"
+          tabindex="0"
+          @click="pickImportFile"
+          @keydown.enter.prevent="pickImportFile"
+          @dragover.prevent
+          @drop.prevent="onImportDrop"
         >
-          <el-icon :size="36"><UploadFilled /></el-icon>
-          <div class="el-upload__text">拖拽文件到此处 或 <em>点击选择 .xlsx 文件</em></div>
-          <template #tip>
-            <div class="el-upload__tip">单次不超过 5000 行；表头须与标准模板一致，模板示例行会自动跳过</div>
-          </template>
-        </el-upload>
+          <UIcon name="i-lucide-upload" class="size-9 text-dimmed" />
+          <div class="import-drop-text">拖拽文件到此处 或 <em>点击选择 .xlsx 文件</em></div>
+        </div>
+        <input
+          ref="importFileInputRef"
+          type="file"
+          accept=".xlsx"
+          hidden
+          @change="onImportFileChange"
+        />
+        <div class="import-tip">单次不超过 5000 行；表头须与标准模板一致，模板示例行会自动跳过</div>
+        <div v-if="importDialog.file" class="import-file">
+          <UIcon name="i-lucide-file-text" class="size-4 shrink-0 text-dimmed" />
+          <span class="import-file-name">{{ importDialog.file.name }}</span>
+          <UButton
+            size="sm"
+            color="neutral"
+            variant="ghost"
+            label="移除"
+            @click="clearImportFile"
+          />
+        </div>
       </template>
 
       <!-- 第二步：全量校验报告 -->
       <template v-else-if="importDialog.step === 'report'">
-        <el-alert
-          :type="importDialog.report!.failed === 0 ? 'success' : 'warning'"
-          :closable="false"
-          show-icon
+        <UAlert
+          :color="importDialog.report!.failed === 0 ? 'success' : 'warning'"
+          variant="soft"
+          icon="i-lucide-info"
           :title="`共 ${importDialog.report!.total} 行：通过 ${importDialog.report!.passed} 行，失败 ${importDialog.report!.failed} 行`"
           :description="
             importDialog.report!.failed > 0
@@ -1477,339 +1596,365 @@ ref="tableRef"
           "
           class="dialog-alert"
         />
-        <el-radio-group
+        <AppRadioGroup
           v-if="importDialog.report!.failed > 0"
           v-model="importDialog.scope"
           size="small"
           class="import-scope"
         >
-          <el-radio-button value="failed">仅失败行（{{ importDialog.report!.failed }}）</el-radio-button>
-          <el-radio-button value="all">全部行（{{ importDialog.report!.total }}）</el-radio-button>
-        </el-radio-group>
-        <el-table :data="reportRows" size="small" max-height="340">
-          <el-table-column prop="rowNum" label="行号" width="64" align="center" />
-          <el-table-column label="结果" width="72" align="center">
+          <AppRadioButton value="failed">仅失败行（{{ importDialog.report!.failed }}）</AppRadioButton>
+          <AppRadioButton value="all">全部行（{{ importDialog.report!.total }}）</AppRadioButton>
+        </AppRadioGroup>
+        <AppTable :data="reportRows" size="small" :max-height="340">
+          <AppTableColumn prop="rowNum" label="行号" width="64" align="center" />
+          <AppTableColumn label="结果" width="72" align="center">
             <template #default="{ row }">
-              <el-tag :type="row.passed ? 'success' : 'danger'" size="small">
+              <UBadge :color="row.passed ? 'success' : 'error'" variant="soft" size="sm">
                 {{ row.passed ? '通过' : '失败' }}
-              </el-tag>
+              </UBadge>
             </template>
-          </el-table-column>
-          <el-table-column label="商品名称" min-width="140">
+          </AppTableColumn>
+          <AppTableColumn label="商品名称" min-width="140">
             <template #default="{ row }">{{ row.data['商品名称*'] || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="商品条码" width="136">
+          </AppTableColumn>
+          <AppTableColumn label="商品条码" width="136">
             <template #default="{ row }">{{ row.data['商品条码'] || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="失败原因" min-width="230">
+          </AppTableColumn>
+          <AppTableColumn label="失败原因" min-width="230">
             <template #default="{ row }">
               <span v-if="row.errors?.length" class="import-error">{{ row.errors.join('；') }}</span>
               <span v-else>—</span>
             </template>
-          </el-table-column>
-        </el-table>
+          </AppTableColumn>
+        </AppTable>
       </template>
 
       <!-- 第三步：提交结果 -->
       <template v-else>
-        <el-result
-          :icon="importDialog.result!.failed === 0 ? 'success' : 'warning'"
-          :title="`导入完成：成功 ${importDialog.result!.imported} 条，失败 ${importDialog.result!.failed} 条`"
-        >
-          <template v-if="importDialog.result!.failed > 0" #sub-title>
+        <div class="import-result">
+          <UIcon
+            :name="importDialog.result!.failed === 0 ? 'i-lucide-circle-check-big' : 'i-lucide-triangle-alert'"
+            class="import-result-icon"
+            :class="importDialog.result!.failed === 0 ? 'text-success' : 'text-warning'"
+          />
+          <div class="import-result-title">
+            导入完成：成功 {{ importDialog.result!.imported }} 条，失败 {{ importDialog.result!.failed }} 条
+          </div>
+          <div v-if="importDialog.result!.failed > 0" class="import-result-sub">
             <span>失败行可点击下方「导出失败行」下载，修正后重新上传（已导入的行不会重复）</span>
-          </template>
-        </el-result>
-        <el-table
+          </div>
+        </div>
+        <AppTable
           v-if="importDialog.result!.failedRows.length"
           :data="importDialog.result!.failedRows"
           size="small"
-          max-height="220"
+          :max-height="220"
         >
-          <el-table-column prop="rowNum" label="行号" width="64" align="center" />
-          <el-table-column label="商品名称" min-width="140">
+          <AppTableColumn prop="rowNum" label="行号" width="64" align="center" />
+          <AppTableColumn label="商品名称" min-width="140">
             <template #default="{ row }">{{ row.data['商品名称*'] || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="失败原因" min-width="280">
+          </AppTableColumn>
+          <AppTableColumn label="失败原因" min-width="280">
             <template #default="{ row }">
               <span class="import-error">{{ row.errors.join('；') }}</span>
             </template>
-          </el-table-column>
-        </el-table>
+          </AppTableColumn>
+        </AppTable>
       </template>
 
       <template #footer>
         <!-- 上传步 -->
         <template v-if="importDialog.step === 'upload'">
-          <el-button @click="importDialog.visible = false">取消</el-button>
-          <el-button type="primary" :loading="importDialog.validating" @click="doValidate">
-            上传校验
-          </el-button>
+          <UButton color="neutral" variant="outline" label="取消" @click="importDialog.visible = false" />
+          <UButton :loading="importDialog.validating" label="上传校验" @click="doValidate" />
         </template>
         <!-- 校验报告步 -->
         <template v-else-if="importDialog.step === 'report'">
-          <el-button
+          <UButton
             v-if="importDialog.report!.failed > 0"
+            color="neutral"
+            variant="outline"
+            label="导出失败行"
             :disabled="!importDialog.failedBlob"
             @click="doExportFailedRows"
-          >导出失败行</el-button>
-          <el-button @click="importDialog.step = 'upload'">重新选择文件</el-button>
-          <el-button
-            type="primary"
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            label="重新选择文件"
+            @click="importDialog.step = 'upload'"
+          />
+          <UButton
             :loading="importDialog.committing"
             :disabled="importDialog.report!.passed === 0"
+            label="确认提交"
             @click="doCommit"
-          >确认提交</el-button>
+          />
         </template>
         <!-- 完成步 -->
         <template v-else>
-          <el-button
+          <UButton
             v-if="importDialog.result!.failedRows.length"
+            color="neutral"
+            variant="outline"
+            label="导出失败行"
             :disabled="!importDialog.failedBlob"
             @click="doExportFailedRows"
-          >导出失败行</el-button>
-          <el-button type="primary" @click="importDialog.visible = false">完成</el-button>
+          />
+          <UButton label="完成" @click="importDialog.visible = false" />
         </template>
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 导出字段选择（FR-GOODS-12 / GAP-P2-07） -->
-    <el-dialog v-model="exportDialog.visible" title="导出商品清单" width="560px">
+    <AppModal v-model="exportDialog.visible" title="导出商品清单" width="560px">
       <div v-loading="exportDialog.loadingFields">
-        <el-checkbox v-model="allExportFields" :indeterminate="exportFieldsIndeterminate">全选</el-checkbox>
-        <el-divider class="export-divider" />
-        <el-checkbox-group v-model="exportDialog.fields" class="export-fields">
-          <el-checkbox v-for="f in exportDialog.options" :key="f.key" :value="f.key">{{ f.label }}</el-checkbox>
-        </el-checkbox-group>
+        <UCheckbox
+          :model-value="allExportFieldsModel"
+          label="全选"
+          @update:model-value="onToggleAllExportFields"
+        />
+        <USeparator class="export-divider" />
+        <UCheckboxGroup
+          v-model="exportDialog.fields"
+          orientation="horizontal"
+          :items="exportDialog.options.map((f) => ({ label: f.label, value: f.key }))"
+          class="export-fields"
+        />
         <div class="export-tip">
           仅导出勾选字段；导出范围与当前筛选条件一致；行数上限 50000（系统参数 export_max_rows，超限将提示缩小范围）
         </div>
       </div>
       <template #footer>
-        <el-button @click="exportDialog.visible = false">取消</el-button>
-        <el-button
-          type="primary"
+        <UButton color="neutral" variant="outline" label="取消" @click="exportDialog.visible = false" />
+        <UButton
           :loading="exportDialog.exporting"
           :disabled="exportDialog.fields.length === 0"
+          label="导出"
           @click="confirmExport"
-        >导出</el-button>
+        />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 商品详情抽屉（FR-GOODS-04 / FR-GOODS-09 促销记录 / FR-GOODS-10 调价历史） -->
-    <el-drawer
+    <AppDrawer
       v-model="detailDrawer.visible"
       :title="`商品详情：${detailDrawer.data?.goods.name ?? ''}`"
       size="62%"
-      destroy-on-close
     >
       <div v-loading="detailDrawer.loading" class="detail-body">
-        <el-tabs v-model="detailDrawer.tab" @tab-change="onDetailTabChange">
-          <el-tab-pane label="档案与库存" name="profile">
+        <AppTabs v-model="detailDrawer.tab" @tab-change="onDetailTabChange">
+          <AppTabPane label="档案与库存" name="profile">
             <template v-if="detailDrawer.data">
-              <el-alert
+              <UAlert
                 v-if="detailDrawer.data.goods.status === 0"
-                type="warning"
-                :closable="false"
-                show-icon
+                color="warning"
+                variant="soft"
+                icon="i-lucide-triangle-alert"
                 title="该商品已停用，不可销售/采购（档案保留）"
                 class="dialog-alert"
               />
-              <el-descriptions title="商品档案" :column="3" size="small" border class="detail-desc">
-                <el-descriptions-item label="商品编码">{{ detailDrawer.data.goods.goodsCode }}</el-descriptions-item>
-                <el-descriptions-item label="商品条码">{{ detailDrawer.data.goods.barcode || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="PLU 码">{{ detailDrawer.data.goods.pluCode || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="分类">{{ detailDrawer.data.categoryName || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="品牌">{{ detailDrawer.data.brandName || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="计量单位">{{ detailDrawer.data.unitName || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="规格">{{ detailDrawer.data.goods.spec || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="产地">{{ detailDrawer.data.goods.origin || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="称重商品">{{ detailDrawer.data.goods.isWeighed === 1 ? '是' : '否' }}</el-descriptions-item>
-                <el-descriptions-item label="允许退货">{{ detailDrawer.data.goods.allowReturn === 1 ? '允许' : '不允许' }}</el-descriptions-item>
-                <el-descriptions-item label="状态">
-                  <el-tag size="small" :type="detailDrawer.data.goods.status === 1 ? 'success' : 'info'">
+              <AppDescriptions title="商品档案" :column="3" size="small" border class="detail-desc">
+                <AppDescriptionsItem label="商品编码">{{ detailDrawer.data.goods.goodsCode }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="商品条码">{{ detailDrawer.data.goods.barcode || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="PLU 码">{{ detailDrawer.data.goods.pluCode || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="分类">{{ detailDrawer.data.categoryName || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="品牌">{{ detailDrawer.data.brandName || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="计量单位">{{ detailDrawer.data.unitName || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="规格">{{ detailDrawer.data.goods.spec || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="产地">{{ detailDrawer.data.goods.origin || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="称重商品">{{ detailDrawer.data.goods.isWeighed === 1 ? '是' : '否' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="允许退货">{{ detailDrawer.data.goods.allowReturn === 1 ? '允许' : '不允许' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="状态">
+                  <UBadge
+                    size="sm"
+                    :color="detailDrawer.data.goods.status === 1 ? 'success' : 'neutral'"
+                    variant="soft"
+                  >
                     {{ detailDrawer.data.goods.status === 1 ? '启用' : '停用' }}
-                  </el-tag>
-                </el-descriptions-item>
-                <el-descriptions-item label="创建时间">{{ detailDrawer.data.goods.createTime || '—' }}</el-descriptions-item>
-                <el-descriptions-item label="备注" :span="3">{{ detailDrawer.data.goods.remark || '—' }}</el-descriptions-item>
-              </el-descriptions>
+                  </UBadge>
+                </AppDescriptionsItem>
+                <AppDescriptionsItem label="创建时间">{{ detailDrawer.data.goods.createTime || '—' }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="备注" :span="3">{{ detailDrawer.data.goods.remark || '—' }}</AppDescriptionsItem>
+              </AppDescriptions>
 
-              <el-descriptions title="价格与库存" :column="3" size="small" border class="detail-desc">
-                <el-descriptions-item label="进货参考价">{{ money(detailDrawer.data.goods.purchasePrice) }}</el-descriptions-item>
-                <el-descriptions-item label="零售单价">{{ money(detailDrawer.data.goods.retailPrice) }}</el-descriptions-item>
-                <el-descriptions-item label="会员价">{{ money(detailDrawer.data.goods.memberPrice) }}</el-descriptions-item>
-                <el-descriptions-item label="生效促销">
+              <AppDescriptions title="价格与库存" :column="3" size="small" border class="detail-desc">
+                <AppDescriptionsItem label="进货参考价">{{ money(detailDrawer.data.goods.purchasePrice) }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="零售单价">{{ money(detailDrawer.data.goods.retailPrice) }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="会员价">{{ money(detailDrawer.data.goods.memberPrice) }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="生效促销">
                   <template v-if="detailDrawer.data.activePromotion">
-                    <el-tag type="danger" size="small">{{ money(detailDrawer.data.activePromotion.promoPrice) }} 元</el-tag>
+                    <UBadge color="error" variant="soft" size="sm">{{ money(detailDrawer.data.activePromotion.promoPrice) }} 元</UBadge>
                     <span class="detail-sub">至 {{ detailDrawer.data.activePromotion.endTime }}</span>
                   </template>
                   <span v-else>—</span>
-                </el-descriptions-item>
-                <el-descriptions-item label="结存数量">
+                </AppDescriptionsItem>
+                <AppDescriptionsItem label="结存数量">
                   {{ detailDrawer.data.inventory?.quantity ?? 0 }} {{ detailDrawer.data.unitName ?? '' }}
-                </el-descriptions-item>
-                <el-descriptions-item label="成本单价">{{ money(detailDrawer.data.inventory?.costPrice) }}</el-descriptions-item>
-                <el-descriptions-item label="成本金额">{{ money(detailDrawer.data.inventory?.costAmount) }}</el-descriptions-item>
-                <el-descriptions-item label="安全库存">
+                </AppDescriptionsItem>
+                <AppDescriptionsItem label="成本单价">{{ money(detailDrawer.data.inventory?.costPrice) }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="成本金额">{{ money(detailDrawer.data.inventory?.costAmount) }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="安全库存">
                   {{ detailDrawer.data.goods.safetyStockLower ?? 0 }} ~ {{ detailDrawer.data.goods.safetyStockUpper ?? '不限' }}
-                </el-descriptions-item>
-                <el-descriptions-item label="近 30 天销量">{{ detailDrawer.data.salesSummary30d.totalQuantity ?? 0 }}</el-descriptions-item>
-                <el-descriptions-item label="近 30 天销售额">{{ money(detailDrawer.data.salesSummary30d.totalAmount) }}</el-descriptions-item>
-              </el-descriptions>
+                </AppDescriptionsItem>
+                <AppDescriptionsItem label="近 30 天销量">{{ detailDrawer.data.salesSummary30d.totalQuantity ?? 0 }}</AppDescriptionsItem>
+                <AppDescriptionsItem label="近 30 天销售额">{{ money(detailDrawer.data.salesSummary30d.totalAmount) }}</AppDescriptionsItem>
+              </AppDescriptions>
 
               <div class="detail-section-title">最近库存流水（10 条）</div>
-              <el-table :data="detailDrawer.data.recentInventoryRecords" size="small" max-height="240">
-                <el-table-column label="类型" width="90">
+              <AppTable :data="detailDrawer.data.recentInventoryRecords" size="small" :max-height="240">
+                <AppTableColumn label="类型" width="90">
                   <template #default="{ row }">{{ RECORD_TYPE_MAP[row.recordType] ?? row.recordType }}</template>
-                </el-table-column>
-                <el-table-column label="变动数量" width="90" align="right">
+                </AppTableColumn>
+                <AppTableColumn label="变动数量" width="90" align="right">
                   <template #default="{ row }">
                     <span :class="row.changeQty >= 0 ? 'qty-in' : 'qty-out'">
                       {{ row.changeQty > 0 ? '+' : '' }}{{ row.changeQty }}
                     </span>
                   </template>
-                </el-table-column>
-                <el-table-column prop="beforeQty" label="变动前" width="80" align="right" />
-                <el-table-column prop="afterQty" label="变动后" width="80" align="right" />
-                <el-table-column label="关联单据" min-width="150">
+                </AppTableColumn>
+                <AppTableColumn prop="beforeQty" label="变动前" width="80" align="right" />
+                <AppTableColumn prop="afterQty" label="变动后" width="80" align="right" />
+                <AppTableColumn label="关联单据" min-width="150">
                   <template #default="{ row }">{{ row.bizNo || '—' }}</template>
-                </el-table-column>
-                <el-table-column label="操作人" width="90">
+                </AppTableColumn>
+                <AppTableColumn label="操作人" width="90">
                   <template #default="{ row }">{{ row.operatorName || '—' }}</template>
-                </el-table-column>
-                <el-table-column prop="operateTime" label="时间" width="160" />
-              </el-table>
+                </AppTableColumn>
+                <AppTableColumn prop="operateTime" label="时间" width="160" />
+              </AppTable>
 
               <div class="detail-section-title">最近采购价（5 次）</div>
-              <el-table :data="detailDrawer.data.recentPurchasePrices" size="small" max-height="220">
-                <el-table-column prop="orderNo" label="入库单号" min-width="170" />
-                <el-table-column prop="receiptTime" label="入库时间" width="160" />
-                <el-table-column label="实收单价" width="100" align="right">
+              <AppTable :data="detailDrawer.data.recentPurchasePrices" size="small" :max-height="220">
+                <AppTableColumn prop="orderNo" label="入库单号" min-width="170" />
+                <AppTableColumn prop="receiptTime" label="入库时间" width="160" />
+                <AppTableColumn label="实收单价" width="100" align="right">
                   <template #default="{ row }">{{ money(row.price) }}</template>
-                </el-table-column>
-                <el-table-column prop="quantity" label="实收数量" width="100" align="right" />
-              </el-table>
+                </AppTableColumn>
+                <AppTableColumn prop="quantity" label="实收数量" width="100" align="right" />
+              </AppTable>
 
               <div class="detail-section-title">关联供应商</div>
-              <el-table :data="detailDrawer.data.suppliers" size="small" max-height="220">
-                <el-table-column prop="supplierName" label="供应商" min-width="150" />
-                <el-table-column label="供货价" width="100" align="right">
+              <AppTable :data="detailDrawer.data.suppliers" size="small" :max-height="220">
+                <AppTableColumn prop="supplierName" label="供应商" min-width="150" />
+                <AppTableColumn label="供货价" width="100" align="right">
                   <template #default="{ row }">{{ money(row.supplyPrice) }}</template>
-                </el-table-column>
-                <el-table-column label="默认供应商" width="100" align="center">
+                </AppTableColumn>
+                <AppTableColumn label="默认供应商" width="100" align="center">
                   <template #default="{ row }">
-                    <el-tag v-if="row.isDefault === 1" type="success" size="small">默认</el-tag>
+                    <UBadge v-if="row.isDefault === 1" color="success" variant="soft" size="sm">默认</UBadge>
                     <span v-else>—</span>
                   </template>
-                </el-table-column>
-                <el-table-column label="最近供货时间" width="160">
+                </AppTableColumn>
+                <AppTableColumn label="最近供货时间" width="160">
                   <template #default="{ row }">{{ row.lastSupplyTime || '—' }}</template>
-                </el-table-column>
-              </el-table>
+                </AppTableColumn>
+              </AppTable>
             </template>
-          </el-tab-pane>
+          </AppTabPane>
 
-          <el-tab-pane label="促销记录" name="promotion">
+          <AppTabPane label="促销记录" name="promotion">
             <div class="detail-toolbar">
-              <el-button
+              <UButton
                 v-if="auth.hasPerm('sys:goods:update')"
-                type="primary"
-                size="small"
+                size="sm"
+                label="设置促销"
                 @click="openPromoteForDetail"
-              >设置促销</el-button>
+              />
               <span class="detail-sub">同一商品同一时间段只允许一条生效促销（BR-GOODS-04），到期自动失效</span>
             </div>
-            <el-table v-loading="detailDrawer.promotionsLoading" :data="detailDrawer.promotions" size="small">
-              <el-table-column label="促销价" width="100" align="right">
+            <AppTable :loading="detailDrawer.promotionsLoading" :data="detailDrawer.promotions" size="small">
+              <AppTableColumn label="促销价" width="100" align="right">
                 <template #default="{ row }">{{ money(row.promoPrice) }}</template>
-              </el-table-column>
-              <el-table-column prop="startTime" label="开始时间" width="160" />
-              <el-table-column prop="endTime" label="结束时间" width="160" />
-              <el-table-column label="状态" width="90">
+              </AppTableColumn>
+              <AppTableColumn prop="startTime" label="开始时间" width="160" />
+              <AppTableColumn prop="endTime" label="结束时间" width="160" />
+              <AppTableColumn label="状态" width="90">
                 <template #default="{ row }">
-                  <el-tag size="small" :type="promoStatusMap[row.status]?.type ?? 'info'">
+                  <UBadge size="sm" :color="promoStatusMap[row.status]?.type ?? 'neutral'" variant="soft">
                     {{ promoStatusMap[row.status]?.label ?? row.status }}
-                  </el-tag>
+                  </UBadge>
                 </template>
-              </el-table-column>
-              <el-table-column label="创建人" width="90">
+              </AppTableColumn>
+              <AppTableColumn label="创建人" width="90">
                 <template #default="{ row }">{{ row.createBy || '—' }}</template>
-              </el-table-column>
-              <el-table-column label="备注" min-width="120">
+              </AppTableColumn>
+              <AppTableColumn label="备注" min-width="120">
                 <template #default="{ row }">{{ row.remark || '—' }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="80" fixed="right">
+              </AppTableColumn>
+              <AppTableColumn label="操作" width="80" fixed="right">
                 <template #default="{ row }">
-                  <el-button
+                  <UButton
                     v-if="row.status === 'ACTIVE' && auth.hasPerm('sys:goods:update')"
-                    link
-                    type="danger"
+                    variant="link"
+                    size="sm"
+                    color="error"
+                    label="停用"
                     @click="handleDisablePromotion(row as PromotionVO)"
-                  >停用</el-button>
+                  />
                 </template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
+              </AppTableColumn>
+            </AppTable>
+          </AppTabPane>
 
-          <el-tab-pane label="调价历史" name="history">
-            <el-table
-              v-loading="detailDrawer.historyLoading"
+          <AppTabPane label="调价历史" name="history">
+            <AppTable
+              :loading="detailDrawer.historyLoading"
               :data="detailDrawer.priceHistory"
               size="small"
-              max-height="520"
+              :max-height="520"
             >
-              <el-table-column prop="createTime" label="操作时间" width="160" />
-              <el-table-column label="价格类型" width="90">
+              <AppTableColumn prop="createTime" label="操作时间" width="160" />
+              <AppTableColumn label="价格类型" width="90">
                 <template #default="{ row }">{{ PRICE_TYPE_MAP[row.priceType] ?? row.priceType }}</template>
-              </el-table-column>
-              <el-table-column label="前值" width="100" align="right">
+              </AppTableColumn>
+              <AppTableColumn label="前值" width="100" align="right">
                 <template #default="{ row }">{{ money(row.oldValue) }}</template>
-              </el-table-column>
-              <el-table-column label="后值" width="100" align="right">
+              </AppTableColumn>
+              <AppTableColumn label="后值" width="100" align="right">
                 <template #default="{ row }">
                   <span class="detail-strong">{{ money(row.newValue) }}</span>
                 </template>
-              </el-table-column>
-              <el-table-column label="生效时间" width="160">
+              </AppTableColumn>
+              <AppTableColumn label="生效时间" width="160">
                 <template #default="{ row }">{{ row.effectiveTime || '—' }}</template>
-              </el-table-column>
-              <el-table-column label="操作人" width="100">
+              </AppTableColumn>
+              <AppTableColumn label="操作人" width="100">
                 <template #default="{ row }">{{ row.operatorName || '—' }}</template>
-              </el-table-column>
-              <el-table-column label="调价原因" min-width="150">
+              </AppTableColumn>
+              <AppTableColumn label="调价原因" min-width="150">
                 <template #default="{ row }">{{ row.reason || '—' }}</template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-        </el-tabs>
+              </AppTableColumn>
+            </AppTable>
+          </AppTabPane>
+        </AppTabs>
       </div>
-    </el-drawer>
+    </AppDrawer>
 
     <!-- 设置促销对话框（FR-GOODS-09：表格勾选批量 或 详情页单个） -->
-    <el-dialog
+    <AppModal
       v-model="promoteDialog.visible"
       title="设置促销价"
       width="520px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+      <UAlert
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="促销价须低于零售价；同一商品同一时间段只允许一条生效促销（BR-GOODS-04）"
         class="dialog-alert"
       />
-      <el-form label-width="90px">
-        <el-form-item label="商品">
+      <AppForm label-width="90px">
+        <AppFormItem label="商品">
           <span>
             {{ promoteDialog.goodsIds.length === 1
               ? promoteDialog.goodsNames[0]
               : `${promoteDialog.goodsNames[0]} 等 ${promoteDialog.goodsIds.length} 个商品` }}
           </span>
-        </el-form-item>
-        <el-form-item label="促销价" required>
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="促销价" required>
+          <AppInputNumber
             v-model="promoteDialog.promoPrice"
             :min="0.01"
             :precision="2"
@@ -1817,29 +1962,24 @@ ref="tableRef"
             placeholder=">0 且低于零售价"
             style="width: 100%"
           />
-        </el-form-item>
-        <el-form-item label="生效时间" required>
-          <el-date-picker
+        </AppFormItem>
+        <AppFormItem label="生效时间" required>
+          <AppDatePicker
             v-model="promoteDialog.timeRange"
             type="datetimerange"
-            range-separator="至"
-            start-placeholder="开始时间"
-            end-placeholder="结束时间"
             value-format="YYYY-MM-DD HH:mm:ss"
             style="width: 100%"
           />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="promoteDialog.remark" maxlength="200" placeholder="选填" />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem label="备注">
+          <AppInput v-model="promoteDialog.remark" maxlength="200" placeholder="选填" />
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="promoteDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="promoteDialog.saving" @click="confirmPromote">
-          确定
-        </el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="promoteDialog.visible = false" />
+        <UButton :loading="promoteDialog.saving" label="确定" @click="confirmPromote" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -1847,10 +1987,6 @@ ref="tableRef"
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .card-head {
@@ -1869,7 +2005,7 @@ ref="tableRef"
 
   .goods-spec {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .promo-tag {
@@ -1895,9 +2031,16 @@ ref="tableRef"
 
   /* UC-GOODS-001 E1：条码被占用时高亮字段，配合后端"已被商品【XX】占用"提示 */
   .barcode-error {
-    :deep(.el-input__wrapper) {
-      box-shadow: 0 0 0 1px var(--el-color-danger) inset;
-    }
+    box-shadow: 0 0 0 1px var(--ui-error) inset;
+    border-radius: 8px;
+  }
+
+  /* 商品编码/条码 + 追加按钮（替代 el-input 的 #append 插槽） */
+  .input-with-append {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
   }
 
   .created-box {
@@ -1906,12 +2049,12 @@ ref="tableRef"
       align-items: center;
       gap: 12px;
       padding: 10px 14px;
-      background: #f5f7fa;
+      background: var(--el-bg-color-page);
       border-radius: 6px;
       margin-bottom: 8px;
 
       .created-label {
-        color: #909399;
+        color: var(--el-text-color-secondary);
         font-size: 13px;
         flex: none;
       }
@@ -1931,12 +2074,91 @@ ref="tableRef"
     margin-bottom: 14px;
   }
 
+  /* 隐藏 file input + 点击/拖拽区域（替代 el-upload drag） */
+  .import-drop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 22px 16px;
+    border: 1px dashed var(--ui-border);
+    border-radius: 8px;
+    background: var(--ui-bg-muted);
+    cursor: pointer;
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: var(--ui-primary);
+    }
+  }
+
+  .import-drop-text {
+    font-size: 14px;
+    color: var(--el-text-color-regular);
+
+    em {
+      font-style: normal;
+      color: var(--ui-primary);
+    }
+  }
+
+  .import-tip {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+
+  .import-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: var(--ui-bg-muted);
+  }
+
+  .import-file-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 导入结果（替代 el-result） */
+  .import-result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 0 16px;
+    text-align: center;
+  }
+
+  .import-result-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .import-result-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .import-result-sub {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+
   .import-scope {
     margin-bottom: 10px;
   }
 
   .import-error {
-    color: #f56c6c;
+    color: var(--el-color-danger);
     font-size: 12px;
   }
 
@@ -1946,7 +2168,7 @@ ref="tableRef"
     .import-progress-text {
       margin-top: 4px;
       font-size: 12px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
     }
   }
 
@@ -1975,7 +2197,7 @@ ref="tableRef"
 
   .detail-sub {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     margin-left: 6px;
   }
 
@@ -2000,11 +2222,16 @@ ref="tableRef"
     flex: none;
   }
 
+  .image-preview {
+    display: block;
+    object-fit: cover;
+  }
+
   .image-placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #a8abb2;
+    color: var(--el-text-color-disabled);
     font-size: 12px;
     background: var(--el-fill-color-lighter);
   }
@@ -2019,7 +2246,7 @@ ref="tableRef"
   .image-tip {
     flex-basis: 100%;
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   /* 导出字段选择（GAP-P2-07） */
@@ -2036,7 +2263,7 @@ ref="tableRef"
   .export-tip {
     margin-top: 12px;
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .qty-in {

@@ -19,7 +19,7 @@ test.describe('认证与登录', () => {
     // 在带 redirect 的登录页上直接提交（不可重新 goto，否则查询串丢失）
     await submitLogin(page, 'admin')
     await expect(page).toHaveURL((url) => url.pathname === '/system/user')
-    await expect(page.locator('.el-breadcrumb')).toContainText('用户管理')
+    await expect(page.locator('.app-breadcrumb')).toContainText('用户管理')
   })
 
   test('admin 表单登录：进入首页并展示真实姓名与角色', async ({ page }) => {
@@ -37,7 +37,7 @@ test.describe('认证与登录', () => {
     await page.getByPlaceholder('密码').fill('Wrong@2026')
     await page.getByRole('button', { name: '登 录' }).click()
 
-    await expect(page.locator('.el-message--error')).toContainText('用户名或密码错误')
+    await expect(page.locator('.app-toast')).toContainText('用户名或密码错误')
     await expect(page).toHaveURL((url) => url.pathname === '/login')
   })
 
@@ -56,7 +56,7 @@ test.describe('认证与登录', () => {
       await page.goto('/home')
       await expect(page.locator('.user-info')).toContainText(ACCOUNTS.admin.realName)
       await page.locator('.user-info').click()
-      await page.locator('.el-dropdown-menu__item').filter({ hasText: '退出登录' }).click()
+      await page.locator('[role="menuitem"]').filter({ hasText: '退出登录' }).click()
 
       await expect(page).toHaveURL((url) => url.pathname === '/login')
       expect(await page.evaluate(() => localStorage.getItem('smms_token'))).toBeNull()

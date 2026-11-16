@@ -1,5 +1,84 @@
-* {
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+:root {
+  /* 自定义主题令牌：跟随 color-scheme 自动切换 */
+  --smms-login-start: light-dark(#e8f1ff, #16233a);
+  --smms-login-end: light-dark(#eef4ff, #101a2d);
+  --smms-scrollbar-thumb: light-dark(#909399, #6c6e72);
+  --smms-scrollbar-track: light-dark(#f0f2f5, #1d1e1f);
+  --smms-selection-bg: light-dark(#d9ecff, #2b5b8a);
+  --smms-selection-text: light-dark(#303133, #f0f4f8);
+
+  /* Nuxt UI 主题令牌的兼容别名：历史页面样式仍可平滑迁移 */
+  --el-color-primary: var(--ui-primary);
+  --el-color-primary-light-9: color-mix(in oklab, var(--ui-primary) 12%, var(--ui-bg));
+  --el-color-success: var(--ui-success);
+  --el-color-warning: var(--ui-warning);
+  --el-color-warning-light-9: color-mix(in oklab, var(--ui-warning) 12%, var(--ui-bg));
+  --el-color-danger: var(--ui-error);
+  --el-color-danger-light-9: color-mix(in oklab, var(--ui-error) 12%, var(--ui-bg));
+  --el-color-danger-dark-2: color-mix(in oklab, var(--ui-error) 82%, #000);
+  --el-color-info: var(--ui-info);
+  --el-color-white: #fff;
+  --el-text-color-primary: var(--ui-text);
+  --el-text-color-regular: var(--ui-text);
+  --el-text-color-secondary: var(--ui-text-muted);
+  --el-text-color-placeholder: var(--ui-text-dimmed);
+  --el-text-color-disabled: var(--ui-text-dimmed);
+  --el-bg-color: var(--ui-bg);
+  --el-bg-color-page: var(--ui-bg-muted);
+  --el-border-color: var(--ui-border);
+  --el-border-color-light: var(--ui-border);
+  --el-border-color-lighter: var(--ui-border-muted);
+  --el-border-color-extra-light: var(--ui-border-muted);
+  --el-fill-color-light: var(--ui-bg-elevated);
+  --el-fill-color-lighter: var(--ui-bg-muted);
+  --el-box-shadow-light: 0 1px 3px 0 rgb(15 23 42 / 0.08);
+  --el-box-shadow: 0 10px 15px -3px rgb(15 23 42 / 0.1);
+
+  /* 告诉浏览器本页同时支持浅色与深色，原生 UI（滚动条、表单控件等）随之适配 */
+  color-scheme: light dark;
+  accent-color: var(--ui-primary);
+  scrollbar-color: var(--smms-scrollbar-thumb) var(--smms-scrollbar-track);
+}
+
+/* 手动覆盖：把 <meta name="color-scheme"> 的状态映射回 CSS 变量 */
+:root:has(> head > meta[name='color-scheme'][content='light']) {
+  color-scheme: light;
+}
+
+:root:has(> head > meta[name='color-scheme'][content='dark']) {
+  color-scheme: dark;
+}
+
+/* 不支持 light-dark() 的浏览器回退到系统偏好 */
+@supports not (color: light-dark(#fff, #000)) {
+  :root {
+    --smms-login-start: #e8f1ff;
+    --smms-login-end: #eef4ff;
+    --smms-scrollbar-thumb: #909399;
+    --smms-scrollbar-track: #f0f2f5;
+    --smms-selection-bg: #d9ecff;
+    --smms-selection-text: #303133;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --smms-login-start: #16233a;
+      --smms-login-end: #101a2d;
+      --smms-scrollbar-thumb: #6c6e72;
+      --smms-scrollbar-track: #1d1e1f;
+      --smms-selection-bg: #2b5b8a;
+      --smms-selection-text: #f0f4f8;
+    }
+  }
 }
 
 html,
@@ -20,6 +99,115 @@ body {
     Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
-  color: #303133;
-  background: #f5f7fa;
+  text-rendering: optimizeLegibility;
+  color: var(--ui-text);
+  background: var(--ui-bg-muted);
+}
+
+::selection {
+  background: var(--smms-selection-bg);
+  color: var(--smms-selection-text);
+}
+
+/* 键盘焦点必须始终可见（WCAG 2.4.7） */
+:focus-visible {
+  outline: 2px solid var(--ui-primary);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* 老版本 WebKit 的滚动条回退；支持 scrollbar-color 的浏览器不会命中 */
+@supports not (scrollbar-color: auto) {
+  *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--smms-scrollbar-thumb);
+    border-radius: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--smms-scrollbar-track);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * 迁移期的表格/表单项辅助类。
+ * AppTable 基于 UTable，斑马纹与紧凑行高在此统一声明。
+ */
+.app-table-striped tbody tr:nth-child(even) {
+  background-color: color-mix(in oklab, var(--ui-bg-muted) 70%, transparent);
+}
+
+.app-table-striped tbody tr:hover {
+  background-color: var(--ui-bg-elevated);
+}
+
+.app-form-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 12px;
+}
+
+.app-form-inline .app-form-item {
+  margin-bottom: 0;
+}
+
+.app-form-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--ui-text);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* v-loading 兼容指令的遮罩层 */
+.smms-loading-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  place-items: center;
+  border-radius: inherit;
+  background: color-mix(in oklab, var(--ui-bg) 65%, transparent);
+  backdrop-filter: blur(1px);
+}
+
+.smms-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--ui-border);
+  border-top-color: var(--ui-primary);
+  border-radius: 9999px;
+  animation: smms-spin 0.8s linear infinite;
+}
+
+@keyframes smms-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

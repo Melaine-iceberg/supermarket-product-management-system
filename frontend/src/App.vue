@@ -1,12 +1,17 @@
 <script setup lang="ts">
-// 全局中文语言包：避免 Element Plus 组件出现 No Data / Total / Start Date 等英文文案
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { zh_cn } from '@nuxt/ui/locale'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import PwaPrompt from '@/components/PwaPrompt.vue'
+import TaskProgress from '@/components/TaskProgress.vue'
+import ToastBridge from '@/components/ToastBridge.vue'
 </script>
 
 <template>
-  <el-config-provider :locale="zhCn">
+  <UApp :locale="zh_cn">
     <router-view />
     <PwaPrompt />
-  </el-config-provider>
+    <ToastBridge />
+    <ConfirmDialog />
+    <TaskProgress />
+  </UApp>
 </template>

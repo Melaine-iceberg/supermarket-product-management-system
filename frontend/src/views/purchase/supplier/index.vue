@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   SETTLE_TYPE_MAP,
@@ -186,15 +187,15 @@ async function openEdit(row: SupplierListVO) {
 async function saveSupplier() {
   const form = editDialog.form
   if (!form.name.trim()) {
-    ElMessage.warning('请输入供应商名称')
+    notify.warning('请输入供应商名称')
     return
   }
   if (form.phone && !/^1[3-9]\d{9}$/.test(form.phone) && !/^0\d{2,3}-?\d{7,8}$/.test(form.phone)) {
-    ElMessage.warning('联系电话须为大陆手机号或固话格式（BR-SUP-01）')
+    notify.warning('联系电话须为大陆手机号或固话格式（BR-SUP-01）')
     return
   }
   if (form.settleType === 'CREDIT' && (form.creditDays == null || form.creditDays < 1)) {
-    ElMessage.warning('结算方式为账期时必须填写账期天数')
+    notify.warning('结算方式为账期时必须填写账期天数')
     return
   }
   editDialog.saving = true
@@ -216,10 +217,10 @@ async function saveSupplier() {
     }
     if (editDialog.editing) {
       await updateSupplier(editDialog.id, payload)
-      ElMessage.success('供应商档案已更新')
+      notify.success('供应商档案已更新')
     } else {
       const created = await createSupplier(payload)
-      ElMessage.success(`新增成功，供应商编码 ${created.supplierCode}`)
+      notify.success(`新增成功，供应商编码 ${created.supplierCode}`)
     }
     editDialog.visible = false
     load()
@@ -232,14 +233,14 @@ async function saveSupplier() {
 async function toggleStatus(row: SupplierListVO) {
   const to = row.status === 1 ? 0 : 1
   if (to === 0) {
-    await ElMessageBox.confirm(
+    await confirm(
       `停用后【${row.name}】不可被新采购单选择；历史单据与结算记录保留可查。确认停用？`,
       '停用供应商',
       { type: 'warning' },
     )
   }
   await updateSupplierStatus(row.id, to)
-  ElMessage.success(to === 1 ? '已启用' : '已停用')
+  notify.success(to === 1 ? '已启用' : '已停用')
   load()
 }
 
@@ -309,7 +310,7 @@ async function searchGoods(kw: string) {
 
 function addGoods(g: GoodsListVO) {
   if (goodsDialog.rows.some((r) => r.goodsId === g.id)) {
-    ElMessage.warning('该商品已在供货清单中')
+    notify.warning('该商品已在供货清单中')
     return
   }
   goodsDialog.rows.push({
@@ -343,7 +344,7 @@ async function saveGoods() {
         isDefault: r.isDefault,
       })),
     )
-    ElMessage.success('供货商品已保存')
+    notify.success('供货商品已保存')
     goodsDialog.visible = false
     load()
   } finally {
@@ -355,106 +356,109 @@ async function saveGoods() {
 <template>
   <div class="page">
     <!-- 筛选区（FR-SUP-02） -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="名称">
-          <el-input v-model="query.name" placeholder="供应商名称模糊" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="编码">
-          <el-input v-model="query.code" placeholder="S+5位流水" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="联系人">
-          <el-input v-model="query.contactPerson" placeholder="联系人模糊" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="电话">
-          <el-input v-model="query.phone" placeholder="手机/固话" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 100px">
-            <el-option label="启用" :value="1" />
-            <el-option label="停用" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="供货品类">
-          <el-tree-select
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="名称">
+          <AppInput v-model="query.name" placeholder="供应商名称模糊" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="编码">
+          <AppInput v-model="query.code" placeholder="S+5位流水" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="联系人">
+          <AppInput v-model="query.contactPerson" placeholder="联系人模糊" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="电话">
+          <AppInput v-model="query.phone" placeholder="手机/固话" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppSelect v-model="query.status" clearable placeholder="全部" style="width: 100px">
+            <AppOption label="启用" :value="1" />
+            <AppOption label="停用" :value="0" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="供货品类">
+          <AppTreeSelect
             v-model="query.categoryId"
             :data="categoryTree"
             :props="{ label: 'name', children: 'children' }"
             node-key="id"
-            check-strictly
             clearable
             placeholder="按供货商品分类"
             style="width: 180px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex flex-wrap gap-2">
+            <UButton label="查询" @click="search" />
+            <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+          </div>
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>供应商列表（{{ total }}）</span>
-          <el-button v-if="auth.hasPerm('sys:sup:create')" type="primary" @click="openCreate">新增供应商</el-button>
+          <UButton v-if="auth.hasPerm('sys:sup:create')" label="新增供应商" @click="openCreate" />
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="supplierCode" label="编码" width="90" />
-        <el-table-column prop="name" label="供应商名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="contactPerson" label="联系人" width="90">
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn prop="supplierCode" label="编码" width="90" />
+        <AppTableColumn prop="name" label="供应商名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn prop="contactPerson" label="联系人" width="90">
           <template #default="{ row }">{{ row.contactPerson || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="phone" label="联系电话" width="130">
+        </AppTableColumn>
+        <AppTableColumn prop="phone" label="联系电话" width="130">
           <template #default="{ row }">{{ row.phone || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="结算方式" width="100" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="结算方式" width="100" align="center">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.settleType === 'CREDIT' ? 'warning' : 'info'">
+            <UBadge size="sm" variant="soft" :color="row.settleType === 'CREDIT' ? 'warning' : 'neutral'">
               {{ settleLabel(row as SupplierListVO) }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="提前期" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="提前期" width="80" align="right">
           <template #default="{ row }">{{ row.leadTimeDays }}天</template>
-        </el-table-column>
-        <el-table-column label="累计采购额" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="累计采购额" width="110" align="right">
           <template #default="{ row }">￥{{ money(row.totalPurchaseAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="未结算金额" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="未结算金额" width="110" align="right">
           <template #default="{ row }">￥{{ money(row.unsettledAmount) }}</template>
-        </el-table-column>
-        <el-table-column prop="inTransitCount" label="在途单" width="80" align="right" />
-        <el-table-column prop="goodsCount" label="供货商品" width="85" align="right" />
-        <el-table-column label="最近合作" width="150">
+        </AppTableColumn>
+        <AppTableColumn prop="inTransitCount" label="在途单" width="80" align="right" />
+        <AppTableColumn prop="goodsCount" label="供货商品" width="85" align="right" />
+        <AppTableColumn label="最近合作" width="150">
           <template #default="{ row }">{{ fmtTime(row.lastCoopTime) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+            <UBadge :color="row.status === 1 ? 'success' : 'error'" variant="soft" size="sm">
               {{ row.status === 1 ? '启用' : '停用' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="250" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button v-if="auth.hasPerm('sys:sup:update')" link type="primary" @click="openEdit(row as SupplierListVO)">编辑</el-button>
-            <el-button v-if="auth.hasPerm('sys:sup:goods')" link type="primary" @click="openGoods(row as SupplierListVO)">供货商品</el-button>
-            <el-button
+            <UButton v-if="auth.hasPerm('sys:sup:update')" variant="link" size="sm" label="编辑" @click="openEdit(row as SupplierListVO)" />
+            <UButton v-if="auth.hasPerm('sys:sup:goods')" variant="link" size="sm" label="供货商品" @click="openGoods(row as SupplierListVO)" />
+            <UButton
               v-if="auth.hasPerm('sys:sup:status')"
-              link
-              :type="row.status === 1 ? 'danger' : 'success'"
+              variant="link"
+              size="sm"
+              :color="row.status === 1 ? 'error' : 'success'"
+              :label="row.status === 1 ? '停用' : '启用'"
               @click="toggleStatus(row as SupplierListVO)"
-            >{{ row.status === 1 ? '停用' : '启用' }}</el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
       <div class="pagination-row">
-        <el-pagination
+        <AppPagination
           v-model:current-page="query.page"
           v-model:page-size="query.size"
           :total="total"
@@ -464,46 +468,46 @@ async function saveGoods() {
           @size-change="search"
         />
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 新增 / 编辑（FR-SUP-01） -->
-    <el-dialog
+    <AppModal
       v-model="editDialog.visible"
       :title="editDialog.editing ? '编辑供应商' : '新增供应商'"
       width="560px"
       :close-on-click-modal="false"
     >
-      <el-alert
+      <UAlert
         v-if="editDialog.editing"
-        type="info"
-        :closable="false"
-        show-icon
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="供应商编码由系统生成，创建后不可修改（BR-SUP-03）；累计采购额由采购入库业务回写，不可手工修改"
         class="dialog-alert"
       />
-      <el-form label-width="90px" @submit.prevent>
-        <el-form-item label="名称" required>
-          <el-input v-model="editDialog.form.name" maxlength="100" placeholder="供应商名称（唯一，BR-SUP-01）" />
-        </el-form-item>
-        <el-form-item label="联系人">
-          <el-input v-model="editDialog.form.contactPerson" maxlength="30" placeholder="选填" />
-        </el-form-item>
-        <el-form-item label="联系电话">
-          <el-input v-model="editDialog.form.phone" maxlength="20" placeholder="手机号或固话（0xx-xxxxxxxx）" />
-        </el-form-item>
-        <el-form-item label="地址">
-          <el-input v-model="editDialog.form.address" maxlength="200" placeholder="选填" />
-        </el-form-item>
-        <el-form-item label="邮箱">
-          <el-input v-model="editDialog.form.email" maxlength="50" placeholder="选填" />
-        </el-form-item>
-        <el-form-item label="结算方式" required>
-          <el-radio-group v-model="editDialog.form.settleType">
-            <el-radio v-for="t in settleTypeOptions" :key="t.value" :value="t.value">{{ t.label }}</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="editDialog.form.settleType === 'CREDIT'" label="账期天数" required>
-          <el-input-number
+      <AppForm label-width="90px" @submit.prevent>
+        <AppFormItem label="名称" required>
+          <AppInput v-model="editDialog.form.name" maxlength="100" placeholder="供应商名称（唯一，BR-SUP-01）" />
+        </AppFormItem>
+        <AppFormItem label="联系人">
+          <AppInput v-model="editDialog.form.contactPerson" maxlength="30" placeholder="选填" />
+        </AppFormItem>
+        <AppFormItem label="联系电话">
+          <AppInput v-model="editDialog.form.phone" maxlength="20" placeholder="手机号或固话（0xx-xxxxxxxx）" />
+        </AppFormItem>
+        <AppFormItem label="地址">
+          <AppInput v-model="editDialog.form.address" maxlength="200" placeholder="选填" />
+        </AppFormItem>
+        <AppFormItem label="邮箱">
+          <AppInput v-model="editDialog.form.email" maxlength="50" placeholder="选填" />
+        </AppFormItem>
+        <AppFormItem label="结算方式" required>
+          <AppRadioGroup v-model="editDialog.form.settleType">
+            <AppRadio v-for="t in settleTypeOptions" :key="t.value" :value="t.value">{{ t.label }}</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="editDialog.form.settleType === 'CREDIT'" label="账期天数" required>
+          <AppInputNumber
             v-model="editDialog.form.creditDays"
             :min="1"
             :max="365"
@@ -511,9 +515,9 @@ async function saveGoods() {
             placeholder="天"
             style="width: 160px"
           />
-        </el-form-item>
-        <el-form-item label="采购提前期" required>
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="采购提前期" required>
+          <AppInputNumber
             v-model="editDialog.form.leadTimeDays"
             :min="0"
             :max="365"
@@ -521,12 +525,12 @@ async function saveGoods() {
             placeholder="天，参与建议采购量（BR-INV-07）"
             style="width: 160px"
           />
-        </el-form-item>
-        <el-form-item label="开户行">
-          <el-input v-model="editDialog.form.bankName" maxlength="100" placeholder="选填" />
-        </el-form-item>
-        <el-form-item label="银行账号">
-          <el-input
+        </AppFormItem>
+        <AppFormItem label="开户行">
+          <AppInput v-model="editDialog.form.bankName" maxlength="100" placeholder="选填" />
+        </AppFormItem>
+        <AppFormItem label="银行账号">
+          <AppInput
             v-model="editDialog.form.bankAccount"
             :disabled="sensitiveMasked"
             maxlength="50"
@@ -535,42 +539,42 @@ async function saveGoods() {
           <div v-if="sensitiveMasked" class="form-tip">
             银行账号已按角色权限脱敏展示，如需修改请联系店长
           </div>
-        </el-form-item>
-        <el-form-item label="纳税人识别号">
-          <el-input
+        </AppFormItem>
+        <AppFormItem label="纳税人识别号">
+          <AppInput
             v-model="editDialog.form.taxNo"
             :disabled="sensitiveMasked"
             maxlength="30"
             placeholder="仅店长及以上可见（BR-SUP-01）"
           />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="editDialog.form.remark" type="textarea" :rows="2" maxlength="500" placeholder="选填" />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem label="备注">
+          <AppInput v-model="editDialog.form.remark" type="textarea" :rows="2" maxlength="500" placeholder="选填" />
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="editDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="editDialog.saving" @click="saveSupplier">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="editDialog.visible = false" />
+        <UButton :loading="editDialog.saving" label="保存" @click="saveSupplier" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 供货商品维护（FR-SUP-04） -->
-    <el-dialog
+    <AppModal
       v-model="goodsDialog.visible"
       :title="`维护供货商品：${goodsDialog.supplier?.name ?? ''}`"
       width="880px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+      <UAlert
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="一个商品可对应多个供应商并指定默认供应商；设为默认后，该商品在其他供应商上的默认标记自动取消。最近供货时间由采购入库回写，人工不可修改"
         class="dialog-alert"
       />
       <div class="goods-add">
         <span class="goods-add-label">添加商品：</span>
-        <el-select
+        <AppSelect
           v-model="goodsDialog.keyword"
           filterable
           remote
@@ -581,32 +585,29 @@ async function saveGoods() {
           style="width: 320px"
           @change="addGoods"
         >
-          <el-option
+          <AppOption
             v-for="g in goodsDialog.options"
             :key="g.id"
             :value="g.id"
             :label="`${g.name}（${g.goodsCode}）`"
-          >
-            <span>{{ g.name }}</span>
-            <span class="goods-option-sub">{{ g.goodsCode }} · {{ g.categoryName }} · 零售 ￥{{ money(g.retailPrice) }}</span>
-          </el-option>
-        </el-select>
+          />
+        </AppSelect>
       </div>
-      <el-table v-loading="goodsDialog.loading" :data="goodsDialog.rows" size="small" max-height="380">
-        <el-table-column prop="goodsCode" label="商品编码" width="110" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="spec" label="规格" width="100">
+      <AppTable :loading="goodsDialog.loading" :data="goodsDialog.rows" size="small" max-height="380">
+        <AppTableColumn prop="goodsCode" label="商品编码" width="110" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="150" show-overflow-tooltip />
+        <AppTableColumn prop="spec" label="规格" width="100">
           <template #default="{ row }">{{ row.spec || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="categoryName" label="分类" width="100">
+        </AppTableColumn>
+        <AppTableColumn prop="categoryName" label="分类" width="100">
           <template #default="{ row }">{{ row.categoryName || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="unitName" label="单位" width="70" align="center">
+        </AppTableColumn>
+        <AppTableColumn prop="unitName" label="单位" width="70" align="center">
           <template #default="{ row }">{{ row.unitName || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="供货单价" width="140" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="供货单价" width="140" align="right">
           <template #default="{ row }">
-            <el-input-number
+            <AppInputNumber
               v-model="row.supplyPrice"
               :min="0"
               :precision="2"
@@ -616,31 +617,31 @@ async function saveGoods() {
               style="width: 120px"
             />
           </template>
-        </el-table-column>
-        <el-table-column label="默认供应商" width="100" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="默认供应商" width="100" align="center">
           <template #default="{ row }">
-            <el-switch v-model="row.isDefault" :active-value="1" :inactive-value="0" />
+            <USwitch v-model="row.isDefault" :true-value="1" :false-value="0" />
           </template>
-        </el-table-column>
-        <el-table-column label="最近供货价" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="最近供货价" width="90" align="right">
           <template #default="{ row }">
             {{ money(row.lastSupplyPrice) }}
           </template>
-        </el-table-column>
-        <el-table-column label="最近供货" width="150">
+        </AppTableColumn>
+        <AppTableColumn label="最近供货" width="150">
           <template #default="{ row }">{{ fmtTime(row.lastSupplyTime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="70" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="70" align="center">
           <template #default="{ $index }">
-            <el-button link type="danger" @click="removeRow($index)">移除</el-button>
+            <UButton variant="link" size="sm" color="error" label="移除" @click="removeRow($index)" />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
       <template #footer>
-        <el-button @click="goodsDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="goodsDialog.saving" @click="saveGoods">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="goodsDialog.visible = false" />
+        <UButton :loading="goodsDialog.saving" label="保存" @click="saveGoods" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -664,7 +665,7 @@ async function saveGoods() {
 
   .form-tip {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     line-height: 1.4;
   }
 
@@ -675,14 +676,14 @@ async function saveGoods() {
 
     .goods-add-label {
       font-size: 13px;
-      color: #606266;
+      color: var(--el-text-color-regular);
     }
   }
 
   .goods-option-sub {
     float: right;
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 }
 </style>

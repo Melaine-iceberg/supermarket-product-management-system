@@ -46,15 +46,20 @@ function close() {
   emit('update:modelValue', false)
 }
 
+/** 仅在关闭时回写，避免开关事件双向触发 */
+function onVisibleChange(value: boolean) {
+  if (!value) close()
+}
+
 function display(v: unknown) {
   return v == null || v === '' ? '—' : String(v)
 }
 </script>
 
 <template>
-  <el-drawer :model-value="modelValue" :title="title" :size="size ?? '70%'" @update:model-value="close">
-    <el-table v-loading="loading" border :data="rows" stripe size="small">
-      <el-table-column
+  <AppDrawer :model-value="modelValue" :title="title" :size="size ?? '70%'" @update:model-value="onVisibleChange">
+    <AppTable :loading="loading" border :data="rows" stripe size="small">
+      <AppTableColumn
         v-for="(col, i) in columns"
         :key="i"
         :label="col.label"
@@ -63,14 +68,14 @@ function display(v: unknown) {
         :align="col.align ?? 'left'"
       >
         <template #default="{ row }">{{ display(col.value(row as T)) }}</template>
-      </el-table-column>
-      <el-table-column v-if="$slots.actions" label="操作" width="80" fixed="right">
+      </AppTableColumn>
+      <AppTableColumn v-if="$slots.actions" label="操作" width="80" fixed="right">
         <template #default="{ row }">
           <slot name="actions" :row="row as T" />
         </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
+      </AppTableColumn>
+    </AppTable>
+    <AppPagination
       v-model:current-page="page"
       :total="total"
       :page-size="SIZE"
@@ -78,7 +83,7 @@ function display(v: unknown) {
       class="pager"
       @current-change="load"
     />
-  </el-drawer>
+  </AppDrawer>
 </template>
 
 <style scoped lang="scss">

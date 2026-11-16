@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
@@ -94,6 +95,13 @@ function fmtTime(v: string | null | undefined) {
   return v ? v.replace('T', ' ').slice(0, 19) : '—'
 }
 
+/** Element tag type → Nuxt UI badge color（danger→error、info→neutral） */
+function tagColor(type?: string): 'success' | 'warning' | 'error' | 'neutral' {
+  if (type === 'danger') return 'error'
+  if (type === 'success' || type === 'warning') return type
+  return 'neutral'
+}
+
 function syncRange() {
   range.beginDate = dateRange.value?.[0]
   range.endDate = dateRange.value?.[1]
@@ -155,7 +163,7 @@ async function handleExport() {
       alertType: alertType.value,
       categoryId: categoryId.value,
     })
-    ElMessage.success('导出成功')
+    notify.success('导出成功')
   } finally {
     exporting.value = false
   }
@@ -358,36 +366,35 @@ onMounted(async () => {
 <template>
   <div class="page">
     <!-- 筛选区 -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="视图">
-          <el-radio-group v-model="view" @change="search">
-            <el-radio-button v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="视图">
+          <AppRadioGroup v-model="view" @change="search">
+            <AppRadioButton v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
               {{ label }}
-            </el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="view === 'warnings'" label="预警类型">
-          <el-select v-model="alertType" clearable placeholder="全部" style="width: 110px" @change="load">
-            <el-option label="缺货" value="OUT" />
-            <el-option label="预警" value="WARNING" />
-            <el-option label="积压" value="OVERSTOCK" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="view.includes('summary') || view.includes('turnover')" label="分类">
-          <el-tree-select
+            </AppRadioButton>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="view === 'warnings'" label="预警类型">
+          <AppSelect v-model="alertType" clearable placeholder="全部" style="width: 110px" @change="load">
+            <AppOption label="缺货" value="OUT" />
+            <AppOption label="预警" value="WARNING" />
+            <AppOption label="积压" value="OVERSTOCK" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem v-if="view.includes('summary') || view.includes('turnover')" label="分类">
+          <AppTreeSelect
             v-model="categoryId"
             :data="categoryTree"
             :props="{ label: 'name', children: 'children' }"
             node-key="id"
-            check-strictly
             clearable
             placeholder="全部分类"
             style="width: 180px"
           />
-        </el-form-item>
-        <el-form-item v-if="view === 'changes' || view.includes('turnover') || view === 'loss'" label="日期区间">
-          <el-date-picker
+        </AppFormItem>
+        <AppFormItem v-if="view === 'changes' || view.includes('turnover') || view === 'loss'" label="日期区间">
+          <AppDatePicker
             v-model="dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -395,61 +402,69 @@ onMounted(async () => {
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button :loading="exporting" @click="handleExport">导出</el-button>
-          <el-button @click="handlePrint">打印</el-button>
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex items-center gap-2">
+            <UButton @click="search">查询</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
+          </div>
+        </AppFormItem>
+      </AppForm>
       <div v-if="view === 'changes' || view.includes('turnover') || view === 'loss'" class="presets">
-        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+        <UButton
+          v-for="p in RANGE_PRESETS"
+          :key="p.key"
+          size="sm"
+          color="neutral"
+          variant="outline"
+          @click="setRange(p.key)"
+        >
           {{ p.label }}
-        </el-button>
+        </UButton>
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 库存汇总（商品维度） -->
-    <el-card v-if="view === 'summary-goods'">
+    <UCard v-if="view === 'summary-goods'">
       <template #header><span>库存汇总表（商品维度）</span></template>
-      <el-table v-loading="loading" border :data="summaryRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column prop="goodsCode" label="商品编码" width="120" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
-        <el-table-column label="结存数量" width="90" align="right">
+      <AppTable :loading="loading" border :data="summaryRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <AppTableColumn prop="goodsCode" label="商品编码" width="120" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn label="结存数量" width="90" align="right">
           <template #default="{ row }">{{ qty(row.stockQty) }}</template>
-        </el-table-column>
-        <el-table-column label="成本单价" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="成本单价" width="90" align="right">
           <template #default="{ row }">{{ money(row.costPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="库存成本" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="库存成本" width="100" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="零售价值" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="零售价值" width="100" align="right">
           <template #default="{ row }">{{ money(row.retailValue) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="STOCK_STATUS_MAP[row.stockStatus]?.type ?? 'info'" size="small">
+            <UBadge :color="tagColor(STOCK_STATUS_MAP[row.stockStatus]?.type)" variant="soft" size="sm">
               {{ STOCK_STATUS_MAP[row.stockStatus]?.label ?? row.stockStatus }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
-              size="small"
+            <UButton
+              variant="link"
+              size="sm"
               @click="openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)"
             >
               流水
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="page"
         v-model:page-size="size"
         :total="summaryTotal"
@@ -458,77 +473,77 @@ onMounted(async () => {
         class="pager"
         @current-change="handlePageChange"
       />
-    </el-card>
+    </UCard>
 
     <!-- 库存汇总（分类维度） -->
-    <el-card v-if="view === 'summary-category'">
+    <UCard v-if="view === 'summary-category'">
       <template #header><span>库存汇总表（分类维度）</span></template>
-      <el-table v-loading="loading" border :data="summaryRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="categoryName" label="分类" min-width="160" />
-        <el-table-column prop="goodsCount" label="商品数" width="80" align="right" />
-        <el-table-column label="结存数量" width="100" align="right">
+      <AppTable :loading="loading" border :data="summaryRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="categoryName" label="分类" min-width="160" />
+        <AppTableColumn prop="goodsCount" label="商品数" width="80" align="right" />
+        <AppTableColumn label="结存数量" width="100" align="right">
           <template #default="{ row }">{{ qty(row.stockQty) }}</template>
-        </el-table-column>
-        <el-table-column label="库存成本" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="库存成本" width="120" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="零售价值" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="零售价值" width="120" align="right">
           <template #default="{ row }">{{ money(row.retailValue) }}</template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 库存预警 -->
-    <el-card v-if="view === 'warnings'">
+    <UCard v-if="view === 'warnings'">
       <template #header><span>库存预警报表</span></template>
-      <el-table v-loading="loading" border :data="warningRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="goodsCode" label="商品编码" width="120" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column label="预警类型" width="90" align="center">
+      <AppTable :loading="loading" border :data="warningRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="goodsCode" label="商品编码" width="120" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <AppTableColumn label="预警类型" width="90" align="center">
           <template #default="{ row }">
-            <el-tag
-              :type="row.alertType === 'OUT' ? 'danger' : row.alertType === 'WARNING' ? 'warning' : 'info'"
-              size="small"
+            <UBadge
+              :color="row.alertType === 'OUT' ? 'error' : row.alertType === 'WARNING' ? 'warning' : 'neutral'"
+              variant="soft"
+              size="sm"
             >
               {{ row.alertType === 'OUT' ? '缺货' : row.alertType === 'WARNING' ? '预警' : '积压' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="结存" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="结存" width="80" align="right">
           <template #default="{ row }">{{ qty(row.stockQty) }}</template>
-        </el-table-column>
-        <el-table-column label="下限" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="下限" width="80" align="right">
           <template #default="{ row }">{{ qty(row.safetyStockLower) }}</template>
-        </el-table-column>
-        <el-table-column label="上限" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="上限" width="80" align="right">
           <template #default="{ row }">{{ qty(row.safetyStockUpper) }}</template>
-        </el-table-column>
-        <el-table-column label="缺口" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="缺口" width="80" align="right">
           <template #default="{ row }">{{ qty(row.gapQty) }}</template>
-        </el-table-column>
-        <el-table-column label="建议采购" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="建议采购" width="90" align="right">
           <template #default="{ row }">{{ qty(row.suggestQty) }}</template>
-        </el-table-column>
-        <el-table-column label="最近变动" width="160">
+        </AppTableColumn>
+        <AppTableColumn label="最近变动" width="160">
           <template #default="{ row }">{{ fmtTime(row.lastChangeTime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
-              size="small"
+            <UButton
+              variant="link"
+              size="sm"
               @click="openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)"
             >
               流水
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="page"
         v-model:page-size="size"
         :total="warningTotal"
@@ -537,76 +552,75 @@ onMounted(async () => {
         class="pager"
         @current-change="handlePageChange"
       />
-    </el-card>
+    </UCard>
 
     <!-- 变动明细 -->
-    <el-card v-if="view === 'changes'">
+    <UCard v-if="view === 'changes'">
       <template #header><span>库存变动明细汇总</span></template>
-      <el-table v-loading="loading" border :data="changeRows" stripe>
-        <el-table-column label="变动类型" min-width="140">
+      <AppTable :loading="loading" border :data="changeRows" stripe>
+        <AppTableColumn label="变动类型" min-width="140">
           <template #default="{ row }">{{ CHANGE_TYPE_MAP[row.recordType] ?? row.recordType }}</template>
-        </el-table-column>
-        <el-table-column prop="recordCount" label="单据数" width="100" align="right" />
-        <el-table-column label="变动数量" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn prop="recordCount" label="单据数" width="100" align="right" />
+        <AppTableColumn label="变动数量" width="120" align="right">
           <template #default="{ row }">{{ qty(row.changeQty) }}</template>
-        </el-table-column>
-        <el-table-column label="金额" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="金额" width="120" align="right">
           <template #default="{ row }">{{ money(row.amount) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openDrillRecords({ recordType: row.recordType }, '变动类型 ' + (CHANGE_TYPE_MAP[row.recordType] ?? row.recordType))">
+            <UButton variant="link" size="sm" @click="openDrillRecords({ recordType: row.recordType }, '变动类型 ' + (CHANGE_TYPE_MAP[row.recordType] ?? row.recordType))">
               明细
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 周转率（商品） -->
-    <el-card v-if="view === 'turnover-goods'">
+    <UCard v-if="view === 'turnover-goods'">
       <template #header><span>库存周转率（商品维度）</span></template>
-      <el-table v-loading="loading" border :data="turnoverRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="goodsCode" label="商品编码" width="120" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column label="结存" width="80" align="right">
+      <AppTable :loading="loading" border :data="turnoverRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="goodsCode" label="商品编码" width="120" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <AppTableColumn label="结存" width="80" align="right">
           <template #default="{ row }">{{ qty(row.stockQty) }}</template>
-        </el-table-column>
-        <el-table-column label="期末成本" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="期末成本" width="100" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="期初成本" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="期初成本" width="100" align="right">
           <template #default="{ row }">{{ money(row.beginAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="平均库存" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="平均库存" width="100" align="right">
           <template #default="{ row }">{{ money(row.avgAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="销售成本" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售成本" width="100" align="right">
           <template #default="{ row }">{{ money(row.saleCostAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="周转率" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="周转率" width="80" align="right">
           <template #default="{ row }">{{ qty(row.turnoverRate) }}</template>
-        </el-table-column>
-        <el-table-column label="周转天数" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="周转天数" width="90" align="right">
           <template #default="{ row }">{{ qty(row.turnoverDays) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-button
+            <UButton
               v-if="row.goodsId != null"
-              link
-              type="primary"
-              size="small"
+              variant="link"
+              size="sm"
               @click="openDrillRecords({ recordType: 'SALE_OUT', goodsId: row.goodsId }, '商品 ' + row.goodsName + ' 销售出库流水')"
             >
               销售流水
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="page"
         v-model:page-size="size"
         :total="turnoverTotal"
@@ -615,39 +629,38 @@ onMounted(async () => {
         class="pager"
         @current-change="handlePageChange"
       />
-    </el-card>
+    </UCard>
 
     <!-- 周转率（分类） -->
-    <el-card v-if="view === 'turnover-category'">
+    <UCard v-if="view === 'turnover-category'">
       <template #header><span>库存周转率（分类维度）</span></template>
-      <el-table v-loading="loading" border :data="turnoverRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="categoryName" label="分类" min-width="160" />
-        <el-table-column label="结存" width="100" align="right">
+      <AppTable :loading="loading" border :data="turnoverRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="categoryName" label="分类" min-width="160" />
+        <AppTableColumn label="结存" width="100" align="right">
           <template #default="{ row }">{{ qty(row.stockQty) }}</template>
-        </el-table-column>
-        <el-table-column label="期末成本" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="期末成本" width="120" align="right">
           <template #default="{ row }">{{ money(row.costAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="平均库存" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="平均库存" width="120" align="right">
           <template #default="{ row }">{{ money(row.avgAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="销售成本" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售成本" width="120" align="right">
           <template #default="{ row }">{{ money(row.saleCostAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="周转率" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="周转率" width="90" align="right">
           <template #default="{ row }">{{ qty(row.turnoverRate) }}</template>
-        </el-table-column>
-        <el-table-column label="周转天数" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="周转天数" width="100" align="right">
           <template #default="{ row }">{{ qty(row.turnoverDays) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-button
+            <UButton
               v-if="row.categoryId != null"
-              link
-              type="primary"
-              size="small"
+              variant="link"
+              size="sm"
               @click="
                 openDrillRecords(
                   { recordType: 'SALE_OUT', categoryId: row.categoryId },
@@ -656,56 +669,56 @@ onMounted(async () => {
               "
             >
               销售流水
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 损耗报表 -->
-    <el-card v-if="view === 'loss'">
+    <UCard v-if="view === 'loss'">
       <template #header><span>损耗报表</span></template>
       <div v-if="lossData" class="loss-summary">
-        <el-descriptions :column="4" border size="small">
-          <el-descriptions-item label="损耗金额">￥{{ money(lossData.totalLossAmount) }}</el-descriptions-item>
-          <el-descriptions-item label="报溢金额">￥{{ money(lossData.totalOverflowAmount) }}</el-descriptions-item>
-          <el-descriptions-item label="期初库存金额">￥{{ money(lossData.beginInventoryAmount) }}</el-descriptions-item>
-          <el-descriptions-item label="损耗率">{{ percent(lossData.lossRate) }}</el-descriptions-item>
-        </el-descriptions>
+        <AppDescriptions :column="4" border size="small">
+          <AppDescriptionsItem label="损耗金额">￥{{ money(lossData.totalLossAmount) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="报溢金额">￥{{ money(lossData.totalOverflowAmount) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="期初库存金额">￥{{ money(lossData.beginInventoryAmount) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="损耗率">{{ percent(lossData.lossRate) }}</AppDescriptionsItem>
+        </AppDescriptions>
       </div>
-      <el-table v-loading="loading" border :data="lossData?.rows ?? []" stripe class="loss-table">
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column label="报损数量" width="90" align="right">
+      <AppTable :loading="loading" border :data="lossData?.rows ?? []" stripe class="loss-table">
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <AppTableColumn label="报损数量" width="90" align="right">
           <template #default="{ row }">
-            <el-link v-if="row.lossQty > 0" type="primary" @click="openDrillLoss(row as LossGoodsRow, 'loss')">
+            <UButton v-if="row.lossQty > 0" variant="link" size="sm" @click="openDrillLoss(row as LossGoodsRow, 'loss')">
               {{ qty(row.lossQty) }}
-            </el-link>
+            </UButton>
             <span v-else>{{ qty(row.lossQty) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="报损金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="报损金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.lossAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="盘亏数量" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="盘亏数量" width="90" align="right">
           <template #default="{ row }">
-            <el-link v-if="row.checkQty > 0" type="primary" @click="openDrillLoss(row as LossGoodsRow, 'check')">
+            <UButton v-if="row.checkQty > 0" variant="link" size="sm" @click="openDrillLoss(row as LossGoodsRow, 'check')">
               {{ qty(row.checkQty) }}
-            </el-link>
+            </UButton>
             <span v-else>{{ qty(row.checkQty) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="盘亏金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="盘亏金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.checkAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="损耗合计" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="损耗合计" width="100" align="right">
           <template #default="{ row }">
             <b class="loss-amount">{{ money(row.totalAmount) }}</b>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 下钻抽屉（BR-RPT-06） -->
     <DrillTableDrawer
@@ -750,7 +763,7 @@ onMounted(async () => {
   }
 
   .loss-amount {
-    color: #f56c6c;
+    color: var(--el-color-danger);
   }
 }
 </style>

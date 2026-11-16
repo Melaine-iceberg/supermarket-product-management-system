@@ -11,7 +11,9 @@ const route = useRoute()
 const router = useRouter()
 
 const redirect = computed(() =>
-  typeof route.query.redirect === 'string' && route.query.redirect ? route.query.redirect : '/home',
+  typeof route.query.redirect === 'string' && route.query.redirect
+    ? route.query.redirect
+    : '/home',
 )
 
 function retry() {
@@ -22,18 +24,19 @@ function retry() {
 
 <template>
   <div class="network-error">
-    <el-result
-      icon="warning"
-      title="网络连接异常"
-      sub-title="无法连接到服务器，请检查本机网络或服务端是否正常运行"
-    >
-      <template #extra>
-        <el-button type="primary" @click="retry">重试</el-button>
-        <el-button @click="router.push('/home')">返回首页</el-button>
-      </template>
-    </el-result>
-    <div class="hint">
-      若多次重试仍失败，请联系管理员检查后端服务与数据库状态（部署手册 §6 故障排查）。
+    <div class="max-w-lg text-center">
+      <UIcon name="i-lucide-wifi-off" class="mx-auto size-14 text-warning" />
+      <h1 class="mt-4 text-xl font-semibold text-default">网络连接异常</h1>
+      <p class="mt-2 text-sm text-muted">
+        无法连接到服务器，请检查本机网络或服务端是否正常运行
+      </p>
+      <div class="mt-6 flex items-center justify-center gap-2">
+        <UButton label="重试" @click="retry" />
+        <UButton color="neutral" variant="outline" label="返回首页" @click="router.push('/home')" />
+      </div>
+      <p class="mt-4 text-xs text-muted">
+        若多次重试仍失败，请联系管理员检查后端服务与数据库状态（部署手册 §6 故障排查）。
+      </p>
     </div>
   </div>
 </template>
@@ -45,12 +48,8 @@ function retry() {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #f5f7fa;
-
-  .hint {
-    margin-top: 8px;
-    font-size: 12px;
-    color: #909399;
-  }
+  min-height: 100dvh;
+  padding: 16px;
+  background: var(--ui-bg-muted);
 }
 </style>

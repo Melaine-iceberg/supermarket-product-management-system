@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { listConfigs, updateConfig, type SysConfigVO } from '@/api/system'
@@ -83,12 +84,16 @@ function openEdit(row: SysConfigVO) {
 }
 
 async function save() {
-  await formRef.value.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   if (!editing.value) return
   saving.value = true
   try {
     await updateConfig(editing.value.configKey, form.configValue, form.remark, form.password)
-    ElMessage.success(
+    notify.success(
       editing.value.instantEffect === 1
         ? '参数已保存并即时生效'
         : '参数已保存，最迟 60 秒内生效（无需重启）',
@@ -108,92 +113,105 @@ onMounted(load)
 
 <template>
   <div v-loading="loading" class="page">
-    <el-card v-for="group in groups" :key="group.group" class="group-card">
+    <UCard v-for="group in groups" :key="group.group" class="group-card">
       <template #header>{{ group.label }}</template>
-      <el-table :data="group.list" stripe>
-        <el-table-column prop="configName" label="参数名称" width="180" />
-        <el-table-column prop="configKey" label="参数键" width="200">
+      <AppTable :data="group.list" stripe>
+        <AppTableColumn prop="configName" label="参数名称" width="180" />
+        <AppTableColumn prop="configKey" label="参数键" width="200">
           <template #default="{ row }">
             <code class="config-key">{{ row.configKey }}</code>
           </template>
-        </el-table-column>
-        <el-table-column label="参数值" min-width="140">
+        </AppTableColumn>
+        <AppTableColumn label="参数值" min-width="140">
           <template #default="{ row }">
-            <el-tag v-if="row.valueType === 'BOOLEAN'" :type="row.configValue === 'true' ? 'success' : 'danger'" size="small">
+            <UBadge
+              v-if="row.valueType === 'BOOLEAN'"
+              :color="row.configValue === 'true' ? 'success' : 'error'"
+              size="sm"
+              variant="soft"
+            >
               {{ row.configValue }}
-            </el-tag>
+            </UBadge>
             <code v-else class="config-value">{{ row.configValue }}</code>
           </template>
-        </el-table-column>
-        <el-table-column label="类型" width="90">
+        </AppTableColumn>
+        <AppTableColumn label="类型" width="90">
           <template #default="{ row }">{{ valueTypeLabel(row.valueType) }}</template>
-        </el-table-column>
-        <el-table-column label="说明" min-width="220">
+        </AppTableColumn>
+        <AppTableColumn label="说明" min-width="220">
           <template #default="{ row }">{{ row.remark || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="生效方式" width="110">
+        </AppTableColumn>
+        <AppTableColumn label="生效方式" width="110">
           <template #default="{ row }">
-            <el-tooltip
-              :content="
+            <UTooltip
+              :text="
                 row.instantEffect === 1
                   ? '保存后立即清除参数缓存，后续读取即用新值'
                   : '保存后不强制刷新缓存，最迟 60 秒（缓存周期）内生效，无需重启系统'
               "
-              placement="top"
             >
-              <el-tag :type="row.instantEffect === 1 ? 'success' : 'info'" size="small" effect="plain">
+              <UBadge
+                :color="row.instantEffect === 1 ? 'success' : 'neutral'"
+                size="sm"
+                variant="outline"
+              >
                 {{ row.instantEffect === 1 ? '即时' : '延迟' }}
-              </el-tag>
-            </el-tooltip>
+              </UBadge>
+            </UTooltip>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-button
+            <UButton
               v-if="auth.hasPerm('sys:config:update') && row.editable === 1"
-              link
-              type="primary"
+              variant="link"
+              size="sm"
+              label="修改"
               @click="openEdit(row as SysConfigVO)"
-            >修改</el-button>
-            <el-tooltip v-else content="只读参数" placement="top">
+            />
+            <UTooltip v-else text="只读参数">
               <span class="readonly">只读</span>
-            </el-tooltip>
+            </UTooltip>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
-    <el-dialog v-model="dialogVisible" :title="`修改参数：${editing?.configName || ''}`" width="460px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="70px">
-        <el-form-item label="参数键">
+    <AppModal v-model="dialogVisible" :title="`修改参数：${editing?.configName || ''}`" width="460px">
+      <AppForm ref="formRef" :model="form" :rules="rules" label-width="70px">
+        <AppFormItem label="参数键">
           <code class="config-key">{{ editing?.configKey }}</code>
-        </el-form-item>
-        <el-form-item label="参数值" prop="configValue">
-          <el-input
+        </AppFormItem>
+        <AppFormItem label="参数值" prop="configValue">
+          <AppInput
             v-if="editing?.valueType === 'BOOLEAN'"
             v-model="form.configValue"
             placeholder="true / false"
           />
-          <el-input v-else v-model="form.configValue" :placeholder="VALUE_TYPE_PLACEHOLDER[editing?.valueType || 'STRING']" />
-        </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="form.remark" type="textarea" maxlength="200" />
-        </el-form-item>
-        <el-form-item label="确认密码" prop="password">
-          <el-input
+          <AppInput
+            v-else
+            v-model="form.configValue"
+            :placeholder="VALUE_TYPE_PLACEHOLDER[editing?.valueType || 'STRING']"
+          />
+        </AppFormItem>
+        <AppFormItem label="说明">
+          <AppInput v-model="form.remark" type="textarea" maxlength="200" />
+        </AppFormItem>
+        <AppFormItem label="确认密码" prop="password">
+          <AppInput
             v-model="form.password"
             type="password"
             show-password
             maxlength="50"
             placeholder="当前账号密码（敏感操作二次确认）"
           />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="dialogVisible = false" />
+        <UButton :loading="saving" label="保存" @click="save" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -204,18 +222,18 @@ onMounted(load)
   }
 
   .config-key {
-    color: #909399;
+    color: var(--el-text-color-secondary);
     font-size: 12px;
     font-family: monospace;
   }
 
   .config-value {
-    color: #303133;
+    color: var(--el-text-color-primary);
     font-family: monospace;
   }
 
   .readonly {
-    color: #c0c4cc;
+    color: var(--el-text-color-placeholder);
     font-size: 13px;
     cursor: not-allowed;
   }

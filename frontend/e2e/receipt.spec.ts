@@ -14,7 +14,7 @@ test.describe('库管员入库验收', () => {
     const collector = observeFailures(page)
 
     await page.goto('/purchase/receipt')
-    await expect(page.locator('.el-breadcrumb')).toContainText('入库单')
+    await expect(page.locator('.app-breadcrumb')).toContainText('入库单')
 
     // 新建验收 → 待入库采购单列表（DEF-18 原 403 接口）
     const pickableResponse = page.waitForResponse(
@@ -25,7 +25,7 @@ test.describe('库管员入库验收', () => {
 
     const pickDialog = page.getByRole('dialog', { name: '选择待入库采购单' })
     await expect(pickDialog).toBeVisible()
-    const firstRow = pickDialog.locator('tr.el-table__row').first()
+    const firstRow = pickDialog.locator('.app-table tbody tr').first()
     await expect(firstRow).toBeVisible()
     const orderNo = (await firstRow.locator('td').first().innerText()).trim()
 
@@ -38,7 +38,7 @@ test.describe('库管员入库验收', () => {
 
     const receiveDialog = page.getByRole('dialog', { name: `入库验收 ${orderNo}` })
     await expect(receiveDialog).toBeVisible()
-    await expect(receiveDialog.locator('tr.el-table__row').first()).toBeVisible()
+    await expect(receiveDialog.locator('.app-table tbody tr').first()).toBeVisible()
     await expect(receiveDialog.getByRole('button', { name: '提交验收' })).toBeVisible()
 
     expect(await settleFailures(page, collector)).toEqual([])
@@ -49,7 +49,7 @@ test.describe('库管员入库验收', () => {
     await page.goto('/purchase/receipt')
     // 列表接口异常会被 observeFailures 捕获；此处只验证页面与表格渲染（空库显示空态）
     await expect(
-      page.locator('.el-table').first().locator('tr.el-table__row, .el-table__empty-block').first(),
+      page.locator('.app-table').first().locator('tbody tr, [data-slot="empty"]').first(),
     ).toBeVisible()
     expect(await settleFailures(page, collector)).toEqual([])
   })

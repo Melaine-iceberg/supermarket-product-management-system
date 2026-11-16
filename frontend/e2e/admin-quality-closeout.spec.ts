@@ -28,7 +28,9 @@ test.describe('报表区间（批次六）', () => {
     const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
       today.getDate(),
     ).padStart(2, '0')}`
-    await expect(page.locator('.el-date-editor input').first()).toHaveValue(ymd)
+    await expect(page.locator('.app-date-picker input[aria-hidden="true"]').first()).toHaveValue(
+      new RegExp(ymd),
+    )
 
     expect(await settleFailures(page, collector)).toEqual([])
   })
@@ -63,29 +65,29 @@ test.describe('商品条码占用与重新生成编码（批次六）', () => {
     await expect(dialog.getByRole('button', { name: '重新生成' })).toBeVisible()
 
     // 填必填项（名称/分类/单位/零售价）与已占用条码
-    await dialog.locator('.el-form-item', { hasText: '商品名称' }).locator('input').fill('E2E条码占用验证')
-    await dialog.locator('.el-form-item', { hasText: '所属分类' }).locator('.el-select').click()
+    await dialog.locator('.app-form-item', { hasText: '商品名称' }).locator('input').fill('E2E条码占用验证')
+    await dialog.locator('.app-form-item', { hasText: '所属分类' }).locator('[aria-haspopup="listbox"]').click()
     await page.getByRole('option', { name: '食品', exact: true }).click()
-    await dialog.locator('.el-form-item', { hasText: '计量单位' }).locator('.el-select').click()
+    await dialog.locator('.app-form-item', { hasText: '计量单位' }).locator('[aria-haspopup="listbox"]').click()
     await page.getByRole('option', { name: '瓶（瓶）', exact: true }).click()
-    await dialog.locator('.el-form-item', { hasText: '零售单价' }).locator('input').fill('9.9')
-    await dialog.locator('.el-form-item', { hasText: '商品条码' }).locator('input').fill(SEED.goods.barcode)
+    await dialog.locator('.app-form-item', { hasText: '零售单价' }).locator('input').fill('9.9')
+    await dialog.locator('.app-form-item', { hasText: '商品条码' }).locator('input').fill(SEED.goods.barcode)
     await dialog.getByRole('button', { name: '保存' }).click()
 
     // E1：拒绝保存并提示占用商品名称，条码字段高亮
-    await expect(page.locator('.el-message--error').last()).toContainText(
+    await expect(page.locator('.app-toast').last()).toContainText(
       `条码 ${SEED.goods.barcode} 已被商品【${SEED.goods.name}】占用`,
     )
     await expect(dialog.locator('.barcode-error')).toBeVisible()
 
     // E2：换用未占用条码但手工编码重复 → 弹出"重新生成编码"，确认后清空手工编码
-    await dialog.locator('.el-form-item', { hasText: '商品条码' }).locator('input').fill('7770000000000001')
-    await dialog.locator('.el-form-item', { hasText: '商品编码' }).locator('input').fill(existingCode)
+    await dialog.locator('.app-form-item', { hasText: '商品条码' }).locator('input').fill('7770000000000001')
+    await dialog.locator('.app-form-item', { hasText: '商品编码' }).locator('input').fill(existingCode)
     await dialog.getByRole('button', { name: '保存' }).click()
     const codeDialog = page.getByRole('dialog', { name: '商品编码重复' })
     await expect(codeDialog).toBeVisible()
     await codeDialog.getByRole('button', { name: '重新生成编码' }).click()
-    await expect(dialog.locator('.el-form-item', { hasText: '商品编码' }).locator('input')).toHaveValue('')
+    await expect(dialog.locator('.app-form-item', { hasText: '商品编码' }).locator('input')).toHaveValue('')
   })
 })
 
@@ -106,7 +108,7 @@ test.describe('收银台会员手机号后 4 位（批次六）', () => {
     await dialog.getByRole('button', { name: '查询' }).click()
     await searchResponse
 
-    const row = dialog.locator('tr.el-table__row', { hasText: SEED.member.name })
+    const row = dialog.locator('.app-table tbody tr', { hasText: SEED.member.name })
     await expect(row).toBeVisible()
     await expect(row).toContainText(`****${SEED.member.phone.slice(-4)}`)
     await expect(row).not.toContainText(SEED.member.phone.slice(0, 3))

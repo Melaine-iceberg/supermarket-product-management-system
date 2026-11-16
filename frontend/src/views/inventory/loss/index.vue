@@ -1,8 +1,7 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import type { FormInstance } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { pageGoods, type GoodsListVO } from '@/api/goods'
 import { getDictItems } from '@/api/system'
@@ -30,6 +29,15 @@ const bizTypeMap: Record<LossBizType, { label: string; type: 'danger' | 'success
   OVERFLOW: { label: '报溢', type: 'success' },
 }
 
+/** Element 标签类型 → Nuxt UI 徽标颜色 */
+function tagColor(type?: 'primary' | 'success' | 'danger' | 'warning' | 'info') {
+  if (type === 'success') return 'success' as const
+  if (type === 'warning') return 'warning' as const
+  if (type === 'danger') return 'error' as const
+  if (type === 'primary') return 'primary' as const
+  return 'neutral' as const
+}
+
 function fmtTime(v: string | null | undefined) {
   return v ? v.replace('T', ' ').slice(0, 19) : '—'
 }
@@ -52,7 +60,7 @@ const query = reactive({
   status: '' as string,
   goodsKeyword: '',
   applyName: '',
-  dateRange: null as [string, string] | null,
+  dateRange: null as string[] | null,
   page: 1,
   size: 20,
 })
@@ -107,7 +115,7 @@ onMounted(() => {
 // ---------- 登记（FR-INV-10） ----------
 const createVisible = ref(false)
 const creating = ref(false)
-const formRef = ref<FormInstance>()
+const formRef = ref()
 const form = reactive({
   bizType: 'LOSS' as LossBizType,
   goodsId: undefined as number | undefined,
@@ -202,7 +210,11 @@ function openCreate() {
 }
 
 async function saveCreate() {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   creating.value = true
   try {
     const created = await createLossOrder({
@@ -214,7 +226,7 @@ async function saveCreate() {
       remark: form.remark.trim() || undefined,
     })
     createVisible.value = false
-    ElMessage.success(`已登记 ${created.orderNo}，待店长审核`)
+    notify.success(`已登记 ${created.orderNo}，待店长审核`)
     load()
     openDetail(created.id)
   } catch {
@@ -258,11 +270,11 @@ function openAudit(approved: boolean) {
 async function saveAudit() {
   const remark = auditDialog.remark.trim()
   if (!auditDialog.approved && !remark) {
-    ElMessage.warning('驳回意见不能为空')
+    notify.warning('驳回意见不能为空')
     return
   }
   if (!auditDialog.password) {
-    ElMessage.warning('请输入当前账号密码以确认操作')
+    notify.warning('请输入当前账号密码以确认操作')
     return
   }
   auditing.value = true
@@ -270,7 +282,7 @@ async function saveAudit() {
     await auditLossOrder(drawer.id, auditDialog.approved, remark || undefined, auditDialog.password)
     auditDialog.visible = false
     auditDialog.password = ''
-    ElMessage.success(
+    notify.success(
       auditDialog.approved
         ? detail.value?.bizType === 'LOSS'
           ? '审核通过，已生成报损出库流水'
@@ -290,29 +302,29 @@ async function saveAudit() {
 <template>
   <div class="page">
     <!-- 列表查询（FR-INV-10） -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="单号">
-          <el-input v-model="query.orderNo" placeholder="单号模糊查询" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="类型">
-          <el-select v-model="query.bizType" clearable placeholder="全部" style="width: 100px">
-            <el-option v-for="(b, k) in bizTypeMap" :key="k" :label="b.label" :value="k" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 110px">
-            <el-option v-for="(s, k) in statusMap" :key="k" :label="s.label" :value="k" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="商品">
-          <el-input v-model="query.goodsKeyword" placeholder="编码 / 条码 / 名称" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="申请人">
-          <el-input v-model="query.applyName" placeholder="用户名" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="登记日期">
-          <el-date-picker
+    <UCard class="search-card" :ui="{ body: 'pb-0.5' }">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="单号">
+          <AppInput v-model="query.orderNo" placeholder="单号模糊查询" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="类型">
+          <AppSelect v-model="query.bizType" clearable placeholder="全部" style="width: 100px">
+            <AppOption v-for="(b, k) in bizTypeMap" :key="k" :label="b.label" :value="k" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppSelect v-model="query.status" clearable placeholder="全部" style="width: 110px">
+            <AppOption v-for="(s, k) in statusMap" :key="k" :label="s.label" :value="k" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="商品">
+          <AppInput v-model="query.goodsKeyword" placeholder="编码 / 条码 / 名称" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="申请人">
+          <AppInput v-model="query.applyName" placeholder="用户名" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="登记日期">
+          <AppDatePicker
             v-model="query.dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -320,63 +332,66 @@ async function saveAudit() {
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="search" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>报损报溢单</span>
-          <el-button v-if="auth.hasPerm('sys:loss:create')" type="primary" @click="openCreate">
-            <el-icon><Plus /></el-icon>登记报损/报溢
-          </el-button>
+          <UButton
+            v-if="auth.hasPerm('sys:loss:create')"
+            icon="i-lucide-plus"
+            label="登记报损/报溢"
+            @click="openCreate"
+          />
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="orderNo" label="单号" width="150" />
-        <el-table-column label="类型" width="76" align="center">
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn prop="orderNo" label="单号" width="150" />
+        <AppTableColumn label="类型" width="76" align="center">
           <template #default="{ row }">
-            <el-tag :type="bizTypeMap[row.bizType as LossBizType]?.type ?? 'info'" size="small">
+            <UBadge :color="tagColor(bizTypeMap[row.bizType as LossBizType]?.type)" variant="soft" size="sm">
               {{ bizTypeMap[row.bizType as LossBizType]?.label ?? row.bizType }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="商品" min-width="200">
+        </AppTableColumn>
+        <AppTableColumn label="商品" min-width="200">
           <template #default="{ row }">
             <div class="goods-name">{{ row.goodsName }}</div>
             <div class="sub">
               {{ row.goodsCode }} / {{ row.barcode || '无条码' }}<template v-if="row.spec"> / {{ row.spec }}</template>
             </div>
           </template>
-        </el-table-column>
-        <el-table-column prop="categoryName" label="分类" width="96" />
-        <el-table-column label="数量" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn prop="categoryName" label="分类" width="96" />
+        <AppTableColumn label="数量" width="110" align="right">
           <template #default="{ row }">{{ qty(row.quantity) }} {{ row.unitName }}</template>
-        </el-table-column>
-        <el-table-column label="成本单价" width="96" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="成本单价" width="96" align="right">
           <template #default="{ row }">{{ money(row.costPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="金额" width="100" align="right">
           <template #default="{ row }">
             <span :class="row.bizType === 'LOSS' ? 'shortage' : 'surplus'">{{ money(row.amount) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column prop="reasonLabel" label="原因" width="100" />
-        <el-table-column prop="applyName" label="申请人" width="90" />
-        <el-table-column label="状态" width="92" align="center">
+        </AppTableColumn>
+        <AppTableColumn prop="reasonLabel" label="原因" width="100" />
+        <AppTableColumn prop="applyName" label="申请人" width="90" />
+        <AppTableColumn label="状态" width="92" align="center">
           <template #default="{ row }">
-            <el-tag :type="statusMap[row.status as LossStatus]?.type ?? 'info'">
+            <UBadge :color="tagColor(statusMap[row.status as LossStatus]?.type)" variant="soft">
               {{ statusMap[row.status as LossStatus]?.label ?? row.status }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="审核人 / 时间" width="170">
+        </AppTableColumn>
+        <AppTableColumn label="审核人 / 时间" width="170">
           <template #default="{ row }">
             <div v-if="row.auditorName">
               <div>{{ row.auditorName }}</div>
@@ -384,21 +399,23 @@ async function saveAudit() {
             </div>
             <span v-else>—</span>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="130" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="130" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row.id)">详情</el-button>
-            <el-button
+            <UButton variant="link" size="sm" label="详情" @click="openDetail(row.id)" />
+            <UButton
               v-if="row.status === 'PENDING' && auth.hasPerm('sys:loss:audit')"
-              link
-              type="success"
+              variant="link"
+              size="sm"
+              color="success"
+              label="审核"
               @click="openDetail(row.id)"
-            >审核</el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -407,59 +424,53 @@ async function saveAudit() {
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
 
     <!-- 登记（FR-INV-10） -->
-    <el-dialog v-model="createVisible" title="登记报损/报溢" width="560px" :close-on-click-modal="false">
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+    <AppModal v-model="createVisible" title="登记报损/报溢" width="560px" :close-on-click-modal="false">
+      <UAlert
+        color="info"
+        icon="i-lucide-info"
         title="登记后进入待审核，由店长审核；通过后生成库存流水并计入损耗报表（报损按当前成本结转，报溢按当前成本入账不重算均价）"
         class="dialog-alert"
       />
-      <el-form
+      <AppForm
         ref="formRef"
         :model="form"
         :rules="rules"
         label-width="90px"
-        :validate-on-rule-change="false"
       >
-        <el-form-item label="业务类型" prop="bizType">
-          <el-radio-group v-model="form.bizType" @change="onBizTypeChange">
-            <el-radio value="LOSS">报损（出库）</el-radio>
-            <el-radio value="OVERFLOW">报溢（入库）</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="商品" prop="goodsId">
-          <el-select
+        <AppFormItem label="业务类型" prop="bizType">
+          <AppRadioGroup v-model="form.bizType" @change="onBizTypeChange">
+            <AppRadio value="LOSS">报损（出库）</AppRadio>
+            <AppRadio value="OVERFLOW">报溢（入库）</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem label="商品" prop="goodsId">
+          <AppSelect
             v-model="form.goodsId"
             filterable
             remote
             :remote-method="searchGoods"
             :loading="goodsLoading"
-            reserve-keyword
             placeholder="输入名称或条码搜索（仅启用商品）"
             style="width: 100%"
             @change="onGoodsChange"
           >
-            <el-option
+            <AppOption
               v-for="g in goodsOptions"
               :key="g.id"
               :label="`${g.name}（${g.goodsCode}）`"
               :value="g.id"
-            >
-              <span>{{ g.name }}</span>
-              <span class="option-sub">{{ g.goodsCode }} / 结存 {{ g.quantity }}</span>
-            </el-option>
-          </el-select>
+            />
+          </AppSelect>
           <div v-if="selectedGoods" class="form-tip">
             当前结存 {{ qty(selectedGoods.quantity) }} {{ selectedGoods.unitName }}｜当前成本单价
             {{ money(selectedGoods.costPrice) }}
           </div>
-        </el-form-item>
-        <el-form-item label="数量" prop="quantity">
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="数量" prop="quantity">
+          <AppInputNumber
             v-model="form.quantity"
             :precision="selectedGoods?.isWeighed === 1 ? 3 : 0"
             :step="selectedGoods?.isWeighed === 1 ? 0.001 : 1"
@@ -468,9 +479,9 @@ async function saveAudit() {
             style="width: 180px"
           />
           <span v-if="selectedGoods" class="form-tip unit-tip">{{ selectedGoods.unitName }}</span>
-        </el-form-item>
-        <el-form-item v-if="form.bizType === 'OVERFLOW'" label="成本单价" prop="costPrice">
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem v-if="form.bizType === 'OVERFLOW'" label="成本单价" prop="costPrice">
+          <AppInputNumber
             v-model="form.costPrice"
             :precision="4"
             :min="0"
@@ -481,98 +492,94 @@ async function saveAudit() {
           <div class="form-tip tip-break">
             报溢须录入成本单价（默认带出当前成本，可修改）；库存按当前成本入账不重算均价
           </div>
-        </el-form-item>
-        <el-form-item v-else label="成本单价">
+        </AppFormItem>
+        <AppFormItem v-else label="成本单价">
           <span class="cost-preview">{{ selectedGoods ? money(selectedGoods.costPrice) : '—' }}</span>
           <div class="form-tip tip-break">当前成本快照（登记时服务端重取），审核通过时按实际结转成本定稿</div>
-        </el-form-item>
-        <el-form-item label="金额预览">
+        </AppFormItem>
+        <AppFormItem label="金额预览">
           <span class="cost-preview">￥{{ money(previewAmount) }}</span>
-        </el-form-item>
-        <el-form-item label="原因" prop="reason">
-          <el-select v-model="form.reason" placeholder="选择原因（数据字典）" style="width: 100%">
-            <el-option v-for="r in reasons" :key="r.value" :label="r.label" :value="r.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" maxlength="200" show-word-limit placeholder="选填" />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem label="原因" prop="reason">
+          <AppSelect v-model="form.reason" placeholder="选择原因（数据字典）" style="width: 100%">
+            <AppOption v-for="r in reasons" :key="r.value" :label="r.label" :value="r.value" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="备注">
+          <AppInput v-model="form.remark" maxlength="200" placeholder="选填" />
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="saveCreate">登记</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="createVisible = false" />
+        <UButton :loading="creating" label="登记" @click="saveCreate" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 详情 / 审核（FR-INV-10） -->
-    <el-drawer v-model="drawer.visible" :title="`报损报溢单 ${detail?.orderNo ?? ''}`" size="620px">
+    <AppDrawer v-model="drawer.visible" :title="`报损报溢单 ${detail?.orderNo ?? ''}`" size="620px">
       <div v-loading="detailLoading" class="detail">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusMap[detail?.status as LossStatus]?.type ?? 'info'" size="small">
+        <AppDescriptions :column="2" border size="small">
+          <AppDescriptionsItem label="状态">
+            <UBadge :color="tagColor(statusMap[detail?.status as LossStatus]?.type)" variant="soft" size="sm">
               {{ statusMap[detail?.status as LossStatus]?.label ?? detail?.status }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="类型">
-            <el-tag :type="bizTypeMap[detail?.bizType as LossBizType]?.type ?? 'info'" size="small">
+            </UBadge>
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="类型">
+            <UBadge :color="tagColor(bizTypeMap[detail?.bizType as LossBizType]?.type)" variant="soft" size="sm">
               {{ bizTypeMap[detail?.bizType as LossBizType]?.label ?? detail?.bizType }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="商品" :span="2">
+            </UBadge>
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="商品" :span="2">
             {{ detail?.goodsName }}
             <div class="sub">
               {{ detail?.goodsCode }} / {{ detail?.barcode || '无条码' }}
               <template v-if="detail?.spec"> / {{ detail.spec }}</template>
             </div>
-          </el-descriptions-item>
-          <el-descriptions-item label="分类">{{ detail?.categoryName }}</el-descriptions-item>
-          <el-descriptions-item label="单位">{{ detail?.unitName }}</el-descriptions-item>
-          <el-descriptions-item label="数量">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="分类">{{ detail?.categoryName }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="单位">{{ detail?.unitName }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="数量">
             {{ qty(detail?.quantity) }} {{ detail?.unitName }}
-          </el-descriptions-item>
-          <el-descriptions-item label="成本单价">{{ money(detail?.costPrice) }}</el-descriptions-item>
-          <el-descriptions-item label="金额">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="成本单价">{{ money(detail?.costPrice) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="金额">
             <span :class="detail?.bizType === 'LOSS' ? 'shortage' : 'surplus'">
               {{ money(detail?.amount) }}
             </span>
-          </el-descriptions-item>
-          <el-descriptions-item label="原因">{{ detail?.reasonLabel || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="申请人">{{ detail?.applyName }}</el-descriptions-item>
-          <el-descriptions-item label="登记时间">{{ fmtTime(detail?.createTime) }}</el-descriptions-item>
-          <el-descriptions-item label="审核人">{{ detail?.auditorName || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="审核时间">{{ fmtTime(detail?.auditTime) }}</el-descriptions-item>
-          <el-descriptions-item label="备注" :span="2">{{ detail?.remark || '—' }}</el-descriptions-item>
-        </el-descriptions>
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="原因">{{ detail?.reasonLabel || '—' }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="申请人">{{ detail?.applyName }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="登记时间">{{ fmtTime(detail?.createTime) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="审核人">{{ detail?.auditorName || '—' }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="审核时间">{{ fmtTime(detail?.auditTime) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="备注" :span="2">{{ detail?.remark || '—' }}</AppDescriptionsItem>
+        </AppDescriptions>
 
-        <el-alert
+        <UAlert
           v-if="detail?.status === 'PENDING'"
-          type="info"
-          :closable="false"
-          show-icon
+          color="info"
+          icon="i-lucide-info"
           title="待店长审核：通过后将生成库存流水（报损出库不足会被拒绝），已审核单据计入损耗报表"
           class="detail-alert"
         />
-        <el-alert
+        <UAlert
           v-if="detail?.status === 'AUDITED' && detail?.bizType === 'LOSS'"
-          type="success"
-          :closable="false"
-          show-icon
+          color="success"
+          icon="i-lucide-circle-check"
           title="已审核：金额按审核时实际结转成本定稿，与库存流水成本一致（BR-INV-06）"
           class="detail-alert"
         />
-        <el-alert
+        <UAlert
           v-if="detail?.status === 'AUDITED' && detail?.auditRemark"
-          type="success"
-          :closable="false"
-          show-icon
+          color="success"
+          icon="i-lucide-circle-check"
           :title="`审核意见：${detail.auditRemark}`"
           class="detail-alert"
         />
-        <el-alert
+        <UAlert
           v-if="detail?.status === 'REJECTED'"
-          type="warning"
-          :closable="false"
-          show-icon
+          color="warning"
+          icon="i-lucide-triangle-alert"
           :title="`已驳回：${detail?.auditRemark ?? ''}（单据不可修改，如需调整请重新登记）`"
           class="detail-alert"
         />
@@ -582,34 +589,35 @@ async function saveAudit() {
         <div class="drawer-footer">
           <div class="footer-tip" />
           <div>
-            <el-button @click="drawer.visible = false">关闭</el-button>
-            <el-button
+            <UButton color="neutral" variant="outline" label="关闭" @click="drawer.visible = false" />
+            <UButton
               v-if="detail?.status === 'PENDING' && auth.hasPerm('sys:loss:audit')"
-              type="success"
+              color="success"
+              label="审核通过"
               @click="openAudit(true)"
-            >审核通过</el-button>
-            <el-button
+            />
+            <UButton
               v-if="detail?.status === 'PENDING' && auth.hasPerm('sys:loss:audit')"
-              type="danger"
-              plain
+              color="error"
+              variant="outline"
+              label="驳回"
               @click="openAudit(false)"
-            >驳回</el-button>
+            />
           </div>
         </div>
       </template>
-    </el-drawer>
+    </AppDrawer>
 
     <!-- 审核对话框（FR-INV-10） -->
-    <el-dialog
+    <AppModal
       v-model="auditDialog.visible"
       :title="auditDialog.approved ? '审核通过' : '驳回报损报溢单'"
       width="480px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        :type="auditDialog.approved ? 'success' : 'warning'"
-        :closable="false"
-        show-icon
+      <UAlert
+        :color="auditDialog.approved ? 'success' : 'warning'"
+        :icon="auditDialog.approved ? 'i-lucide-circle-check' : 'i-lucide-triangle-alert'"
         class="dialog-alert"
         :title="
           auditDialog.approved
@@ -619,14 +627,14 @@ async function saveAudit() {
             : '驳回后单据置为已驳回且不可修改，如需调整请重新登记'
         "
       />
-      <el-input
+      <AppInput
         v-model="auditDialog.remark"
         type="textarea"
         :rows="3"
         maxlength="200"
         :placeholder="auditDialog.approved ? '审核意见（选填）' : '驳回意见（必填）'"
       />
-      <el-input
+      <AppInput
         v-model="auditDialog.password"
         type="password"
         show-password
@@ -635,16 +643,15 @@ async function saveAudit() {
         class="audit-pwd"
       />
       <template #footer>
-        <el-button @click="auditDialog.visible = false">取消</el-button>
-        <el-button
-          :type="auditDialog.approved ? 'success' : 'danger'"
+        <UButton color="neutral" variant="outline" label="取消" @click="auditDialog.visible = false" />
+        <UButton
+          :color="auditDialog.approved ? 'success' : 'error'"
           :loading="auditing"
+          :label="auditDialog.approved ? '确认通过' : '确认驳回'"
           @click="saveAudit"
-        >
-          {{ auditDialog.approved ? '确认通过' : '确认驳回' }}
-        </el-button>
+        />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -652,10 +659,6 @@ async function saveAudit() {
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .card-head {
@@ -670,16 +673,16 @@ async function saveAudit() {
 
   .sub {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .surplus {
-    color: #67c23a;
+    color: var(--el-color-success);
     font-weight: 600;
   }
 
   .shortage {
-    color: #f56c6c;
+    color: var(--el-color-danger);
     font-weight: 600;
   }
 
@@ -698,7 +701,7 @@ async function saveAudit() {
 
   .form-tip {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     line-height: 1.6;
 
     &.tip-break {
@@ -713,7 +716,7 @@ async function saveAudit() {
   .option-sub {
     float: right;
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .cost-preview {

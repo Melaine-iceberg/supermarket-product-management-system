@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
+import { cssColor } from '@/utils/css'
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
@@ -111,7 +113,11 @@ function renderPie() {
         type: 'pie',
         radius: ['40%', '70%'],
         avoidLabelOverlap: false,
-        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+        itemStyle: {
+          borderRadius: 6,
+          borderColor: cssColor('--el-bg-color', '#fff'),
+          borderWidth: 2,
+        },
         label: { show: false },
         emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
         data: rows.value.map((r) => ({
@@ -142,7 +148,7 @@ async function handleExport() {
       threshold: threshold.value,
       categoryId: categoryId.value,
     })
-    ElMessage.success('导出成功')
+    notify.success('导出成功')
   } finally {
     exporting.value = false
   }
@@ -226,40 +232,39 @@ onMounted(async () => {
 <template>
   <div class="page">
     <!-- 筛选区 -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="视图">
-          <el-radio-group v-model="view" @change="search">
-            <el-radio-button v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="视图">
+          <AppRadioGroup v-model="view" @change="search">
+            <AppRadioButton v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
               {{ label }}
-            </el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="view === 'ranking'" label="排序">
-          <el-select v-model="orderBy" style="width: 120px" @change="load">
-            <el-option label="销售额" value="salesAmount" />
-            <el-option label="销量" value="qty" />
-            <el-option label="毛利额" value="profitAmount" />
-            <el-option label="净销售额" value="netSalesAmount" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="view === 'slow-moving'" label="销量阈值">
-          <el-input-number v-model="threshold" :min="0" :precision="0" style="width: 100px" />
-        </el-form-item>
-        <el-form-item v-if="view === 'ranking' || view === 'slow-moving'" label="分类">
-          <el-tree-select
+            </AppRadioButton>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="view === 'ranking'" label="排序">
+          <AppSelect v-model="orderBy" style="width: 120px" @change="load">
+            <AppOption label="销售额" value="salesAmount" />
+            <AppOption label="销量" value="qty" />
+            <AppOption label="毛利额" value="profitAmount" />
+            <AppOption label="净销售额" value="netSalesAmount" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem v-if="view === 'slow-moving'" label="销量阈值">
+          <AppInputNumber v-model="threshold" :min="0" :precision="0" style="width: 100px" />
+        </AppFormItem>
+        <AppFormItem v-if="view === 'ranking' || view === 'slow-moving'" label="分类">
+          <AppTreeSelect
             v-model="categoryId"
             :data="categoryTree"
             :props="{ label: 'name', children: 'children' }"
             node-key="id"
-            check-strictly
             clearable
             placeholder="全部分类"
             style="width: 180px"
           />
-        </el-form-item>
-        <el-form-item label="日期区间">
-          <el-date-picker
+        </AppFormItem>
+        <AppFormItem label="日期区间">
+          <AppDatePicker
             v-model="dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -267,93 +272,102 @@ onMounted(async () => {
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button :loading="exporting" @click="handleExport">导出</el-button>
-          <el-button @click="handlePrint">打印</el-button>
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex items-center gap-2">
+            <UButton @click="search">查询</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
+          </div>
+        </AppFormItem>
+      </AppForm>
       <div class="presets">
-        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+        <UButton
+          v-for="p in RANGE_PRESETS"
+          :key="p.key"
+          size="sm"
+          color="neutral"
+          variant="outline"
+          @click="setRange(p.key)"
+        >
           {{ p.label }}
-        </el-button>
+        </UButton>
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 品类结构饼图 -->
-    <el-card v-if="view === 'category-structure'" class="chart-card">
+    <UCard v-if="view === 'category-structure'" class="chart-card">
       <template #header>
         <span>品类销售结构</span>
       </template>
       <div ref="pieChartRef" class="pie-chart" />
-    </el-card>
+    </UCard>
 
     <!-- 数据表格 -->
-    <el-card>
+    <UCard>
       <template #header>
         <span>{{ VIEW_LABELS[view] }}</span>
       </template>
 
-      <el-table v-loading="loading" border :data="rows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column v-if="view !== 'category-structure' && view !== 'brand-sales'" label="商品编码" prop="goodsCode" width="120" />
-        <el-table-column v-if="view !== 'category-structure' && view !== 'brand-sales'" label="商品名称" prop="goodsName" min-width="160" show-overflow-tooltip />
-        <el-table-column v-if="view === 'category-structure'" label="分类" prop="categoryName" min-width="160" />
-        <el-table-column v-if="view === 'brand-sales'" label="品牌" prop="brandName" min-width="160" />
-        <el-table-column v-if="view !== 'brand-sales'" label="分类" prop="categoryName" width="120" show-overflow-tooltip />
-        <el-table-column v-if="view === 'ranking' || view === 'brand-sales'" label="品牌" prop="brandName" width="100" show-overflow-tooltip />
-        <el-table-column label="单数" prop="orderCount" width="70" align="right" />
-        <el-table-column label="销量" width="80" align="right">
+      <AppTable :loading="loading" border :data="rows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn v-if="view !== 'category-structure' && view !== 'brand-sales'" label="商品编码" prop="goodsCode" width="120" />
+        <AppTableColumn v-if="view !== 'category-structure' && view !== 'brand-sales'" label="商品名称" prop="goodsName" min-width="160" show-overflow-tooltip />
+        <AppTableColumn v-if="view === 'category-structure'" label="分类" prop="categoryName" min-width="160" />
+        <AppTableColumn v-if="view === 'brand-sales'" label="品牌" prop="brandName" min-width="160" />
+        <AppTableColumn v-if="view !== 'brand-sales'" label="分类" prop="categoryName" width="120" show-overflow-tooltip />
+        <AppTableColumn v-if="view === 'ranking' || view === 'brand-sales'" label="品牌" prop="brandName" width="100" show-overflow-tooltip />
+        <AppTableColumn label="单数" prop="orderCount" width="70" align="right" />
+        <AppTableColumn label="销量" width="80" align="right">
           <template #default="{ row }">{{ qty(row.qty) }}</template>
-        </el-table-column>
-        <el-table-column label="销售额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售额" width="100" align="right">
           <template #default="{ row }">{{ money(row.salesAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="净销售额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="净销售额" width="100" align="right">
           <template #default="{ row }">{{ money(row.netSalesAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="毛利额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利额" width="100" align="right">
           <template #default="{ row }">
             <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
               {{ money(row.profitAmount) }}
             </span>
           </template>
-        </el-table-column>
-        <el-table-column label="毛利率" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="毛利率" width="80" align="right">
           <template #default="{ row }">{{ percent(row.profitRate) }}</template>
-        </el-table-column>
-        <el-table-column label="占比" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="占比" width="80" align="right">
           <template #default="{ row }">{{ percent(row.shareRate) }}</template>
-        </el-table-column>
-        <el-table-column v-if="view === 'slow-moving'" label="当前库存" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="view === 'slow-moving'" label="当前库存" width="90" align="right">
           <template #default="{ row }">{{ qty(row.stockQty) }}</template>
-        </el-table-column>
-        <el-table-column v-if="view === 'slow-moving'" label="占用资金" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="view === 'slow-moving'" label="占用资金" width="100" align="right">
           <template #default="{ row }">{{ money(row.occupiedAmount) }}</template>
-        </el-table-column>
-        <el-table-column v-if="view === 'ranking'" label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="view === 'ranking'" label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDrill(row as GoodsRankRow, 'goods')">下钻</el-button>
+            <UButton variant="link" @click="openDrill(row as GoodsRankRow, 'goods')">下钻</UButton>
           </template>
-        </el-table-column>
-        <el-table-column v-if="view === 'category-structure'" label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="view === 'category-structure'" label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.categoryId" link type="primary" @click="openDrill(row as GoodsRankRow, 'category')">
+            <UButton v-if="row.categoryId" variant="link" @click="openDrill(row as GoodsRankRow, 'category')">
               下钻
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-        <el-table-column v-if="view === 'brand-sales'" label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="view === 'brand-sales'" label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="row.brandId" link type="primary" @click="openDrill(row as GoodsRankRow, 'brand')">
+            <UButton v-if="row.brandId" variant="link" @click="openDrill(row as GoodsRankRow, 'brand')">
               下钻
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-if="view === 'ranking' || view === 'slow-moving'"
         v-model:current-page="page"
         v-model:page-size="size"
@@ -363,7 +377,7 @@ onMounted(async () => {
         class="pager"
         @current-change="handlePageChange"
       />
-    </el-card>
+    </UCard>
 
     <!-- 下钻单据列表（BR-RPT-06） -->
     <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
@@ -394,11 +408,11 @@ onMounted(async () => {
   }
 
   .profit {
-    color: #67c23a;
+    color: var(--el-color-success);
   }
 
   .loss {
-    color: #f56c6c;
+    color: var(--el-color-danger);
   }
 }
 </style>

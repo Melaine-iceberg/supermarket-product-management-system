@@ -1,7 +1,6 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import type { FormInstance } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   listBrands,
@@ -34,7 +33,7 @@ async function load() {
 // ---------- 新增 / 编辑（FR-GOODS-13） ----------
 const dialogVisible = ref(false)
 const editing = ref<BrandVO | null>(null)
-const formRef = ref<FormInstance>()
+const formRef = ref()
 const saving = ref(false)
 const form = reactive({ name: '', firstLetter: '', logo: '', status: 1 })
 
@@ -63,7 +62,11 @@ function openEdit(row: BrandVO) {
 }
 
 async function save() {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   saving.value = true
   try {
     const payload = {
@@ -74,10 +77,10 @@ async function save() {
     }
     if (editing.value) {
       await updateBrand(editing.value.id, payload)
-      ElMessage.success('品牌已更新')
+      notify.success('品牌已更新')
     } else {
       await createBrand(payload)
-      ElMessage.success('品牌已创建')
+      notify.success('品牌已创建')
     }
     dialogVisible.value = false
     load()
@@ -93,90 +96,90 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="品牌名称">
-          <el-input
+    <UCard class="search-card" :ui="{ body: 'pb-0.5' }">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="品牌名称">
+          <AppInput
             v-model="keyword"
             placeholder="名称关键字过滤（实时生效）"
             clearable
             style="width: 220px"
           />
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>品牌列表</span>
-          <el-button
+          <UButton
             v-if="auth.hasPerm('sys:brand:create')"
-            type="primary"
+            icon="i-lucide-plus"
+            label="新增品牌"
             @click="openCreate"
-          >
-            <el-icon><Plus /></el-icon>新增品牌
-          </el-button>
+          />
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="name" label="品牌名称" min-width="160" />
-        <el-table-column label="首字母" width="90">
+      <AppTable :data="list" :loading="loading" border stripe>
+        <AppTableColumn prop="name" label="品牌名称" min-width="160" />
+        <AppTableColumn label="首字母" width="90">
           <template #default="{ row }">{{ row.firstLetter || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="品牌标识" width="90">
+        </AppTableColumn>
+        <AppTableColumn label="品牌标识" width="90">
           <template #default="{ row }">{{ row.logo ? '已设置' : '—' }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'">
+            <UBadge :color="row.status === 1 ? 'success' : 'error'" variant="soft" size="sm">
               {{ row.status === 1 ? '启用' : '停用' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" min-width="170" />
-        <el-table-column label="操作" width="100" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn prop="createTime" label="创建时间" min-width="170" />
+        <AppTableColumn label="操作" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button
+            <UButton
               v-if="auth.hasPerm('sys:brand:update')"
-              link
-              type="primary"
+              variant="link"
+              size="sm"
+              label="编辑"
               @click="openEdit(row as BrandVO)"
-            >编辑</el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 新增 / 编辑对话框 -->
-    <el-dialog
+    <AppModal
       v-model="dialogVisible"
       :title="editing ? `编辑品牌：${editing.name}` : '新增品牌'"
       width="440px"
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="88px">
-        <el-form-item label="品牌名称" prop="name">
-          <el-input v-model="form.name" maxlength="30" placeholder="全局唯一" />
-        </el-form-item>
-        <el-form-item label="首字母" prop="firstLetter">
-          <el-input v-model="form.firstLetter" maxlength="2" placeholder="拼音首字母，选填" />
-        </el-form-item>
-        <el-form-item label="标识图片路径">
-          <el-input v-model="form.logo" maxlength="255" placeholder="图片相对路径，选填" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="0">停用</el-radio>
-          </el-radio-group>
-        </el-form-item>
-      </el-form>
+      <AppForm ref="formRef" :model="form" :rules="rules" label-width="88px">
+        <AppFormItem label="品牌名称" prop="name">
+          <AppInput v-model="form.name" maxlength="30" placeholder="全局唯一" />
+        </AppFormItem>
+        <AppFormItem label="首字母" prop="firstLetter">
+          <AppInput v-model="form.firstLetter" maxlength="2" placeholder="拼音首字母，选填" />
+        </AppFormItem>
+        <AppFormItem label="标识图片路径">
+          <AppInput v-model="form.logo" maxlength="255" placeholder="图片相对路径，选填" />
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppRadioGroup v-model="form.status">
+            <AppRadio :value="1">启用</AppRadio>
+            <AppRadio :value="0">停用</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="dialogVisible = false" />
+        <UButton :loading="saving" label="保存" @click="save" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -184,10 +187,6 @@ onMounted(load)
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .card-head {

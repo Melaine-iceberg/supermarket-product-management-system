@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   createLevel,
@@ -84,23 +85,23 @@ function openEdit(row: MemberLevelVO) {
 async function saveLevel() {
   const form = editDialog.form
   if (!form.name.trim()) {
-    ElMessage.warning('请输入等级名称')
+    notify.warning('请输入等级名称')
     return
   }
   if (form.threshold == null || form.threshold < 0) {
-    ElMessage.warning('升级门槛不能为负数（BR-MEM-06 判定依据）')
+    notify.warning('升级门槛不能为负数（BR-MEM-06 判定依据）')
     return
   }
   if (form.discountRate == null || form.discountRate <= 0 || form.discountRate > 1) {
-    ElMessage.warning('折扣率须在 (0, 1] 之间，如 0.98 = 98 折（BR-SALE-10）')
+    notify.warning('折扣率须在 (0, 1] 之间，如 0.98 = 98 折（BR-SALE-10）')
     return
   }
   if (form.pointRate == null || form.pointRate <= 0 || form.pointRate > 99) {
-    ElMessage.warning('积分倍率须在 (0, 99] 之间，如 1.2（BR-MEM-05）')
+    notify.warning('积分倍率须在 (0, 99] 之间，如 1.2（BR-MEM-05）')
     return
   }
   if (form.sortNo == null || form.sortNo < 0) {
-    ElMessage.warning('请填写排序号（门槛升序展示）')
+    notify.warning('请填写排序号（门槛升序展示）')
     return
   }
   editDialog.saving = true
@@ -115,10 +116,10 @@ async function saveLevel() {
     }
     if (editDialog.editing) {
       await updateLevel(editDialog.id, payload)
-      ElMessage.success('等级规则已更新，即时生效于后续结算')
+      notify.success('等级规则已更新，即时生效于后续结算')
     } else {
       await createLevel(payload)
-      ElMessage.success('等级已新增')
+      notify.success('等级已新增')
     }
     editDialog.visible = false
     load()
@@ -131,98 +132,99 @@ async function saveLevel() {
 async function toggleStatus(row: MemberLevelVO) {
   const to = row.status === 1 ? 0 : 1
   if (to === 0) {
-    await ElMessageBox.confirm(
+    await confirm(
       `停用后【${row.name}】折扣率不再生效，收银按无折扣处理。确认停用？`,
       '停用等级',
       { type: 'warning' },
     )
   }
   await updateLevelStatus(row.id, to)
-  ElMessage.success(to === 1 ? '已启用' : '已停用')
+  notify.success(to === 1 ? '已启用' : '已停用')
   load()
 }
 </script>
 
 <template>
   <div class="page">
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <div>
             <span>会员等级规则</span>
             <span class="head-tip">预设：普通会员（无门槛）→ 银卡（满 1,000，98 折）→ 金卡（满 5,000，95 折，1.2 倍积分）</span>
           </div>
-          <el-button v-if="canUpdate()" type="primary" @click="openCreate">新增等级</el-button>
+          <UButton v-if="canUpdate()" label="新增等级" @click="openCreate" />
         </div>
       </template>
 
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+      <UAlert
+        color="info"
+        icon="i-lucide-info"
         title="升级门槛按累计消费额判定（BR-MEM-06，默认只升不降）；折扣率与积分倍率即时生效于后续结算（BR-SALE-10 / BR-MEM-05）"
         class="table-alert"
       />
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="sortNo" label="排序" width="70" align="center" />
-        <el-table-column prop="name" label="等级名称" width="140" />
-        <el-table-column label="升级门槛（累计消费）" width="170" align="right">
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn prop="sortNo" label="排序" width="70" align="center" />
+        <AppTableColumn prop="name" label="等级名称" width="140" />
+        <AppTableColumn label="升级门槛（累计消费）" width="170" align="right">
           <template #default="{ row }">
             {{ Number(row.threshold) === 0 ? '无门槛' : `满 ￥${money(row.threshold)}` }}
           </template>
-        </el-table-column>
-        <el-table-column label="折扣率" width="110" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="折扣率" width="110" align="center">
           <template #default="{ row }">
-            <el-tag v-if="Number(row.discountRate) < 1" type="primary" size="small">
+            <UBadge v-if="Number(row.discountRate) < 1" color="primary" variant="soft" size="sm">
               {{ Number(row.discountRate).toFixed(2) }} 折
-            </el-tag>
+            </UBadge>
             <span v-else class="no-discount">无折扣</span>
           </template>
-        </el-table-column>
-        <el-table-column label="积分倍率" width="100" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="积分倍率" width="100" align="center">
           <template #default="{ row }">× {{ Number(row.pointRate).toFixed(1) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
+            <UBadge :color="row.status === 1 ? 'success' : 'neutral'" variant="soft" size="sm">
               {{ row.status === 1 ? '启用' : '停用' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="最近更新" width="160">
+        </AppTableColumn>
+        <AppTableColumn label="最近更新" width="160">
           <template #default="{ row }">{{ fmtTime(row.updateTime ?? row.createTime) }}</template>
-        </el-table-column>
-        <el-table-column prop="updateBy" label="更新人" width="100">
+        </AppTableColumn>
+        <AppTableColumn prop="updateBy" label="更新人" width="100">
           <template #default="{ row }">{{ operatorName(row.updateBy ?? row.createBy) }}</template>
-        </el-table-column>
-        <el-table-column v-if="canUpdate()" label="操作" width="150" fixed="right" align="center">
+        </AppTableColumn>
+        <AppTableColumn v-if="canUpdate()" label="操作" width="150" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row as MemberLevelVO)">编辑</el-button>
-            <el-button
-              link
-              :type="row.status === 1 ? 'danger' : 'success'"
+            <UButton variant="link" size="sm" label="编辑" @click="openEdit(row as MemberLevelVO)" />
+            <UButton
+              variant="link"
+              size="sm"
+              :color="row.status === 1 ? 'error' : 'success'"
+              :label="row.status === 1 ? '停用' : '启用'"
               @click="toggleStatus(row as MemberLevelVO)"
-            >{{ row.status === 1 ? '停用' : '启用' }}</el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
       <div class="table-tip">等级不提供删除（会员档案在用）；如需停用某等级折扣，请使用"停用"操作。</div>
-    </el-card>
+    </UCard>
 
     <!-- 新增 / 编辑等级（FR-MEM-05） -->
-    <el-dialog
+    <AppModal
       v-model="editDialog.visible"
       :title="editDialog.editing ? '编辑等级规则' : '新增等级'"
       width="460px"
       :close-on-click-modal="false"
     >
-      <el-form label-width="110px" @submit.prevent>
-        <el-form-item label="等级名称" required>
-          <el-input v-model="editDialog.form.name" maxlength="30" placeholder="如：钻石会员" />
-        </el-form-item>
-        <el-form-item label="升级门槛（元）" required>
-          <el-input-number
+      <AppForm label-width="110px" @submit.prevent>
+        <AppFormItem label="等级名称" required>
+          <AppInput v-model="editDialog.form.name" maxlength="30" placeholder="如：钻石会员" />
+        </AppFormItem>
+        <AppFormItem label="升级门槛（元）" required>
+          <AppInputNumber
             v-model="editDialog.form.threshold"
             :min="0"
             :precision="2"
@@ -231,9 +233,9 @@ async function toggleStatus(row: MemberLevelVO) {
             style="width: 100%"
           />
           <div class="form-tip">按累计消费额 = Σ实付 − Σ退款 自动升降（BR-MEM-06）</div>
-        </el-form-item>
-        <el-form-item label="折扣率" required>
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="折扣率" required>
+          <AppInputNumber
             v-model="editDialog.form.discountRate"
             :min="0.01"
             :max="1"
@@ -243,9 +245,9 @@ async function toggleStatus(row: MemberLevelVO) {
             style="width: 100%"
           />
           <div class="form-tip">(0, 1]，如 0.98 = 98 折；1 为无折扣（BR-SALE-10）</div>
-        </el-form-item>
-        <el-form-item label="积分倍率" required>
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="积分倍率" required>
+          <AppInputNumber
             v-model="editDialog.form.pointRate"
             :min="0.1"
             :max="99"
@@ -255,9 +257,9 @@ async function toggleStatus(row: MemberLevelVO) {
             style="width: 100%"
           />
           <div class="form-tip">本次积分 = 实付 × 每元积分数 × 等级倍率（BR-MEM-05）</div>
-        </el-form-item>
-        <el-form-item label="排序" required>
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="排序" required>
+          <AppInputNumber
             v-model="editDialog.form.sortNo"
             :min="0"
             :precision="0"
@@ -265,20 +267,20 @@ async function toggleStatus(row: MemberLevelVO) {
             style="width: 100%"
           />
           <div class="form-tip">按门槛升序展示，建议与门槛保持一致</div>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="editDialog.form.status" :disabled="editDialog.editing">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="0">停用</el-radio>
-          </el-radio-group>
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppRadioGroup v-model="editDialog.form.status" :disabled="editDialog.editing">
+            <AppRadio :value="1">启用</AppRadio>
+            <AppRadio :value="0">停用</AppRadio>
+          </AppRadioGroup>
           <div class="form-tip">停用请使用列表"停用"操作（编辑中不可同时改状态）</div>
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="editDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="editDialog.saving" @click="saveLevel">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="editDialog.visible = false" />
+        <UButton :loading="editDialog.saving" label="保存" @click="saveLevel" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -293,7 +295,7 @@ async function toggleStatus(row: MemberLevelVO) {
       margin-left: 12px;
       font-size: 12px;
       font-weight: normal;
-      color: #909399;
+      color: var(--ui-text-muted);
     }
   }
 
@@ -304,16 +306,16 @@ async function toggleStatus(row: MemberLevelVO) {
   .table-tip {
     margin-top: 10px;
     font-size: 12px;
-    color: #909399;
+    color: var(--ui-text-muted);
   }
 
   .no-discount {
-    color: #909399;
+    color: var(--ui-text-muted);
   }
 
   .form-tip {
     font-size: 12px;
-    color: #909399;
+    color: var(--ui-text-muted);
     line-height: 1.4;
   }
 }

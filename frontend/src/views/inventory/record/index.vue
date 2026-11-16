@@ -16,6 +16,15 @@ const recordTypeMap: Record<string, { label: string; type: 'success' | 'warning'
   OVERFLOW_IN: { label: '报溢入库', type: 'success' },
 }
 
+/** Element 标签类型 → Nuxt UI 徽标颜色 */
+function tagColor(type?: 'success' | 'warning' | 'danger' | 'info' | 'primary') {
+  if (type === 'success') return 'success' as const
+  if (type === 'warning') return 'warning' as const
+  if (type === 'danger') return 'error' as const
+  if (type === 'primary') return 'primary' as const
+  return 'neutral' as const
+}
+
 function fmtTime(v: string | null | undefined) {
   return v ? v.replace('T', ' ').slice(0, 19) : '—'
 }
@@ -42,7 +51,7 @@ const query = reactive({
   recordType: '' as string,
   bizNo: '',
   operatorName: '',
-  dateRange: null as [string, string] | null,
+  dateRange: null as string[] | null,
   page: 1,
   size: 20,
 })
@@ -82,29 +91,29 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="商品名称">
-          <el-input v-model="query.goodsName" placeholder="名称模糊查询" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="变动类型">
-          <el-select v-model="query.recordType" clearable placeholder="全部" style="width: 130px">
-            <el-option
+    <UCard class="search-card" :ui="{ body: 'pb-0.5' }">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="商品名称">
+          <AppInput v-model="query.goodsName" placeholder="名称模糊查询" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="变动类型">
+          <AppSelect v-model="query.recordType" clearable placeholder="全部" style="width: 130px">
+            <AppOption
               v-for="(t, k) in recordTypeMap"
               :key="k"
               :label="t.label"
               :value="k"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关联单号">
-          <el-input v-model="query.bizNo" placeholder="采购/销售/盘点单号" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="操作人">
-          <el-input v-model="query.operatorName" placeholder="用户名" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="变动日期">
-          <el-date-picker
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="关联单号">
+          <AppInput v-model="query.bizNo" placeholder="采购/销售/盘点单号" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="操作人">
+          <AppInput v-model="query.operatorName" placeholder="用户名" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="变动日期">
+          <AppDatePicker
             v-model="query.dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -112,15 +121,15 @@ onMounted(load)
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="search" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>库存流水</span>
@@ -128,50 +137,50 @@ onMounted(load)
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="operateTime" label="变动时间" width="165">
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn prop="operateTime" label="变动时间" width="165">
           <template #default="{ row }">{{ fmtTime(row.operateTime) }}</template>
-        </el-table-column>
-        <el-table-column label="商品" min-width="180">
+        </AppTableColumn>
+        <AppTableColumn label="商品" min-width="180">
           <template #default="{ row }">
             <div class="goods-name">{{ row.goodsName }}</div>
             <div class="sub">{{ row.goodsCode }} / {{ row.unitName }}</div>
           </template>
-        </el-table-column>
-        <el-table-column label="变动类型" width="100" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="变动类型" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="recordTypeMap[row.recordType]?.type ?? 'info'" size="small">
+            <UBadge :color="tagColor(recordTypeMap[row.recordType]?.type)" variant="soft" size="sm">
               {{ recordTypeMap[row.recordType]?.label ?? row.recordType }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="变动数量" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="变动数量" width="100" align="right">
           <template #default="{ row }">
             <span class="qty" :class="qtyClass(row.changeQty)">{{ qty(row.changeQty) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="变动前" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="变动前" width="90" align="right">
           <template #default="{ row }">{{ qty(row.beforeQty) }}</template>
-        </el-table-column>
-        <el-table-column label="变动后" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="变动后" width="90" align="right">
           <template #default="{ row }">{{ qty(row.afterQty) }}</template>
-        </el-table-column>
-        <el-table-column label="成本单价" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="成本单价" width="90" align="right">
           <template #default="{ row }">{{ money(row.unitCost) }}</template>
-        </el-table-column>
-        <el-table-column label="关联单据" width="160">
+        </AppTableColumn>
+        <AppTableColumn label="关联单据" width="160">
           <template #default="{ row }">
             <span v-if="row.bizNo" class="biz-no">{{ row.bizNo }}</span>
             <span v-else>—</span>
           </template>
-        </el-table-column>
-        <el-table-column prop="operatorName" label="操作人" width="90" />
-        <el-table-column label="备注" min-width="140" show-overflow-tooltip>
+        </AppTableColumn>
+        <AppTableColumn prop="operatorName" label="操作人" width="90" />
+        <AppTableColumn label="备注" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || '—' }}</template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -180,7 +189,7 @@ onMounted(load)
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
   </div>
 </template>
 
@@ -188,10 +197,6 @@ onMounted(load)
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .card-head {
@@ -201,7 +206,7 @@ onMounted(load)
 
     .head-tip {
       font-size: 12px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
       font-weight: 400;
     }
   }
@@ -212,7 +217,7 @@ onMounted(load)
 
   .sub {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .qty {
@@ -220,11 +225,11 @@ onMounted(load)
     font-weight: 600;
 
     &.in {
-      color: #67c23a;
+      color: var(--el-color-success);
     }
 
     &.out {
-      color: #f56c6c;
+      color: var(--el-color-danger);
     }
   }
 

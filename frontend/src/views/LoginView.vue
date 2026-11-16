@@ -10,7 +10,7 @@ const auth = useAuthStore()
 
 const storeName = ref('超市商品管理系统')
 const loading = ref(false)
-const formRef = ref()
+const formRef = ref<{ validate: () => Promise<boolean> }>()
 
 const form = reactive({
   username: '',
@@ -32,7 +32,11 @@ onMounted(async () => {
 })
 
 async function handleLogin() {
-  await formRef.value.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   loading.value = true
   try {
     await auth.login({ ...form })
@@ -48,58 +52,86 @@ async function handleLogin() {
 
 <template>
   <div class="login-page">
-    <el-card class="login-card">
+    <UCard class="login-card w-full max-w-[400px]" :ui="{ body: 'p-6 sm:p-7' }">
       <div class="login-head">
-        <el-icon :size="40" color="#409eff"><ShoppingCart /></el-icon>
+        <UIcon name="i-lucide-shopping-cart" class="mx-auto size-10 text-primary" />
         <h2 class="title">{{ storeName }}</h2>
         <p class="sub">超市商品管理系统</p>
       </div>
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        size="large"
-        @keyup.enter="handleLogin"
-      >
-        <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="用户名" :prefix-icon="'User'" />
-        </el-form-item>
-        <el-form-item prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="密码"
-            show-password
-            :prefix-icon="'Lock'"
+
+      <AppForm ref="formRef" :model="form" :rules="rules" aria-label="登录表单">
+        <AppFormItem prop="username">
+          <AppInput
+            v-model="form.username"
+            name="username"
+            autocomplete="username"
+            autocapitalize="off"
+            spellcheck="false"
+            enterkeyhint="next"
+            required
+            size="large"
+            aria-label="用户名"
+            placeholder="用户名"
+            prefix-icon="User"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="form.rememberMe">记住我（72 小时内免登录）</el-checkbox>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" class="login-btn" :loading="loading" @click="handleLogin">
-            登 录
-          </el-button>
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+
+        <AppFormItem prop="password">
+          <AppInput
+            v-model="form.password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            enterkeyhint="go"
+            required
+            size="large"
+            aria-label="密码"
+            placeholder="密码"
+            prefix-icon="Lock"
+            show-password
+          />
+        </AppFormItem>
+
+        <AppFormItem>
+          <UCheckbox v-model="form.rememberMe" name="rememberMe" label="记住我（72 小时内免登录）" />
+        </AppFormItem>
+
+        <AppFormItem>
+          <UButton
+            type="submit"
+            size="lg"
+            block
+            :loading="loading"
+            label="登 录"
+            @click="handleLogin"
+          />
+        </AppFormItem>
+      </AppForm>
+
       <p class="tip">演示账号：admin / Admin@2026</p>
-    </el-card>
+    </UCard>
   </div>
 </template>
 
 <style scoped lang="scss">
 .login-page {
-  height: 100vh;
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #e8f1ff 0%, #f5f7fa 60%, #eef4ff 100%);
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: linear-gradient(
+    135deg,
+    var(--smms-login-start) 0%,
+    var(--ui-bg-muted) 60%,
+    var(--smms-login-end) 100%
+  );
 }
 
 .login-card {
-  width: 400px;
   border-radius: 10px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--el-box-shadow-light);
 
   .login-head {
     text-align: center;
@@ -108,23 +140,19 @@ async function handleLogin() {
     .title {
       margin: 10px 0 4px;
       font-size: 20px;
-      color: #303133;
+      color: var(--ui-text);
     }
 
     .sub {
       margin: 0;
       font-size: 13px;
-      color: #909399;
+      color: var(--ui-text-muted);
     }
-  }
-
-  .login-btn {
-    width: 100%;
   }
 
   .tip {
     text-align: center;
-    color: #c0c4cc;
+    color: var(--ui-text-dimmed);
     font-size: 12px;
     margin: 4px 0 0;
   }

@@ -1,19 +1,24 @@
 <template>
   <div class="error-page">
-    <el-result icon="warning" title="403 无权访问" sub-title="您没有访问该页面的权限，请联系管理员分配相应角色">
-      <template #extra>
-        <el-button type="primary" @click="$router.push('/home')">返回首页</el-button>
-      </template>
-    </el-result>
+    <div class="max-w-md text-center">
+      <UIcon name="i-lucide-shield-x" class="mx-auto size-14 text-warning" />
+      <h1 class="mt-4 text-xl font-semibold text-default">403 无权访问</h1>
+      <p class="mt-2 text-sm text-muted">
+        您没有访问该页面的权限，请联系管理员分配相应角色
+      </p>
+      <UButton class="mt-6" label="返回首页" @click="$router.push('/home')" />
+    </div>
   </div>
 </template>
 
 <style scoped>
 .error-page {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
+  padding: 16px;
+  background: var(--ui-bg-muted);
 }
 </style>

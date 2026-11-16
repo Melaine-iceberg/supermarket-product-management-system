@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
+import { cssColor } from '@/utils/css'
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { useAuthStore } from '@/stores/auth'
@@ -138,7 +140,7 @@ function renderGrowth() {
         name: '当日新增',
         type: 'bar',
         data: growthRows.value.map((r) => r.newCount ?? 0),
-        itemStyle: { color: '#409eff' },
+        itemStyle: { color: cssColor('--el-color-primary', '#409eff') },
         barMaxWidth: 20,
       },
       {
@@ -147,7 +149,7 @@ function renderGrowth() {
         yAxisIndex: 1,
         smooth: true,
         data: growthRows.value.map((r) => r.cumulativeCount ?? 0),
-        itemStyle: { color: '#67c23a' },
+        itemStyle: { color: cssColor('--el-color-success', '#67c23a') },
       },
     ],
   })
@@ -167,7 +169,11 @@ function renderLevel() {
         type: 'pie',
         radius: ['40%', '70%'],
         avoidLabelOverlap: false,
-        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+        itemStyle: {
+          borderRadius: 6,
+          borderColor: cssColor('--el-bg-color', '#fff'),
+          borderWidth: 2,
+        },
         label: { show: true, formatter: '{b}: {c}' },
         data: levelRows.value.map((r) => ({
           name: r.levelName ?? '未知',
@@ -197,7 +203,7 @@ async function handleExport() {
       days: sleepingDays.value,
       scope: birthdayScope.value,
     })
-    ElMessage.success('导出成功')
+    notify.success('导出成功')
   } finally {
     exporting.value = false
   }
@@ -318,7 +324,7 @@ function fetchDrillPage(p: number, size: number) {
 /** 消费排行行 → 该会员的全部销售单（与“累计消费”同口径，不限日期） */
 function drillRankingRow(row: MemberRptRow) {
   if (row.id == null) {
-    ElMessage.warning('该会员暂无可下钻单据')
+    notify.warning('该会员暂无可下钻单据')
     return
   }
   openDrill({ memberId: row.id }, `会员 ${row.name ?? row.memberNo} 的销售单`)
@@ -339,29 +345,29 @@ onMounted(load)
 <template>
   <div class="page">
     <!-- 筛选区 -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="视图">
-          <el-radio-group v-model="view" @change="search">
-            <el-radio-button v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="视图">
+          <AppRadioGroup v-model="view" @change="search">
+            <AppRadioButton v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
               {{ label }}
-            </el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="view === 'consumption-ranking'" label="取前 N 名">
-          <el-input-number v-model="topN" :min="5" :max="100" :step="5" style="width: 100px" @change="load" />
-        </el-form-item>
-        <el-form-item v-if="view === 'sleeping'" label="沉睡天数">
-          <el-input-number v-model="sleepingDays" :min="30" :max="365" :step="30" style="width: 110px" @change="load" />
-        </el-form-item>
-        <el-form-item v-if="view === 'birthday'" label="范围">
-          <el-radio-group v-model="birthdayScope" @change="load">
-            <el-radio-button value="week">未来7天</el-radio-button>
-            <el-radio-button value="month">当月</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="view === 'growth' || view === 'contribution'" label="日期区间">
-          <el-date-picker
+            </AppRadioButton>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="view === 'consumption-ranking'" label="取前 N 名">
+          <AppInputNumber v-model="topN" :min="5" :max="100" :step="5" style="width: 100px" @change="load" />
+        </AppFormItem>
+        <AppFormItem v-if="view === 'sleeping'" label="沉睡天数">
+          <AppInputNumber v-model="sleepingDays" :min="30" :max="365" :step="30" style="width: 110px" @change="load" />
+        </AppFormItem>
+        <AppFormItem v-if="view === 'birthday'" label="范围">
+          <AppRadioGroup v-model="birthdayScope" @change="load">
+            <AppRadioButton value="week">未来7天</AppRadioButton>
+            <AppRadioButton value="month">当月</AppRadioButton>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="view === 'growth' || view === 'contribution'" label="日期区间">
+          <AppDatePicker
             v-model="dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -369,132 +375,141 @@ onMounted(load)
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button :loading="exporting" @click="handleExport">导出</el-button>
-          <el-button @click="handlePrint">打印</el-button>
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex items-center gap-2">
+            <UButton @click="search">查询</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
+          </div>
+        </AppFormItem>
+      </AppForm>
       <div v-if="view === 'growth' || view === 'contribution'" class="presets">
-        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+        <UButton
+          v-for="p in RANGE_PRESETS"
+          :key="p.key"
+          size="sm"
+          color="neutral"
+          variant="outline"
+          @click="setRange(p.key)"
+        >
           {{ p.label }}
-        </el-button>
+        </UButton>
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 增长趋势 -->
-    <el-card v-if="view === 'growth'">
+    <UCard v-if="view === 'growth'">
       <template #header><span>会员增长趋势</span></template>
       <div ref="growthChartRef" class="chart" />
-      <el-table v-loading="loading" border :data="growthRows" stripe class="mt-16" max-height="300">
-        <el-table-column prop="bizDate" label="日期" width="110">
+      <AppTable :loading="loading" border :data="growthRows" stripe class="mt-16" :max-height="300">
+        <AppTableColumn prop="bizDate" label="日期" width="110">
           <template #default="{ row }">{{ fmtDate(row.bizDate) }}</template>
-        </el-table-column>
-        <el-table-column label="当日新增" prop="newCount" width="100" align="right" />
-        <el-table-column label="累计会员" prop="cumulativeCount" width="100" align="right" />
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+        <AppTableColumn label="当日新增" prop="newCount" width="100" align="right" />
+        <AppTableColumn label="累计会员" prop="cumulativeCount" width="100" align="right" />
+      </AppTable>
+    </UCard>
 
     <!-- 消费排行 -->
-    <el-card v-if="view === 'consumption-ranking'">
+    <UCard v-if="view === 'consumption-ranking'">
       <template #header><span>会员消费排行 TOP {{ topN }}</span></template>
-      <el-table v-loading="loading" border :data="rankingRows" stripe>
-        <el-table-column type="index" label="排名" width="60" align="center" />
-        <el-table-column prop="memberNo" label="会员编号" width="120" />
-        <el-table-column prop="name" label="姓名" width="100" />
-        <el-table-column prop="phone" label="手机号" width="130" />
-        <el-table-column prop="levelName" label="等级" width="100" />
-        <el-table-column label="积分" prop="points" width="80" align="right" />
-        <el-table-column label="累计消费" width="110" align="right">
+      <AppTable :loading="loading" border :data="rankingRows" stripe>
+        <AppTableColumn type="index" label="排名" width="60" align="center" />
+        <AppTableColumn prop="memberNo" label="会员编号" width="120" />
+        <AppTableColumn prop="name" label="姓名" width="100" />
+        <AppTableColumn prop="phone" label="手机号" width="130" />
+        <AppTableColumn prop="levelName" label="等级" width="100" />
+        <AppTableColumn label="积分" prop="points" width="80" align="right" />
+        <AppTableColumn label="累计消费" width="110" align="right">
           <template #default="{ row }">
             <b>{{ money(row.totalConsume) }}</b>
           </template>
-        </el-table-column>
-        <el-table-column label="消费次数" prop="consumeTimes" width="90" align="right" />
-        <el-table-column label="最近消费" width="160">
+        </AppTableColumn>
+        <AppTableColumn label="消费次数" prop="consumeTimes" width="90" align="right" />
+        <AppTableColumn label="最近消费" width="160">
           <template #default="{ row }">{{ fmtTime(row.lastConsumeTime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="drillRankingRow(row as MemberRptRow)">消费明细</el-button>
+            <UButton variant="link" size="sm" @click="drillRankingRow(row as MemberRptRow)">消费明细</UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 等级分布 -->
-    <el-card v-if="view === 'level-distribution'">
+    <UCard v-if="view === 'level-distribution'">
       <template #header><span>会员等级分布</span></template>
       <div ref="levelChartRef" class="chart" />
-      <el-table v-loading="loading" border :data="levelRows" stripe class="mt-16">
-        <el-table-column prop="levelName" label="等级" min-width="160" />
-        <el-table-column label="会员数" prop="memberCount" width="120" align="right" />
-      </el-table>
-    </el-card>
+      <AppTable :loading="loading" border :data="levelRows" stripe class="mt-16">
+        <AppTableColumn prop="levelName" label="等级" min-width="160" />
+        <AppTableColumn label="会员数" prop="memberCount" width="120" align="right" />
+      </AppTable>
+    </UCard>
 
     <!-- 消费贡献 -->
-    <el-card v-if="view === 'contribution'">
+    <UCard v-if="view === 'contribution'">
       <template #header><span>会员消费贡献占比</span></template>
       <div v-if="contribution" class="contribution">
-        <el-row :gutter="16">
-          <el-col :span="6">
+        <AppRow :gutter="16">
+          <AppCol :span="6">
             <div class="stat-card">
               <div class="stat-label">会员销售额</div>
               <div class="stat-value primary">￥{{ money(contribution.memberNetAmount) }}</div>
-              <el-link type="primary" :underline="false" @click="drillContribution(true, '会员销售额')">查看会员单</el-link>
+              <UButton variant="link" size="sm" @click="drillContribution(true, '会员销售额')">查看会员单</UButton>
             </div>
-          </el-col>
-          <el-col :span="6">
+          </AppCol>
+          <AppCol :span="6">
             <div class="stat-card">
               <div class="stat-label">总销售额</div>
               <div class="stat-value">￥{{ money(contribution.totalNetAmount) }}</div>
-              <el-link type="primary" :underline="false" @click="drillContribution(false, '总销售额')">查看全部单据</el-link>
+              <UButton variant="link" size="sm" @click="drillContribution(false, '总销售额')">查看全部单据</UButton>
             </div>
-          </el-col>
-          <el-col :span="6">
+          </AppCol>
+          <AppCol :span="6">
             <div class="stat-card">
               <div class="stat-label">会员单数</div>
               <div class="stat-value">{{ contribution.memberOrderCount }}</div>
-              <el-link type="primary" :underline="false" @click="drillContribution(true, '会员单')">查看会员单</el-link>
+              <UButton variant="link" size="sm" @click="drillContribution(true, '会员单')">查看会员单</UButton>
             </div>
-          </el-col>
-          <el-col :span="6">
+          </AppCol>
+          <AppCol :span="6">
             <div class="stat-card">
               <div class="stat-label">会员贡献占比</div>
               <div class="stat-value success">{{ percent(contribution.shareRate) }}</div>
             </div>
-          </el-col>
-        </el-row>
+          </AppCol>
+        </AppRow>
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 沉睡会员 -->
-    <el-card v-if="view === 'sleeping'">
+    <UCard v-if="view === 'sleeping'">
       <template #header><span>沉睡会员清单（{{ sleepingDays }} 天未消费）</span></template>
-      <el-table v-loading="loading" border :data="sleepingRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="memberNo" label="会员编号" width="120" />
-        <el-table-column prop="name" label="姓名" width="100" />
-        <el-table-column prop="phone" label="手机号" width="130" />
-        <el-table-column prop="levelName" label="等级" width="100" />
-        <el-table-column label="累计消费" width="110" align="right">
+      <AppTable :loading="loading" border :data="sleepingRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="memberNo" label="会员编号" width="120" />
+        <AppTableColumn prop="name" label="姓名" width="100" />
+        <AppTableColumn prop="phone" label="手机号" width="130" />
+        <AppTableColumn prop="levelName" label="等级" width="100" />
+        <AppTableColumn label="累计消费" width="110" align="right">
           <template #default="{ row }">{{ money(row.totalConsume) }}</template>
-        </el-table-column>
-        <el-table-column label="消费次数" prop="consumeTimes" width="90" align="right" />
-        <el-table-column label="最近消费" width="160">
+        </AppTableColumn>
+        <AppTableColumn label="消费次数" prop="consumeTimes" width="90" align="right" />
+        <AppTableColumn label="最近消费" width="160">
           <template #default="{ row }">{{ fmtTime(row.lastConsumeTime) }}</template>
-        </el-table-column>
-        <el-table-column label="注册时间" width="160">
+        </AppTableColumn>
+        <AppTableColumn label="注册时间" width="160">
           <template #default="{ row }">{{ fmtTime(row.registerTime) }}</template>
-        </el-table-column>
-        <el-table-column label="沉睡天数" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="沉睡天数" width="90" align="right">
           <template #default="{ row }">
-            <el-tag type="warning" size="small">{{ row.sleepingDays }} 天</el-tag>
+            <UBadge color="warning" variant="soft" size="sm">{{ row.sleepingDays }} 天</UBadge>
           </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="page"
         v-model:page-size="size"
         :total="sleepingTotal"
@@ -503,24 +518,24 @@ onMounted(load)
         class="pager"
         @current-change="handlePageChange"
       />
-    </el-card>
+    </UCard>
 
     <!-- 生日提醒 -->
-    <el-card v-if="view === 'birthday'">
+    <UCard v-if="view === 'birthday'">
       <template #header>
         <span>会员生日提醒（{{ birthdayScope === 'week' ? '未来7天' : '当月' }}）</span>
       </template>
-      <el-table v-loading="loading" border :data="birthdayRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="memberNo" label="会员编号" width="120" />
-        <el-table-column prop="name" label="姓名" width="120" />
-        <el-table-column prop="phone" label="手机号" width="140" />
-        <el-table-column prop="levelName" label="等级" width="100" />
-        <el-table-column label="生日" width="120">
+      <AppTable :loading="loading" border :data="birthdayRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="memberNo" label="会员编号" width="120" />
+        <AppTableColumn prop="name" label="姓名" width="120" />
+        <AppTableColumn prop="phone" label="手机号" width="140" />
+        <AppTableColumn prop="levelName" label="等级" width="100" />
+        <AppTableColumn label="生日" width="120">
           <template #default="{ row }">{{ fmtDate(row.birthday) }}</template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 下钻单据列表（BR-RPT-06） -->
     <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
@@ -557,26 +572,26 @@ onMounted(load)
     .stat-card {
       text-align: center;
       padding: 20px;
-      background: #f5f7fa;
+      background: var(--el-bg-color-page);
       border-radius: 8px;
 
       .stat-label {
         font-size: 13px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         margin-bottom: 8px;
       }
 
       .stat-value {
         font-size: 24px;
         font-weight: 700;
-        color: #303133;
+        color: var(--el-text-color-primary);
 
         &.primary {
-          color: #409eff;
+          color: var(--el-color-primary);
         }
 
         &.success {
-          color: #67c23a;
+          color: var(--el-color-success);
         }
       }
     }

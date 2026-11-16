@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { moneyText } from '@/utils/format'
+import { cssColor } from '@/utils/css'
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
@@ -99,15 +100,15 @@ function renderChart() {
         type: 'line',
         smooth: true,
         data: trend.map((p) => Number(p.netSalesAmount)),
-        itemStyle: { color: '#409eff' },
-        areaStyle: { color: 'rgba(64,158,255,0.15)' },
+        itemStyle: { color: cssColor('--el-color-primary', '#409eff') },
+        areaStyle: { color: cssColor('--el-color-primary', '#409eff'), opacity: 0.15 },
       },
       {
         name: '订单数',
         type: 'bar',
         yAxisIndex: 1,
         data: trend.map((p) => p.orderCount),
-        itemStyle: { color: '#67c23a' },
+        itemStyle: { color: cssColor('--el-color-success', '#67c23a') },
         barMaxWidth: 20,
       },
     ],
@@ -183,38 +184,36 @@ watch(trendDays, load)
 </script>
 
 <template>
-  <div v-loading="loading" class="dashboard">
+  <div class="dashboard">
     <div class="toolbar">
-      <el-button size="small" @click="handlePrint">打印看板</el-button>
+      <UIcon v-if="loading" name="i-lucide-loader-circle" class="mr-2 size-4 animate-spin text-muted" />
+      <UButton size="sm" color="neutral" variant="outline" @click="handlePrint">打印看板</UButton>
     </div>
 
     <!-- KPI 卡片（FR-RPT-01）：销售额/订单数/毛利额可下钻到今日销售单（BR-RPT-06/GAP-P2-21） -->
-    <el-row :gutter="16" class="kpi-row">
-      <el-col :xs="12" :sm="8" :md="4">
-        <el-card
-          shadow="hover"
+    <AppRow :gutter="16" class="kpi-row">
+      <AppCol :xs="12" :sm="8" :md="4">
+        <UCard
           class="kpi-card"
           :class="{ clickable: canDrillSales }"
           @click="canDrillSales && drillTodayKpi('今日销售额')"
         >
           <div class="kpi-label">今日销售额</div>
           <div class="kpi-value primary">￥{{ money(data?.kpi.salesAmount) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <el-card
-          shadow="hover"
+        </UCard>
+      </AppCol>
+      <AppCol :xs="12" :sm="8" :md="4">
+        <UCard
           class="kpi-card"
           :class="{ clickable: canDrillSales }"
           @click="canDrillSales && drillTodayKpi('今日订单数')"
         >
           <div class="kpi-label">今日订单数</div>
           <div class="kpi-value">{{ data?.kpi.orderCount ?? 0 }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <el-card
-          shadow="hover"
+        </UCard>
+      </AppCol>
+      <AppCol :xs="12" :sm="8" :md="4">
+        <UCard
           class="kpi-card"
           :class="{ clickable: canDrillSales }"
           @click="canDrillSales && drillTodayKpi('今日毛利额')"
@@ -223,37 +222,36 @@ watch(trendDays, load)
           <div class="kpi-value" :class="Number(data?.kpi.profitAmount ?? 0) >= 0 ? 'success' : 'danger'">
             ￥{{ money(data?.kpi.profitAmount) }}
           </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <el-card
-          shadow="hover"
+        </UCard>
+      </AppCol>
+      <AppCol :xs="12" :sm="8" :md="4">
+        <UCard
           class="kpi-card"
           :class="{ clickable: canDrillSales }"
           @click="canDrillSales && drillTodayKpi('毛利率')"
         >
           <div class="kpi-label">毛利率</div>
           <div class="kpi-value">{{ percent(data?.kpi.profitRate) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <el-card shadow="hover" class="kpi-card">
+        </UCard>
+      </AppCol>
+      <AppCol :xs="12" :sm="8" :md="4">
+        <UCard class="kpi-card">
           <div class="kpi-label">今日新增会员</div>
           <div class="kpi-value">{{ data?.kpi.newMemberCount ?? 0 }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <el-card shadow="hover" class="kpi-card clickable" @click="router.push('/inventory/warning')">
+        </UCard>
+      </AppCol>
+      <AppCol :xs="12" :sm="8" :md="4">
+        <UCard class="kpi-card clickable" @click="router.push('/inventory/warning')">
           <div class="kpi-label">库存预警</div>
           <div class="kpi-value warning">{{ data?.kpi.warningCount ?? 0 }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </UCard>
+      </AppCol>
+    </AppRow>
 
-    <el-row :gutter="16">
+    <AppRow :gutter="16">
       <!-- 待办事项（FR-RPT-01：按角色权限过滤） -->
-      <el-col :xs="24" :md="8">
-        <el-card class="todo-card">
+      <AppCol :xs="24" :md="8">
+        <UCard class="todo-card">
           <template #header>
             <span>待办事项</span>
           </template>
@@ -265,55 +263,59 @@ watch(trendDays, load)
               @click="goTodo(todo.route)"
             >
               <span class="todo-title">{{ todo.title }}</span>
-              <el-badge :value="todo.count" :max="999" type="danger" />
+              <UBadge
+                :label="todo.count > 999 ? '999+' : String(todo.count)"
+                color="error"
+                variant="soft"
+                size="sm"
+              />
             </div>
           </div>
-          <el-empty v-else description="暂无待办" :image-size="60" />
-        </el-card>
-      </el-col>
+          <UEmpty v-else icon="i-lucide-inbox" description="暂无待办" />
+        </UCard>
+      </AppCol>
 
       <!-- 销售趋势（FR-RPT-01：近 7/30 日） -->
-      <el-col :xs="24" :md="16">
-        <el-card class="trend-card">
+      <AppCol :xs="24" :md="16">
+        <UCard class="trend-card">
           <template #header>
             <div class="card-header">
               <span>销售趋势</span>
-              <el-radio-group v-model="trendDays" size="small">
-                <el-radio-button :value="7">近 7 日</el-radio-button>
-                <el-radio-button :value="30">近 30 日</el-radio-button>
-              </el-radio-group>
+              <AppRadioGroup v-model="trendDays" size="small">
+                <AppRadioButton :value="7">近 7 日</AppRadioButton>
+                <AppRadioButton :value="30">近 30 日</AppRadioButton>
+              </AppRadioGroup>
             </div>
           </template>
           <div ref="chartRef" class="chart" />
-        </el-card>
-      </el-col>
-    </el-row>
+        </UCard>
+      </AppCol>
+    </AppRow>
 
     <!-- TOP10 热销商品（FR-RPT-01） -->
-    <el-card class="top-card">
+    <UCard class="top-card">
       <template #header>
         <span>TOP10 热销商品（近 {{ trendDays }} 日）</span>
       </template>
-      <el-table :data="data?.topGoods ?? []" size="small" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="goodsName" label="商品名称" min-width="200" show-overflow-tooltip />
-        <el-table-column label="销量" width="100" align="right">
+      <AppTable :data="data?.topGoods ?? []" :loading="loading" size="small" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="goodsName" label="商品名称" min-width="200" show-overflow-tooltip />
+        <AppTableColumn label="销量" width="100" align="right">
           <template #default="{ row }">{{ Number(row.qty).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="销售额" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="销售额" width="120" align="right">
           <template #default="{ row }">￥{{ money(row.salesAmount) }}</template>
-        </el-table-column>
-        <el-table-column v-if="canDrillGoods" label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="canDrillGoods" label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
+            <UButton
+              variant="link"
               @click="drillTopGoods(row.goodsId, row.goodsName)"
-            >下钻</el-button>
+            >下钻</UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 下钻单据列表（BR-RPT-06） -->
     <DrillOrderDrawer v-model="drillVisible" :title="drillTitle" :fetch-page="fetchDrillPage" />
@@ -348,29 +350,29 @@ watch(trendDays, load)
 
     .kpi-label {
       font-size: 13px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
       margin-bottom: 8px;
     }
 
     .kpi-value {
       font-size: 22px;
       font-weight: 700;
-      color: #303133;
+      color: var(--el-text-color-primary);
 
       &.primary {
-        color: #409eff;
+        color: var(--el-color-primary);
       }
 
       &.success {
-        color: #67c23a;
+        color: var(--el-color-success);
       }
 
       &.danger {
-        color: #f56c6c;
+        color: var(--el-color-danger);
       }
 
       &.warning {
-        color: #e6a23c;
+        color: var(--el-color-warning);
       }
     }
   }
@@ -393,7 +395,7 @@ watch(trendDays, load)
       justify-content: space-between;
       align-items: center;
       padding: 12px 8px;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid var(--el-border-color-extra-light);
       cursor: pointer;
       transition: background 0.2s;
 
@@ -402,12 +404,12 @@ watch(trendDays, load)
       }
 
       &:hover {
-        background: #f5f7fa;
+        background: var(--el-bg-color-page);
       }
 
       .todo-title {
         font-size: 14px;
-        color: #606266;
+        color: var(--el-text-color-regular);
       }
     }
   }

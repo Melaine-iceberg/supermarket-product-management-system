@@ -1,8 +1,8 @@
-import { ElLoading, ElMessage } from 'element-plus'
 import { http, saveBlob } from './request'
+import { showLoading, type LoadingHandle } from '@/utils/loading'
+import { notify } from '@/utils/notify'
 
-/** ElLoading 服务实例类型（避免深层路径导入） */
-type LoadingInstance = ReturnType<typeof ElLoading.service>
+type LoadingInstance = LoadingHandle
 
 /**
  * 异步任务（重导出/导入提交，2026-10 新增）。
@@ -58,7 +58,7 @@ export async function downloadTaskResult(taskNo: string, fileName?: string | nul
   // 若直接落盘会得到一个损坏的 xlsx，此处还原为错误提示
   if (blob.type.includes('json')) {
     const message = await readErrorMessage(blob)
-    ElMessage.error(message)
+    notify.error(message)
     throw new Error(message)
   }
   saveBlob(blob, fileName || 'export.xlsx')
@@ -104,7 +104,7 @@ async function waitTask(
   while (current.status === 'QUEUED' || current.status === 'RUNNING') {
     if (Date.now() > deadline) {
       loading.close()
-      ElMessage.warning(`${current.bizName}仍在后台执行，稍后可在任务结果中下载`)
+      notify.warning(`${current.bizName}仍在后台执行，稍后可在任务结果中下载`)
       throw new Error('TASK_TIMEOUT')
     }
     await sleep(POLL_INTERVAL)
@@ -114,7 +114,7 @@ async function waitTask(
   }
   if (current.status === 'FAILED') {
     loading.close()
-    ElMessage.error(current.errorMessage || `${current.bizName}执行失败`)
+    notify.error(current.errorMessage || `${current.bizName}执行失败`)
     throw new Error(current.errorMessage || 'TASK_FAILED')
   }
   return current
@@ -130,7 +130,7 @@ export async function runExportTask(
   options?: { autoSave?: string },
 ): Promise<Blob> {
   const task = await submitExportTask(url, params)
-  const loading = ElLoading.service({ lock: true, text: `${task.bizName}：正在提交任务…` })
+  const loading = showLoading(`${task.bizName}：正在提交任务…`)
   try {
     const done = await waitTask(task, loading)
     const blob = await http.download(`/tasks/${done.taskNo}/download`)
@@ -156,13 +156,13 @@ export async function runImportTask<T>(
   onTaskProgress?: (percent: number, phase: string) => void,
 ): Promise<T> {
   const task = await submitImportTask(url, file, onProgress)
-  const loading = ElLoading.service({ lock: true, text: `${task.bizName}：正在提交任务…` })
+  const loading = showLoading(`${task.bizName}：正在提交任务…`)
   try {
     const done = await waitTask(task, loading, (t) =>
       onTaskProgress?.(t.progress, t.phase ?? ''),
     )
     loading.close()
-    ElMessage.success(`${done.bizName}完成`)
+    notify.success(`${done.bizName}完成`)
     return done.result as T
   } catch (e) {
     loading.close()

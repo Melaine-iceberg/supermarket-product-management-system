@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -6,7 +7,7 @@ import { changePassword } from '@/api/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
-const formRef = ref()
+const formRef = ref<{ validate: () => Promise<boolean> }>()
 const loading = ref(false)
 
 const form = reactive({
@@ -51,11 +52,15 @@ const rules = {
 }
 
 async function handleSubmit() {
-  await formRef.value.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   loading.value = true
   try {
     await changePassword(form.oldPassword, form.newPassword)
-    ElMessage.success('密码修改成功，请重新登录')
+    notify.success('密码修改成功，请重新登录')
     auth.clear()
     router.push({ name: 'login' })
   } catch {
@@ -68,43 +73,48 @@ async function handleSubmit() {
 
 <template>
   <div class="change-password">
-    <el-card class="pwd-card">
+    <UCard class="pwd-card w-full max-w-[460px]">
       <template #header>
-        <div class="card-head">
-          <span>修改密码</span>
-          <el-tag v-if="auth.mustChangePwd" type="warning" size="small">首次登录须修改密码</el-tag>
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-medium text-default">修改密码</span>
+          <UBadge v-if="auth.mustChangePwd" color="warning" variant="soft" size="sm">
+            首次登录须修改密码
+          </UBadge>
         </div>
       </template>
-      <el-alert
+
+      <UAlert
         v-if="auth.mustChangePwd"
-        type="warning"
-        :closable="false"
-        show-icon
+        color="warning"
+        variant="soft"
+        icon="i-lucide-triangle-alert"
         title="管理员已重置您的密码，为保障账号安全，请先修改密码后再使用系统"
-        class="alert"
+        class="mb-4"
       />
-      <el-form
+
+      <AppForm
         ref="formRef"
         :model="form"
         :rules="rules"
         label-width="90px"
         @keyup.enter="handleSubmit"
       >
-        <el-form-item label="原密码" prop="oldPassword">
-          <el-input v-model="form.oldPassword" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="新密码" prop="newPassword">
-          <el-input v-model="form.newPassword" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="确认密码" prop="confirmPassword">
-          <el-input v-model="form.confirmPassword" type="password" show-password />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="loading" @click="handleSubmit">提交修改</el-button>
-        </el-form-item>
-      </el-form>
+        <AppFormItem label="原密码" prop="oldPassword">
+          <AppInput v-model="form.oldPassword" type="password" show-password />
+        </AppFormItem>
+        <AppFormItem label="新密码" prop="newPassword">
+          <AppInput v-model="form.newPassword" type="password" show-password />
+        </AppFormItem>
+        <AppFormItem label="确认密码" prop="confirmPassword">
+          <AppInput v-model="form.confirmPassword" type="password" show-password />
+        </AppFormItem>
+        <AppFormItem>
+          <UButton :loading="loading" label="提交修改" @click="handleSubmit" />
+        </AppFormItem>
+      </AppForm>
+
       <p class="policy">密码要求：长度 8~32 位，须同时包含字母与数字</p>
-    </el-card>
+    </UCard>
   </div>
 </template>
 
@@ -114,24 +124,10 @@ async function handleSubmit() {
   justify-content: center;
   padding-top: 8vh;
 
-  .pwd-card {
-    width: 460px;
-
-    .card-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .alert {
-      margin-bottom: 16px;
-    }
-
-    .policy {
-      color: #909399;
-      font-size: 12px;
-      text-align: center;
-    }
+  .policy {
+    color: var(--ui-text-muted);
+    font-size: 12px;
+    text-align: center;
   }
 }
 </style>

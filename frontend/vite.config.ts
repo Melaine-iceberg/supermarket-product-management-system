@@ -1,8 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
+import ui from '@nuxt/ui/vite'
 import vue from '@vitejs/plugin-vue'
-import AutoImport from 'unplugin-auto-import/vite'
-import Components from 'unplugin-vue-components/vite'
-import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
 
@@ -10,18 +8,20 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [
     vue(),
-    // Element Plus 按需引入（NFR-PERF-08）
-    AutoImport({
-      resolvers: [ElementPlusResolver()],
-      dts: 'src/auto-imports.d.ts',
-      eslintrc: {
-        enabled: true,
-        filepath: './.eslintrc-auto-import.json',
+    // Nuxt UI：Vue（Vite）版接入，自动注册 U* 组件与组合式函数
+    ui({
+      // 主题切换由 src/composables/useColorScheme.ts 统一管理（跟随系统 + 用户覆盖）
+      colorMode: false,
+      ui: {
+        colors: {
+          primary: 'blue',
+          neutral: 'slate',
+        },
       },
-    }),
-    Components({
-      resolvers: [ElementPlusResolver()],
-      dts: 'src/components.d.ts',
+      icon: {
+        // 构建期扫描源码中的 i-lucide-* 并打包，离线/PWA 下图标仍可用
+        clientBundle: { scan: true },
+      },
     }),
     // PWA：预缓存构建产物（应用外壳），接口请求始终走网络
     VitePWA({
@@ -39,9 +39,9 @@ export default defineConfig({
         scope: '/',
         display: 'standalone',
         orientation: 'any',
-        // 与 Element Plus 主色 / 页面底色保持一致，避免启动时闪白
-        theme_color: '#409eff',
-        background_color: '#f5f7fa',
+        // 与 Nuxt UI 主色 / 页面底色保持一致，避免启动时闪白
+        theme_color: '#2563eb',
+        background_color: '#f8fafc',
         icons: [
           { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

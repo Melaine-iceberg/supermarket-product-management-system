@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm } from '@/utils/confirm'
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   checkInventoryHealth,
@@ -42,7 +43,7 @@ const fixing = ref(false)
 
 async function doFix() {
   try {
-    await ElMessageBox.confirm(
+    await confirm(
       `将以库存流水为准修正全部 ${total.value} 个差异商品的账面结存（结存 = 期初 + Σ流水），成本金额按当前成本单价重算；修正过程留痕不可撤销`,
       '一键按流水修正结存',
       { type: 'warning', confirmButtonText: '确认修正' },
@@ -53,7 +54,7 @@ async function doFix() {
   fixing.value = true
   try {
     const fixed = await fixInventoryHealth()
-    ElMessage.success(fixed > 0 ? `修正完成，共覆盖 ${fixed} 个商品结存` : '未发现差异，无需修正')
+    notify.success(fixed > 0 ? `修正完成，共覆盖 ${fixed} 个商品结存` : '未发现差异，无需修正')
     query.page = 1
     await load()
   } catch {
@@ -69,90 +70,93 @@ onMounted(load)
 <template>
   <div class="page">
     <!-- 体检说明与汇总（FR-INV-11，AC-04） -->
-    <el-card class="intro-card">
+    <UCard class="intro-card">
       <template #header>
         <div class="card-head">
           <span>库存体检</span>
           <div>
-            <el-button :loading="loading" @click="load">
-              <el-icon><Refresh /></el-icon>重新体检
-            </el-button>
-            <el-button
+            <UButton
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-refresh-cw"
+              label="重新体检"
+              :loading="loading"
+              @click="load"
+            />
+            <UButton
               v-if="auth.hasPerm('sys:inv:health:fix')"
-              type="danger"
+              color="error"
+              label="一键按流水修正结存"
               :disabled="total === 0"
               :loading="fixing"
               @click="doFix"
-            >一键按流水修正结存</el-button>
+            />
           </div>
         </div>
       </template>
 
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+      <UAlert
+        color="info"
+        icon="i-lucide-info"
         title="按流水重算每个商品的理论结存（结存 = 期初 + Σ流水数量，BR-INV-08）与账面结存比对；差异清单为空即库存数据一致（AC-04）"
         class="intro-alert"
       />
-      <el-alert
+      <UAlert
         v-if="!loading && total === 0"
-        type="success"
-        :closable="false"
-        show-icon
+        color="success"
+        icon="i-lucide-circle-check"
         :title="`体检通过：${checkedSkus} 个商品账面结存与流水一致，无差异`"
       />
-      <el-alert
+      <UAlert
         v-else-if="!loading"
-        type="error"
-        :closable="false"
-        show-icon
+        color="error"
+        icon="i-lucide-circle-alert"
         :title="`发现 ${total} 个商品账面结存与流水不一致（共体检 ${checkedSkus} 个商品），请核对下方差异清单`"
       />
 
-      <el-descriptions v-if="!loading" :column="2" border size="small" class="stats">
-        <el-descriptions-item label="参与体检商品数">{{ checkedSkus }}</el-descriptions-item>
-        <el-descriptions-item label="差异商品数">
+      <AppDescriptions v-if="!loading" :column="2" border size="small" class="stats">
+        <AppDescriptionsItem label="参与体检商品数">{{ checkedSkus }}</AppDescriptionsItem>
+        <AppDescriptionsItem label="差异商品数">
           <span :class="total > 0 ? 'diff-pos' : ''">{{ total }}</span>
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-card>
+        </AppDescriptionsItem>
+      </AppDescriptions>
+    </UCard>
 
     <!-- 差异清单 -->
-    <el-card v-if="total > 0 || loading">
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="goodsCode" label="商品编码" width="140" />
-        <el-table-column label="商品" min-width="200">
+    <UCard v-if="total > 0 || loading">
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn prop="goodsCode" label="商品编码" width="140" />
+        <AppTableColumn label="商品" min-width="200">
           <template #default="{ row }">
             <span class="goods-name">{{ row.goodsName }}</span>
-            <el-tag v-if="row.rowMissing" type="warning" size="small" class="missing-tag">
+            <UBadge v-if="row.rowMissing" color="warning" variant="soft" size="sm" class="missing-tag">
               结存行缺失
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="categoryName" label="分类" width="110" />
-        <el-table-column label="账面结存" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn prop="categoryName" label="分类" width="110" />
+        <AppTableColumn label="账面结存" width="110" align="right">
           <template #default="{ row }">{{ fmtQty(row.bookQty) }}</template>
-        </el-table-column>
-        <el-table-column label="理论结存（Σ流水）" width="150" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="理论结存（Σ流水）" width="150" align="right">
           <template #default="{ row }">{{ fmtQty(row.recordQty) }}</template>
-        </el-table-column>
-        <el-table-column label="差异" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="差异" width="110" align="right">
           <template #default="{ row }">
             <span :class="row.diffQty > 0 ? 'diff-pos' : 'diff-neg'">
               {{ row.diffQty > 0 ? '+' : '' }}{{ fmtQty(row.diffQty) }}
             </span>
           </template>
-        </el-table-column>
-        <el-table-column label="成本单价" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="成本单价" width="100" align="right">
           <template #default="{ row }">{{ fmtQty(row.costPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="最近变动时间" width="170">
+        </AppTableColumn>
+        <AppTableColumn label="最近变动时间" width="170">
           <template #default="{ row }">{{ fmtTime(row.lastChangeTime) }}</template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -161,7 +165,7 @@ onMounted(load)
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
   </div>
 </template>
 
@@ -194,12 +198,12 @@ onMounted(load)
   }
 
   .diff-pos {
-    color: #f56c6c;
+    color: var(--el-color-danger);
     font-weight: 600;
   }
 
   .diff-neg {
-    color: #e6a23c;
+    color: var(--el-color-warning);
     font-weight: 600;
   }
 

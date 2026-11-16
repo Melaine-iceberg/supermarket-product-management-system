@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { saveBlob } from '@/api/request'
@@ -60,7 +61,7 @@ async function handleExport() {
     const { page: _p, size: _s, ...filters } = params()
     const blob = await exportOpLogs(filters)
     saveBlob(blob, `操作日志_${new Date().toISOString().slice(0, 10)}.csv`)
-    ElMessage.success('导出成功')
+    notify.success('导出成功')
   } catch {
     // 拦截器已提示
   } finally {
@@ -76,87 +77,90 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="操作人">
-          <el-input v-model="query.username" placeholder="用户名" clearable />
-        </el-form-item>
-        <el-form-item label="模块">
-          <el-select v-model="query.module" clearable placeholder="全部" style="width: 150px">
-            <el-option v-for="m in modules" :key="m" :label="m" :value="m" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="结果">
-          <el-select v-model="query.result" clearable placeholder="全部" style="width: 110px">
-            <el-option label="成功" :value="1" />
-            <el-option label="失败" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="时间">
-          <el-date-picker
+    <UCard class="search-card" :ui="{ body: 'pb-2' }">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="操作人">
+          <AppInput v-model="query.username" placeholder="用户名" clearable />
+        </AppFormItem>
+        <AppFormItem label="模块">
+          <AppSelect v-model="query.module" clearable placeholder="全部" style="width: 150px">
+            <AppOption v-for="m in modules" :key="m" :label="m" :value="m" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="结果">
+          <AppSelect v-model="query.result" clearable placeholder="全部" style="width: 110px">
+            <AppOption label="成功" :value="1" />
+            <AppOption label="失败" :value="0" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="时间">
+          <AppDatePicker
             v-model="query.range"
             type="daterange"
             value-format="YYYY-MM-DD"
             start-placeholder="开始"
             end-placeholder="结束"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="query.page = 1; load()">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-          <el-button
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="query.page = 1; load()" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+          <UButton
             v-if="auth.hasPerm('sys:oplog:export')"
+            color="neutral"
+            variant="outline"
+            label="导出 CSV"
             :loading="exporting"
             @click="handleExport"
-          >导出 CSV</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+          />
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>操作日志（只增不改不删，保留 ≥ 1 年）</template>
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column type="expand">
+      <AppTable :data="list" :loading="loading" border stripe>
+        <AppTableColumn type="expand">
           <template #default="{ row }">
-            <el-descriptions :column="2" border size="small" class="detail">
-              <el-descriptions-item label="请求">{{ row.httpMethod }} {{ row.requestUrl }}</el-descriptions-item>
-              <el-descriptions-item label="IP / UA">
+            <AppDescriptions :column="2" border size="small" class="detail">
+              <AppDescriptionsItem label="请求">{{ row.httpMethod }} {{ row.requestUrl }}</AppDescriptionsItem>
+              <AppDescriptionsItem label="IP / UA">
                 {{ row.ip }} · {{ row.userAgent || '—' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="参数摘要" :span="2">
+              </AppDescriptionsItem>
+              <AppDescriptionsItem label="参数摘要" :span="2">
                 <code class="param">{{ row.paramSummary || '—' }}</code>
-              </el-descriptions-item>
-              <el-descriptions-item label="错误信息" :span="2">
+              </AppDescriptionsItem>
+              <AppDescriptionsItem label="错误信息" :span="2">
                 <span :class="{ error: row.errorMsg }">{{ row.errorMsg || '—' }}</span>
-              </el-descriptions-item>
-            </el-descriptions>
+              </AppDescriptionsItem>
+            </AppDescriptions>
           </template>
-        </el-table-column>
-        <el-table-column prop="operateTime" label="操作时间" width="165" />
-        <el-table-column prop="username" label="操作人" width="100" />
-        <el-table-column label="真实姓名" width="100">
+        </AppTableColumn>
+        <AppTableColumn prop="operateTime" label="操作时间" width="165" />
+        <AppTableColumn prop="username" label="操作人" width="100" />
+        <AppTableColumn label="真实姓名" width="100">
           <template #default="{ row }">{{ row.realName || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="roleNames" label="角色" width="110">
+        </AppTableColumn>
+        <AppTableColumn prop="roleNames" label="角色" width="110">
           <template #default="{ row }">{{ row.roleNames || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="module" label="模块" width="100" />
-        <el-table-column prop="action" label="动作" width="120" />
-        <el-table-column prop="target" label="目标" min-width="110">
+        </AppTableColumn>
+        <AppTableColumn prop="module" label="模块" width="100" />
+        <AppTableColumn prop="action" label="动作" width="120" />
+        <AppTableColumn prop="target" label="目标" min-width="110">
           <template #default="{ row }">{{ row.target || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="结果" width="80">
+        </AppTableColumn>
+        <AppTableColumn label="结果" width="80">
           <template #default="{ row }">
-            <el-tag :type="row.result === 1 ? 'success' : 'danger'" size="small">
+            <UBadge :color="row.result === 1 ? 'success' : 'error'" size="sm" variant="soft">
               {{ row.result === 1 ? '成功' : '失败' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="耗时" width="90">
+        </AppTableColumn>
+        <AppTableColumn label="耗时" width="90">
           <template #default="{ row }">{{ row.costMs != null ? row.costMs + ' ms' : '—' }}</template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -165,7 +169,7 @@ onMounted(() => {
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
   </div>
 </template>
 
@@ -173,10 +177,6 @@ onMounted(() => {
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .pager {
@@ -194,7 +194,7 @@ onMounted(() => {
     }
 
     .error {
-      color: #f56c6c;
+      color: var(--el-color-danger);
     }
   }
 }

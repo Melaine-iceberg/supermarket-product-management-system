@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm, alert } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { getBusinessParams, getDictItems } from '@/api/system'
 import {
@@ -82,9 +83,15 @@ function saveCounter() {
 }
 
 // ---------- 商品录入（FR-SALE-02：条码/编码/PLU/名称/拼音首字母 + 分类树浏览） ----------
-const inputRef = ref()
+/** 录入框外层容器：AppInput 未暴露内部 input，聚焦与输入法监听经 DOM 获取 */
+const inputRef = ref<HTMLElement | null>(null)
 const input = ref('')
 const searching = ref(false)
+
+/** 原生录入框（AppInput → UInput 内部 input） */
+function inputElement(): HTMLInputElement | null {
+  return inputRef.value?.querySelector('input') ?? null
+}
 
 // ---------- 扫码枪保护（IR-HW-01③④⑤ / GAP-P1-13） ----------
 /** 字符间隔 ≤50ms 判定为扫码枪输入（无结束符时据此判定扫码结束并自动查询） */
@@ -161,7 +168,7 @@ async function resolveKeyword(kw: string) {
     candidates.value = list
     candidateVisible.value = list.length > 0
     if (list.length === 0) {
-      ElMessage.warning(`未找到匹配【${kw}】的商品`)
+      notify.warning(`未找到匹配【${kw}】的商品`)
     }
   } finally {
     searching.value = false
@@ -199,7 +206,7 @@ function addToCart(goods: CashierGoodsVO) {
 function confirmWeight() {
   const w = weightDialog.netWeight
   if (w == null || w <= 0) {
-    ElMessage.warning('净重必须大于 0（FR-SALE-04）')
+    notify.warning('净重必须大于 0（FR-SALE-04）')
     return
   }
   weightDialog.visible = false
@@ -271,9 +278,22 @@ function pickBrowseCategory(node: CashierCategoryNode) {
 function pickBrowseGoods(goods: CashierGoodsVO) {
   addToCart(goods)
   if (goods.isWeighed !== 1) {
-    ElMessage.success(`已加入：${goods.name}`)
+    notify.success(`已加入：${goods.name}`)
   }
 }
+
+/** 分类树平铺（整树展开展示；替代 el-tree 的 default-expand-all 展示方式） */
+const browseCategoryRows = computed(() => {
+  const rows: { node: CashierCategoryNode; depth: number }[] = []
+  const walk = (nodes: CashierCategoryNode[], depth: number) => {
+    for (const node of nodes) {
+      rows.push({ node, depth })
+      if (node.children?.length) walk(node.children, depth + 1)
+    }
+  }
+  walk(browseDialog.categoryTree, 0)
+  return rows
+})
 
 // ---------- 无码商品临时登记（FR-SALE-13，Could） ----------
 const tempDialog = reactive({
@@ -293,15 +313,15 @@ function confirmTempItem() {
   const name = tempDialog.name.trim()
   const amount = tempDialog.amount
   if (!name) {
-    ElMessage.warning('请输入无码商品名称')
+    notify.warning('请输入无码商品名称')
     return
   }
   if (name.length > 100) {
-    ElMessage.warning('名称最多 100 字符')
+    notify.warning('名称最多 100 字符')
     return
   }
   if (amount == null || amount <= 0) {
-    ElMessage.warning('金额必须大于 0')
+    notify.warning('金额必须大于 0')
     return
   }
   cart.value.push({
@@ -340,7 +360,7 @@ function removeLine(line: CartLine) {
 
 async function clearCart() {
   if (cart.value.length === 0) return
-  await ElMessageBox.confirm('确认清空当前全部明细？', '整单清空', { type: 'warning' })
+  await confirm('确认清空当前全部明细？', '整单清空', { type: 'warning' })
   resetOrder()
 }
 
@@ -381,7 +401,7 @@ async function doSearchMembers() {
   try {
     memberCandidates.value = await searchMembers(kw)
     if (memberCandidates.value.length === 0) {
-      ElMessage.warning('未找到匹配会员')
+      notify.warning('未找到匹配会员')
     }
   } finally {
     memberDialog.loading = false
@@ -455,33 +475,33 @@ function openOrderRateDialog() {
 function confirmOrderRate() {
   const rate = orderRateDialog.rate
   if (rate == null || rate < bizParams.minDiscountRate || rate > 1) {
-    ElMessage.warning(`整单折扣率须在 ${bizParams.minDiscountRate}~1 之间（BR-SALE-10）`)
+    notify.warning(`整单折扣率须在 ${bizParams.minDiscountRate}~1 之间（BR-SALE-10）`)
     return
   }
   // 最终折扣率 = 会员等级折扣 × 整单折扣，不得低于下限（BR-SALE-10，GAP-P0-09 后端强校验）
   const memberRate = member.value ? Number(member.value.discountRate) : 1
   const finalRate = Math.round(rate * memberRate * 10000) / 10000
   if (finalRate < bizParams.minDiscountRate) {
-    ElMessage.warning(
+    notify.warning(
       `会员折扣 ${memberRate} × 整单折扣 ${rate} = 最终折扣率 ${finalRate}，低于下限 ${bizParams.minDiscountRate}（BR-SALE-10），请调整`,
     )
     return
   }
   if (rate < 1) {
     if (!orderRateDialog.discountReason.trim()) {
-      ElMessage.warning('整单折扣须填写原因（FR-SALE-07）')
+      notify.warning('整单折扣须填写原因（FR-SALE-07）')
       return
     }
     if (!orderRateDialog.authorizerUsername.trim()) {
-      ElMessage.warning('整单折扣须店长授权，请填写授权店长账号（FR-SALE-07）')
+      notify.warning('整单折扣须店长授权，请填写授权店长账号（FR-SALE-07）')
       return
     }
     if (orderRateDialog.authorizerUsername.trim() === auth.user?.username) {
-      ElMessage.warning('折扣授权人不得为当前收银员本人（FR-SALE-07）')
+      notify.warning('折扣授权人不得为当前收银员本人（FR-SALE-07）')
       return
     }
     if (!orderRateDialog.authorizerPassword) {
-      ElMessage.warning('请填写授权店长密码以完成授权（FR-SALE-07）')
+      notify.warning('请填写授权店长密码以完成授权（FR-SALE-07）')
       return
     }
     orderAuth.username = orderRateDialog.authorizerUsername.trim()
@@ -521,28 +541,28 @@ function openOverrideDialog(line: CartLine) {
 function confirmOverride() {
   const price = overrideDialog.price
   if (price == null || price <= 0) {
-    ElMessage.warning('改价单价必须大于 0（FR-SALE-07）')
+    notify.warning('改价单价必须大于 0（FR-SALE-07）')
     return
   }
   const reason = overrideDialog.reason.trim()
   if (!reason) {
-    ElMessage.warning('单品改价须填写原因（FR-SALE-07）')
+    notify.warning('单品改价须填写原因（FR-SALE-07）')
     return
   }
   if (reason.length > 200) {
-    ElMessage.warning('改价原因最多 200 字符')
+    notify.warning('改价原因最多 200 字符')
     return
   }
   if (!overrideDialog.authorizerUsername.trim()) {
-    ElMessage.warning('单品改价须店长授权，请填写授权店长账号（FR-SALE-07）')
+    notify.warning('单品改价须店长授权，请填写授权店长账号（FR-SALE-07）')
     return
   }
   if (overrideDialog.authorizerUsername.trim() === auth.user?.username) {
-    ElMessage.warning('改价授权人不得为当前收银员本人（FR-SALE-07）')
+    notify.warning('改价授权人不得为当前收银员本人（FR-SALE-07）')
     return
   }
   if (!overrideDialog.authorizerPassword) {
-    ElMessage.warning('请填写授权店长密码以完成授权（FR-SALE-07）')
+    notify.warning('请填写授权店长密码以完成授权（FR-SALE-07）')
     return
   }
   const line = overrideDialog.line!
@@ -596,11 +616,11 @@ const balanceCap = computed(() => {
 
 function openPayDialog() {
   if (cart.value.length === 0) {
-    ElMessage.warning('销售明细为空')
+    notify.warning('销售明细为空')
     return
   }
   if (counterNo.value < 1 || counterNo.value > 99) {
-    ElMessage.warning('请先设置收银台号（1~99）')
+    notify.warning('请先设置收银台号（1~99）')
     return
   }
   payDialog.lines = [{ payType: 'CASH', amount: null }]
@@ -627,7 +647,7 @@ function fillExact() {
 /** 储值快捷：BALANCE 行金额 = min(应收, 余额)；无 BALANCE 行则追加（FR-MEM-08） */
 function fillBalance() {
   if (!member.value) {
-    ElMessage.warning('请先识别会员（储值支付仅限会员）')
+    notify.warning('请先识别会员（储值支付仅限会员）')
     return
   }
   let line = payDialog.lines.find((l) => l.payType === 'BALANCE')
@@ -649,7 +669,7 @@ const CASH_QUICK = [10, 20, 50, 100]
 async function submitCheckout() {
   const pays = payDialog.lines.filter((l) => l.amount != null && l.amount > 0)
   if (pays.length === 0) {
-    ElMessage.warning('请录入收款金额')
+    notify.warning('请录入收款金额')
     return
   }
   // 储值支付前端预检（后端兜底）：仅限会员、合计不超应收（不参与找零）与余额（BR-MEM-07）
@@ -658,17 +678,17 @@ async function submitCheckout() {
     .reduce((s, l) => s + (l.amount ?? 0), 0)
   if (balancePaid > 0) {
     if (!member.value) {
-      ElMessage.warning('储值支付仅限会员使用（FR-MEM-08）')
+      notify.warning('储值支付仅限会员使用（FR-MEM-08）')
       return
     }
     if (balancePaid > balanceCap.value + 0.005) {
-      ElMessage.warning(`储值支付不得超过 ￥${money(balanceCap.value)}（应收/余额限制，BR-MEM-07）`)
+      notify.warning(`储值支付不得超过 ￥${money(balanceCap.value)}（应收/余额限制，BR-MEM-07）`)
       return
     }
   }
   const paid = pays.reduce((s, l) => s + (l.amount ?? 0), 0)
   if (paid < estPayable.value - 0.005) {
-    ElMessage.warning(`实收 ${money(paid)} 元不足应收 ${money(estPayable.value)} 元`)
+    notify.warning(`实收 ${money(paid)} 元不足应收 ${money(estPayable.value)} 元`)
     return
   }
   payDialog.submitting = true
@@ -681,7 +701,7 @@ async function submitCheckout() {
         const line = cart.value.find((l) => l.overridePrice != null)
         if (line) openOverrideDialog(line)
       }
-      ElMessage.warning('折扣/改价需店长授权，请重新填写授权密码（FR-SALE-07）')
+      notify.warning('折扣/改价需店长授权，请重新填写授权密码（FR-SALE-07）')
       return
     }
     const result = await checkout({
@@ -733,7 +753,7 @@ function showPersistentCheckoutError(e: unknown) {
   const code = err?.response?.data?.code
   const message = err?.response?.data?.message
   if (code == null || !PERSISTENT_ERROR_CODES.has(code)) return
-  ElMessageBox.alert(message || '结算失败，请核对商品与库存后重试', '结算异常', {
+  alert(message || '结算失败，请核对商品与库存后重试', '结算异常', {
     type: 'error',
     confirmButtonText: '我已确认',
     closeOnClickModal: false,
@@ -779,7 +799,7 @@ function fmtHoldTime(v: string | null | undefined) {
 
 async function holdOrder() {
   if (cart.value.length === 0) {
-    ElMessage.warning('销售明细为空，无需挂单')
+    notify.warning('销售明细为空，无需挂单')
     return
   }
   try {
@@ -808,7 +828,7 @@ async function holdOrder() {
     })
     resetOrder()
     refreshHoldCount()
-    ElMessage.success('已挂单（挂单不扣库存，交班前请及时取单结算）')
+    notify.success('已挂单（挂单不扣库存，交班前请及时取单结算）')
     focusInput()
   } catch {
     // 拦截器已提示
@@ -823,7 +843,7 @@ async function openHoldDialog() {
 /** 取单：先由后端条件更新占用（ACTIVE→TAKEN，防并发重复取单），再恢复购物车 */
 async function resumeHold(hold: HoldVO) {
   if (cart.value.length > 0) {
-    ElMessage.warning('当前已有明细，请先结算或清空再取单')
+    notify.warning('当前已有明细，请先结算或清空再取单')
     return
   }
   const detail = await takeHold(hold.id).catch(() => null)
@@ -874,13 +894,13 @@ async function resumeHold(hold: HoldVO) {
   holdDialog.holds = await listHolds().catch(() => [])
   holdDialog.visible = false
   refreshHoldCount()
-  ElMessage.success(`已取单：${detail.itemCount} 件商品已恢复，请核对后结算`)
+  notify.success(`已取单：${detail.itemCount} 件商品已恢复，请核对后结算`)
   focusInput()
 }
 
 async function removeHold(hold: HoldVO) {
   try {
-    await ElMessageBox.confirm(
+    await confirm(
       `确认删除 ${fmtHoldTime(hold.holdTime)} 的挂单（${hold.itemCount} 件，￥${money(hold.amount)}）？删除后不可恢复。`,
       '删除挂单',
       { type: 'warning' },
@@ -892,7 +912,7 @@ async function removeHold(hold: HoldVO) {
     await deleteHold(hold.id)
     holdDialog.holds = await listHolds().catch(() => [])
     refreshHoldCount()
-    ElMessage.success('挂单已删除')
+    notify.success('挂单已删除')
   } catch {
     // 拦截器已提示（如已被取单）
   }
@@ -923,7 +943,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 function focusInput() {
-  nextTick(() => inputRef.value?.focus())
+  nextTick(() => inputElement()?.focus())
 }
 
 /** 录入框强制英数模式（IR-HW-01⑤）：阻断输入法组合，扫码不受输入法状态影响 */
@@ -938,7 +958,7 @@ function onCompositionEnd() {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
-  const el = (inputRef.value as { input?: HTMLInputElement } | undefined)?.input
+  const el = inputElement()
   el?.addEventListener('compositionstart', blockIme)
   el?.addEventListener('compositionend', onCompositionEnd)
   loadBizParams()
@@ -949,7 +969,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
-  const el = (inputRef.value as { input?: HTMLInputElement } | undefined)?.input
+  const el = inputElement()
   el?.removeEventListener('compositionstart', blockIme)
   el?.removeEventListener('compositionend', onCompositionEnd)
 })
@@ -958,10 +978,10 @@ onUnmounted(() => {
 <template>
   <div class="cashier-page">
     <!-- 顶部：录入区（FR-SALE-01 自动聚焦） -->
-    <el-card class="input-card" shadow="never">
+    <UCard class="input-card">
       <div class="input-row">
         <span class="counter-label">收银台</span>
-        <el-input-number
+        <AppInputNumber
           v-model="counterNo"
           :min="1"
           :max="99"
@@ -970,81 +990,123 @@ onUnmounted(() => {
           style="width: 72px"
           @change="saveCounter"
         />
-        <el-input
-          ref="inputRef"
-          v-model="input"
-          size="large"
-          class="scan-input"
-          placeholder="扫码 / 输入条码、编码、PLU、拼音（英数模式）后回车"
-          clearable
-          autocomplete="off"
-          spellcheck="false"
-          inputmode="text"
-          :loading="searching"
-          @input="onScanInput"
-          @keyup.enter="onInputEnter"
-        >
-          <template #prefix><el-icon><Search /></el-icon></template>
-        </el-input>
-        <el-button size="large" plain class="temp-btn" @click="openBrowse">分类浏览</el-button>
-        <el-button size="large" plain class="temp-btn" @click="openTempDialog">无码商品</el-button>
+        <div ref="inputRef" class="scan-input">
+          <AppInput
+            v-model="input"
+            size="large"
+            class="w-full"
+            placeholder="扫码 / 输入条码、编码、PLU、拼音（英数模式）后回车"
+            clearable
+            autocomplete="off"
+            spellcheck="false"
+            inputmode="text"
+            prefix-icon="Search"
+            :loading="searching"
+            @input="onScanInput"
+            @keyup.enter="onInputEnter"
+          />
+        </div>
+        <UButton
+          size="lg"
+          color="neutral"
+          variant="outline"
+          class="temp-btn"
+          label="分类浏览"
+          @click="openBrowse"
+        />
+        <UButton
+          size="lg"
+          color="neutral"
+          variant="outline"
+          class="temp-btn"
+          label="无码商品"
+          @click="openTempDialog"
+        />
         <div class="hotkeys">回车 录入 ｜ F2 结算 ｜ F4 挂单 ｜ Esc 清空</div>
-        <el-button link size="small" class="exit-link" @click="$router.push('/home')">退出收银</el-button>
+        <UButton
+          variant="link"
+          size="sm"
+          color="neutral"
+          class="exit-link"
+          label="退出收银"
+          @click="$router.push('/home')"
+        />
       </div>
 
       <!-- 候选列表（FR-SALE-02 关键字检索） -->
       <div v-if="candidateVisible" class="candidates">
-        <el-table :data="candidates" size="small" max-height="260" highlight-current-row @row-click="pickCandidate">
-          <el-table-column prop="goodsCode" label="编码" width="120" />
-          <el-table-column prop="name" label="名称" min-width="180">
+        <AppTable
+          :data="candidates"
+          size="small"
+          :max-height="260"
+          highlight-current-row
+          @row-click="pickCandidate"
+        >
+          <AppTableColumn prop="goodsCode" label="编码" width="120" />
+          <AppTableColumn prop="name" label="名称" min-width="180">
             <template #default="{ row }">
               {{ row.name }}<span v-if="row.spec" class="spec">（{{ row.spec }}）</span>
             </template>
-          </el-table-column>
-          <el-table-column prop="barcode" label="条码" width="140" />
-          <el-table-column prop="unitName" label="单位" width="60" align="center" />
-          <el-table-column label="零售价" width="90" align="right">
+          </AppTableColumn>
+          <AppTableColumn prop="barcode" label="条码" width="140" />
+          <AppTableColumn prop="unitName" label="单位" width="60" align="center" />
+          <AppTableColumn label="零售价" width="90" align="right">
             <template #default="{ row }">￥{{ money(row.retailPrice) }}</template>
-          </el-table-column>
-          <el-table-column label="称重" width="60" align="center">
+          </AppTableColumn>
+          <AppTableColumn label="称重" width="60" align="center">
             <template #default="{ row }">
-              <el-tag v-if="row.isWeighed === 1" size="small" type="warning">称重</el-tag>
+              <UBadge v-if="row.isWeighed === 1" size="sm" color="warning" variant="soft">
+                称重
+              </UBadge>
             </template>
-          </el-table-column>
-        </el-table>
+          </AppTableColumn>
+        </AppTable>
         <div class="candidates-tip">点击行选择商品（称重商品将要求输入净重）</div>
       </div>
-    </el-card>
+    </UCard>
 
     <div class="main-area">
       <!-- 左侧：明细区（FR-SALE-01/03） -->
-      <el-card class="cart-card" shadow="never">
+      <UCard class="cart-card">
         <template #header>
           <div class="card-head">
             <span>销售明细（{{ cart.length }} 行 / {{ itemCount }} 件）</span>
-            <el-button text type="danger" :disabled="cart.length === 0" @click="clearCart">
-              整单清空
-            </el-button>
+            <UButton
+              color="error"
+              variant="ghost"
+              :disabled="cart.length === 0"
+              label="整单清空"
+              @click="clearCart"
+            />
           </div>
         </template>
-        <el-table :data="cart" height="100%" class="cart-table" empty-text="暂无商品，请扫码或搜索录入">
-          <el-table-column type="index" label="#" width="44" align="center" />
-          <el-table-column label="商品名称" min-width="200">
+        <AppTable
+          :data="cart"
+          max-height="100%"
+          class="cart-table"
+          empty-text="暂无商品，请扫码或搜索录入"
+        >
+          <AppTableColumn type="index" label="#" width="44" align="center" />
+          <AppTableColumn label="商品名称" min-width="200">
             <template #default="{ row }">
               <div class="goods-name">
                 {{ row.name }}
-                <el-tag v-if="row.isWeighed === 1" size="small" type="warning">称重</el-tag>
-                <el-tag v-if="row.lineType === 'TEMP'" size="small" type="info">非档案商品</el-tag>
+                <UBadge v-if="row.isWeighed === 1" size="sm" color="warning" variant="soft">
+                  称重
+                </UBadge>
+                <UBadge v-if="row.lineType === 'TEMP'" size="sm" color="neutral" variant="soft">
+                  非档案商品
+                </UBadge>
               </div>
               <div v-if="row.spec || row.barcode" class="goods-sub">
                 <span v-if="row.spec">{{ row.spec }}</span>
                 <span v-if="row.barcode">{{ row.barcode }}</span>
               </div>
             </template>
-          </el-table-column>
-          <el-table-column label="单价" width="118" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="单价" width="118" align="right">
             <template #default="{ row }">
-              <el-input-number
+              <AppInputNumber
                 v-if="row.lineType === 'TEMP'"
                 v-model="row.retailPrice"
                 :min="0.01"
@@ -1057,21 +1119,21 @@ onUnmounted(() => {
                 <span :class="{ 'override-price': row.overridePrice != null }">
                   ￥{{ money(row.overridePrice ?? row.retailPrice) }}
                 </span>
-                <el-tooltip
+                <UTooltip
                   v-if="row.overridePrice != null"
-                  :content="`原价 ￥${money(row.retailPrice)}｜改价原因：${row.priceReason}`"
-                  placement="top"
+                  :text="`原价 ￥${money(row.retailPrice)}｜改价原因：${row.priceReason}`"
+                  :content="{ side: 'top' }"
                 >
-                  <el-tag size="small" type="danger" class="override-tag">改价</el-tag>
-                </el-tooltip>
+                  <UBadge size="sm" color="error" variant="soft" class="override-tag">改价</UBadge>
+                </UTooltip>
                 <span class="unit">/{{ row.unitName }}</span>
               </template>
             </template>
-          </el-table-column>
-          <el-table-column label="数量" width="170" align="center">
+          </AppTableColumn>
+          <AppTableColumn label="数量" width="170" align="center">
             <template #default="{ row }">
               <span v-if="row.lineType === 'TEMP'" class="temp-qty">1</span>
-              <el-input-number
+              <AppInputNumber
                 v-else
                 v-model="row.quantity"
                 :min="row.isWeighed === 1 ? 0.001 : 1"
@@ -1081,71 +1143,89 @@ onUnmounted(() => {
                 @change="onQtyChange(row as CartLine)"
               />
             </template>
-          </el-table-column>
-          <el-table-column label="行备注" width="130">
+          </AppTableColumn>
+          <AppTableColumn label="行备注" width="130">
             <template #default="{ row }">
-              <el-input v-model="row.remark" size="small" placeholder="选填" />
+              <AppInput v-model="row.remark" size="small" placeholder="选填" />
             </template>
-          </el-table-column>
-          <el-table-column label="小计（预估）" width="120" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="小计（预估）" width="120" align="right">
             <template #default="{ row }">
               ￥{{ money((row.overridePrice ?? row.retailPrice) * row.quantity) }}
             </template>
-          </el-table-column>
-          <el-table-column label="操作" width="110" align="center">
+          </AppTableColumn>
+          <AppTableColumn label="操作" width="110" align="center">
             <template #default="{ row }">
-              <el-button
+              <UButton
                 v-if="row.lineType !== 'TEMP'"
-                link
-                type="primary"
+                variant="link"
+                size="sm"
+                label="改价"
                 @click="openOverrideDialog(row as CartLine)"
-              >
-                改价
-              </el-button>
-              <el-button link type="danger" @click="removeLine(row as CartLine)">删除</el-button>
+              />
+              <UButton
+                variant="link"
+                size="sm"
+                color="error"
+                label="删除"
+                @click="removeLine(row as CartLine)"
+              />
             </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
+          </AppTableColumn>
+        </AppTable>
+      </UCard>
 
       <!-- 右侧：汇总与操作区（FR-SALE-01） -->
       <div class="summary-col">
         <!-- 会员卡（FR-SALE-05） -->
-        <el-card shadow="never" class="member-card">
+        <UCard class="member-card">
           <template #header>
             <div class="card-head">
               <span>会员</span>
-              <el-button v-if="member" link type="danger" @click="clearMember">移除</el-button>
+              <UButton
+                v-if="member"
+                variant="link"
+                size="sm"
+                color="error"
+                label="移除"
+                @click="clearMember"
+              />
             </div>
           </template>
           <template v-if="member">
             <div class="member-name">{{ member.name }}</div>
             <div class="member-meta">
               {{ member.levelName }} ｜ 积分 {{ member.points }} ｜ 储值 ￥{{ money(member.balance) }}
-              <el-tag v-if="member.status !== 1" size="small" type="danger">已停用</el-tag>
+              <UBadge v-if="member.status !== 1" size="sm" color="error" variant="soft">已停用</UBadge>
             </div>
             <div v-if="memberDisabledTip" class="member-rate member-disabled">
               该会员已停用：不享受折扣与积分累计
             </div>
-            <el-alert
+            <UAlert
               v-if="memberDisabledTip"
               class="member-disabled-alert"
-              type="warning"
-              :closable="false"
-              show-icon
+              color="warning"
+              variant="soft"
+              icon="i-lucide-triangle-alert"
               title="停用会员按散客结算（BR-MEM-03）：本单无会员优惠、不累计积分"
             />
             <div v-else class="member-rate">等级折扣率：{{ Number(member.discountRate).toFixed(2) }}</div>
           </template>
           <template v-else>
-            <el-button class="member-btn" size="large" plain @click="openMemberDialog">
-              <el-icon><User /></el-icon>识别会员
-            </el-button>
+            <UButton
+              class="member-btn"
+              size="lg"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-user"
+              label="识别会员"
+              @click="openMemberDialog"
+            />
           </template>
-        </el-card>
+        </UCard>
 
         <!-- 金额汇总 -->
-        <el-card shadow="never" class="amount-card">
+        <UCard class="amount-card">
           <div class="amount-row"><span>件数</span><b>{{ itemCount }}</b></div>
           <div class="amount-row"><span>商品总额（预估）</span><b>￥{{ money(estGoodsAmount) }}</b></div>
           <div class="amount-row">
@@ -1156,8 +1236,20 @@ onUnmounted(() => {
             <span>整单折扣</span>
             <b>
               {{ orderRateInput != null && orderRateInput < 1 ? orderRateInput.toFixed(2) + ' 折' : '—' }}
-              <el-button link type="primary" size="small" @click="openOrderRateDialog">设置</el-button>
-              <el-button v-if="orderRateInput != null && orderRateInput < 1" link size="small" @click="clearOrderRate">清除</el-button>
+              <UButton
+                variant="link"
+                size="sm"
+                label="设置"
+                @click="openOrderRateDialog"
+              />
+              <UButton
+                v-if="orderRateInput != null && orderRateInput < 1"
+                variant="link"
+                size="sm"
+                color="neutral"
+                label="清除"
+                @click="clearOrderRate"
+              />
             </b>
           </div>
           <div v-if="discountReasonApplied" class="amount-note">折扣原因：{{ discountReasonApplied }}</div>
@@ -1166,7 +1258,7 @@ onUnmounted(() => {
             <b>￥{{ money(estPayable) }}</b>
           </div>
           <!-- 实收/找零常驻汇总区（IR-UI-06：结算面板打开前也可核对，GAP-P1-12） -->
-          <el-divider class="amount-divider" />
+          <USeparator class="amount-divider" />
           <div class="amount-row">
             <span>实收合计</span>
             <b class="change-amount">￥{{ money(paidTotal) }}</b>
@@ -1177,38 +1269,65 @@ onUnmounted(() => {
             <b v-else class="pay-short">收款不足 ￥{{ money(-estChange) }}</b>
           </div>
           <div class="amount-note">促销价 / 会员价以后端结算取价为准（BR-GOODS-04）</div>
-          <el-input v-model="remark" placeholder="单据备注（选填）" size="small" class="order-remark" />
-        </el-card>
+          <AppInput
+            v-model="remark"
+            placeholder="单据备注（选填）"
+            size="small"
+            class="order-remark"
+          />
+        </UCard>
 
         <!-- 操作按钮（FR-SALE-01：结算/挂单/清空/会员/退货） -->
         <div class="action-col">
-          <el-button type="primary" size="large" class="settle-btn" @click="openPayDialog">
-            结算（F2）
-          </el-button>
+          <UButton
+            size="lg"
+            class="settle-btn"
+            label="结算（F2）"
+            @click="openPayDialog"
+          />
           <div class="action-row">
-            <el-button size="large" @click="holdOrder">挂单（F4）</el-button>
-            <el-button size="large" @click="openHoldDialog">
-              取单<el-badge v-if="holdCount > 0" :value="holdCount" class="hold-badge" />
-            </el-button>
+            <UButton
+              size="lg"
+              color="neutral"
+              variant="outline"
+              label="挂单（F4）"
+              @click="holdOrder"
+            />
+            <UButton size="lg" color="neutral" variant="outline" @click="openHoldDialog">
+              取单
+              <UBadge
+                v-if="holdCount > 0"
+                :label="holdCount"
+                color="error"
+                size="sm"
+                class="hold-badge"
+              />
+            </UButton>
           </div>
           <div class="action-row">
-            <el-button size="large" @click="clearCart">清空</el-button>
-            <el-button size="large" @click="$router.push('/sale/return')">退货</el-button>
+            <UButton size="lg" color="neutral" variant="outline" label="清空" @click="clearCart" />
+            <UButton
+              size="lg"
+              color="neutral"
+              variant="outline"
+              label="退货"
+              @click="$router.push('/sale/return')"
+            />
           </div>
         </div>
       </div>
     </div>
 
     <!-- 称重商品净重录入（FR-SALE-04） -->
-    <el-dialog
+    <AppModal
       v-model="weightDialog.visible"
       :title="`净重录入：${weightDialog.goods?.name ?? ''}`"
       width="380px"
       :close-on-click-modal="false"
     >
-      <el-form label-width="90px" @submit.prevent>
-        <el-form-item :label="`净重(${weightDialog.goods?.unitName ?? 'kg'})`">
-          <el-input-number
+      <AppForm label-width="90px" @submit.prevent>
+        <AppFormItem :label="`净重(${weightDialog.goods?.unitName ?? 'kg'})`">
+          <AppInputNumber
             v-model="weightDialog.netWeight"
             :min="0.001"
             :precision="3"
@@ -1218,43 +1337,48 @@ onUnmounted(() => {
             style="width: 100%"
             @keyup.enter="confirmWeight"
           />
-        </el-form-item>
-        <el-form-item v-if="weightDialog.goods" label="单价">
+        </AppFormItem>
+        <AppFormItem v-if="weightDialog.goods" label="单价">
           ￥{{ money(weightDialog.goods.retailPrice) }} / {{ weightDialog.goods.unitName }}
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="weightDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="confirmWeight">加入明细</el-button>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="取消"
+          @click="weightDialog.visible = false"
+        />
+        <UButton label="加入明细" @click="confirmWeight" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 无码商品临时登记（FR-SALE-13）：名称+金额直接入单 -->
-    <el-dialog
+    <AppModal
       v-model="tempDialog.visible"
       title="无码商品临时登记"
       width="400px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+      <UAlert
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="适用于条码缺失的临时商品：录入名称与金额直接计入本单"
         description="不关联商品档案、不扣减库存、不支持退货；单据明细将标记“非档案商品”，便于日结对账。"
         class="dialog-alert"
       />
-      <el-form label-width="70px" @submit.prevent>
-        <el-form-item label="名称">
-          <el-input
+      <AppForm label-width="70px" @submit.prevent>
+        <AppFormItem label="名称">
+          <AppInput
             v-model="tempDialog.name"
             maxlength="100"
             placeholder="如：代客加工 / 散装赠品"
             @keyup.enter="confirmTempItem"
           />
-        </el-form-item>
-        <el-form-item label="金额">
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="金额">
+          <AppInputNumber
             v-model="tempDialog.amount"
             :min="0.01"
             :precision="2"
@@ -1263,119 +1387,151 @@ onUnmounted(() => {
             style="width: 100%"
             @keyup.enter="confirmTempItem"
           />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="tempDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="confirmTempItem">加入明细</el-button>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="取消"
+          @click="tempDialog.visible = false"
+        />
+        <UButton label="加入明细" @click="confirmTempItem" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 分类树浏览点选（FR-SALE-02③）：左分类树右商品，点击行入单 -->
-    <el-dialog v-model="browseDialog.visible" title="分类浏览选品" width="860px" top="6vh">
+    <AppModal v-model="browseDialog.visible" title="分类浏览选品" width="860px">
       <div class="browse-layout">
         <div class="browse-tree">
-          <el-button
-            size="small"
-            :type="browseDialog.categoryId === null ? 'primary' : 'default'"
+          <UButton
+            size="sm"
+            :color="browseDialog.categoryId === null ? 'primary' : 'neutral'"
+            :variant="browseDialog.categoryId === null ? 'solid' : 'outline'"
             class="browse-all-btn"
+            label="全部商品"
             @click="browseDialog.categoryId = null; loadBrowseGoods()"
-          >
-            全部商品
-          </el-button>
-          <el-tree
-            :data="browseDialog.categoryTree"
-            :props="{ label: 'name', children: 'children' }"
-            node-key="id"
-            highlight-current
-            :expand-on-click-node="false"
-            default-expand-all
-            @node-click="pickBrowseCategory"
-          >
-            <template #default="{ data }">
-              <span :class="{ 'node-disabled': data.status !== 1 }">{{ data.name }}</span>
-            </template>
-          </el-tree>
+          />
+          <!-- 整树展开展示（原 el-tree default-expand-all）：高亮当前分类，停用分类置灰 -->
+          <div class="category-tree" role="tree">
+            <div
+              v-for="item in browseCategoryRows"
+              :key="item.node.id"
+              class="app-tree-node category-node"
+              :class="{
+                'is-current': browseDialog.categoryId === item.node.id,
+                'node-disabled': item.node.status !== 1,
+              }"
+              :style="{ paddingLeft: `${item.depth * 14 + 8}px` }"
+              role="treeitem"
+              :aria-selected="browseDialog.categoryId === item.node.id"
+              @click="pickBrowseCategory(item.node)"
+            >
+              {{ item.node.name }}
+            </div>
+          </div>
         </div>
-        <el-table
-          v-loading="browseDialog.loading"
+        <AppTable
+          :loading="browseDialog.loading"
           :data="browseDialog.goods"
           size="small"
-          max-height="440"
+          :max-height="440"
           highlight-current-row
           class="browse-table"
           empty-text="该分类下暂无启用商品"
           @row-click="pickBrowseGoods"
         >
-          <el-table-column prop="barcode" label="条码" width="130" />
-          <el-table-column label="名称" min-width="160">
+          <AppTableColumn prop="barcode" label="条码" width="130" />
+          <AppTableColumn label="名称" min-width="160">
             <template #default="{ row }">
               {{ row.name }}<span v-if="row.spec" class="spec">（{{ row.spec }}）</span>
             </template>
-          </el-table-column>
-          <el-table-column prop="unitName" label="单位" width="56" align="center" />
-          <el-table-column label="零售价" width="86" align="right">
+          </AppTableColumn>
+          <AppTableColumn prop="unitName" label="单位" width="56" align="center" />
+          <AppTableColumn label="零售价" width="86" align="right">
             <template #default="{ row }">￥{{ money(row.retailPrice) }}</template>
-          </el-table-column>
-          <el-table-column label="称重" width="56" align="center">
+          </AppTableColumn>
+          <AppTableColumn label="称重" width="56" align="center">
             <template #default="{ row }">
-              <el-tag v-if="row.isWeighed === 1" size="small" type="warning">称重</el-tag>
+              <UBadge v-if="row.isWeighed === 1" size="sm" color="warning" variant="soft">
+                称重
+              </UBadge>
             </template>
-          </el-table-column>
-        </el-table>
+          </AppTableColumn>
+        </AppTable>
       </div>
       <template #footer>
         <span class="browse-tip">点击商品行加入明细（称重商品将要求输入净重）</span>
-        <el-button @click="browseDialog.visible = false">关闭</el-button>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="关闭"
+          @click="browseDialog.visible = false"
+        />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 会员检索（FR-SALE-05） -->
-    <el-dialog v-model="memberDialog.visible" title="会员识别" width="560px" @open="focusInput">
+    <AppModal v-model="memberDialog.visible" title="会员识别" width="560px" @open="focusInput">
       <div class="member-search-row">
-        <el-input
+        <AppInput
           v-model="memberDialog.keyword"
           placeholder="手机号 / 会员编号 / 姓名"
           clearable
           @keyup.enter="doSearchMembers"
         />
-        <el-button type="primary" :loading="memberDialog.loading" @click="doSearchMembers">查询</el-button>
+        <UButton :loading="memberDialog.loading" label="查询" @click="doSearchMembers" />
       </div>
-      <el-table
+      <AppTable
         v-if="memberCandidates.length"
         :data="memberCandidates"
         size="small"
-        max-height="300"
+        :max-height="300"
         highlight-current-row
         @row-click="pickMember"
       >
-        <el-table-column prop="memberNo" label="会员编号" width="120" />
-        <el-table-column prop="name" label="姓名" width="90" />
-        <el-table-column prop="phone" label="手机号" width="130" />
-        <el-table-column prop="levelName" label="等级" width="90" />
-        <el-table-column label="折扣率" width="80" align="center">
+        <AppTableColumn prop="memberNo" label="会员编号" width="120" />
+        <AppTableColumn prop="name" label="姓名" width="90" />
+        <AppTableColumn prop="phone" label="手机号" width="130" />
+        <AppTableColumn prop="levelName" label="等级" width="90" />
+        <AppTableColumn label="折扣率" width="80" align="center">
           <template #default="{ row }">{{ Number(row.discountRate).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="points" label="积分" width="70" align="right" />
-        <el-table-column label="储值余额" width="95" align="right">
+        </AppTableColumn>
+        <AppTableColumn prop="points" label="积分" width="70" align="right" />
+        <AppTableColumn label="储值余额" width="95" align="right">
           <template #default="{ row }">￥{{ money(row.balance) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="70" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="70" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+            <UBadge
+              :color="row.status === 1 ? 'success' : 'error'"
+              size="sm"
+              variant="soft"
+            >
               {{ row.status === 1 ? '正常' : '停用' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
+        </AppTableColumn>
+      </AppTable>
+    </AppModal>
 
     <!-- 整单折扣（FR-SALE-07 店长授权） -->
-    <el-dialog v-model="orderRateDialog.visible" title="整单折扣（店长授权）" width="400px" :close-on-click-modal="false">
-      <el-alert type="info" :closable="false" show-icon title="收银员不可改价；整单折扣须店长授权（FR-SALE-03/07）" class="dialog-alert" />
-      <el-form label-width="90px" @submit.prevent>
-        <el-form-item label="折扣率">
-          <el-input-number
+    <AppModal
+      v-model="orderRateDialog.visible"
+      title="整单折扣（店长授权）"
+      width="400px"
+      :close-on-click-modal="false"
+    >
+      <UAlert
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
+        title="收银员不可改价；整单折扣须店长授权（FR-SALE-03/07）"
+        class="dialog-alert"
+      />
+      <AppForm label-width="90px" @submit.prevent>
+        <AppFormItem label="折扣率">
+          <AppInputNumber
             v-model="orderRateDialog.rate"
             :min="bizParams.minDiscountRate"
             :max="1"
@@ -1385,53 +1541,72 @@ onUnmounted(() => {
             style="width: 100%"
           />
           <div class="form-tip">范围 {{ bizParams.minDiscountRate }}~1（BR-SALE-10），1 为不打折</div>
-        </el-form-item>
-        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="折扣原因" required>
-          <el-input
+        </AppFormItem>
+        <AppFormItem
+          v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1"
+          label="折扣原因"
+          required
+        >
+          <AppInput
             v-model="orderRateDialog.discountReason"
             maxlength="200"
             placeholder="必填，如：店庆促销 / 批量采购"
           />
-        </el-form-item>
-        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="授权账号">
-          <el-input v-model="orderRateDialog.authorizerUsername" placeholder="店长登录账号（≠ 当前收银员）" />
-        </el-form-item>
-        <el-form-item v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1" label="授权密码" required>
-          <el-input
+        </AppFormItem>
+        <AppFormItem
+          v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1"
+          label="授权账号"
+        >
+          <AppInput
+            v-model="orderRateDialog.authorizerUsername"
+            placeholder="店长登录账号（≠ 当前收银员）"
+          />
+        </AppFormItem>
+        <AppFormItem
+          v-if="orderRateDialog.rate != null && orderRateDialog.rate < 1"
+          label="授权密码"
+          required
+        >
+          <AppInput
             v-model="orderRateDialog.authorizerPassword"
             type="password"
             show-password
             maxlength="50"
             placeholder="店长账号密码（身份校验，FR-SALE-07）"
           />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="orderRateDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="confirmOrderRate">确定</el-button>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="取消"
+          @click="orderRateDialog.visible = false"
+        />
+        <UButton label="确定" @click="confirmOrderRate" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 单品改价（FR-SALE-07 店长授权） -->
-    <el-dialog
+    <AppModal
       v-model="overrideDialog.visible"
       :title="`单品改价：${overrideDialog.line?.name ?? ''}`"
       width="430px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        type="warning"
-        :closable="false"
-        show-icon
+      <UAlert
+        color="warning"
+        variant="soft"
+        icon="i-lucide-triangle-alert"
         title="收银员不可改价：改价须店长现场输入账号密码授权并填写原因（FR-SALE-03/07）"
         class="dialog-alert"
       />
-      <el-form label-width="90px" @submit.prevent>
-        <el-form-item label="原单价">
+      <AppForm label-width="90px" @submit.prevent>
+        <AppFormItem label="原单价">
           ￥{{ money(overrideDialog.line?.retailPrice ?? 0) }} / {{ overrideDialog.line?.unitName ?? '' }}
-        </el-form-item>
-        <el-form-item label="改价单价" required>
-          <el-input-number
+        </AppFormItem>
+        <AppFormItem label="改价单价" required>
+          <AppInputNumber
             v-model="overrideDialog.price"
             :min="0.01"
             :precision="2"
@@ -1440,20 +1615,23 @@ onUnmounted(() => {
             style="width: 100%"
             @keyup.enter="confirmOverride"
           />
-        </el-form-item>
-        <el-form-item label="改价原因" required>
-          <el-input
+        </AppFormItem>
+        <AppFormItem label="改价原因" required>
+          <AppInput
             v-model="overrideDialog.reason"
             maxlength="200"
             placeholder="必填，如：临期折让 / 生鲜品相"
             @keyup.enter="confirmOverride"
           />
-        </el-form-item>
-        <el-form-item label="授权账号" required>
-          <el-input v-model="overrideDialog.authorizerUsername" placeholder="店长登录账号（≠ 当前收银员）" />
-        </el-form-item>
-        <el-form-item label="授权密码" required>
-          <el-input
+        </AppFormItem>
+        <AppFormItem label="授权账号" required>
+          <AppInput
+            v-model="overrideDialog.authorizerUsername"
+            placeholder="店长登录账号（≠ 当前收银员）"
+          />
+        </AppFormItem>
+        <AppFormItem label="授权密码" required>
+          <AppInput
             v-model="overrideDialog.authorizerPassword"
             type="password"
             show-password
@@ -1461,32 +1639,48 @@ onUnmounted(() => {
             placeholder="店长账号密码（身份校验，FR-SALE-07）"
             @keyup.enter="confirmOverride"
           />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button v-if="overrideDialog.line?.overridePrice != null" @click="cancelOverride">取消改价</el-button>
-        <el-button @click="overrideDialog.visible = false">关闭</el-button>
-        <el-button type="primary" @click="confirmOverride">确认改价</el-button>
+        <UButton
+          v-if="overrideDialog.line?.overridePrice != null"
+          color="neutral"
+          variant="outline"
+          label="取消改价"
+          @click="cancelOverride"
+        />
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="关闭"
+          @click="overrideDialog.visible = false"
+        />
+        <UButton label="确认改价" @click="confirmOverride" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 收款结算（FR-SALE-06：一单多方式） -->
-    <el-dialog v-model="payDialog.visible" title="收款结算" width="520px" :close-on-click-modal="false">
+    <AppModal
+      v-model="payDialog.visible"
+      title="收款结算"
+      width="520px"
+      :close-on-click-modal="false"
+    >
       <div class="pay-summary">
         <div class="pay-row"><span>件数</span><b>{{ itemCount }}</b></div>
         <div class="pay-row"><span>应收（预估）</span><b class="payable">￥{{ money(estPayable) }}</b></div>
       </div>
       <div v-for="(line, idx) in payDialog.lines" :key="idx" class="pay-line">
-        <el-select v-model="line.payType" style="width: 120px">
-          <el-option
+        <AppSelect v-model="line.payType" style="width: 120px">
+          <AppOption
             v-for="opt in payTypeOptions"
             :key="opt.value"
             :label="opt.label"
             :value="opt.value"
             :disabled="opt.value === 'BALANCE' && (!member || member.status !== 1)"
           />
-        </el-select>
-        <el-input-number
+        </AppSelect>
+        <AppInputNumber
           v-model="line.amount"
           :min="0.01"
           :precision="2"
@@ -1494,24 +1688,42 @@ onUnmounted(() => {
           placeholder="收款金额"
           style="flex: 1"
         />
-        <el-button
+        <UButton
           v-if="payDialog.lines.length > 1"
-          link
-          type="danger"
+          variant="link"
+          color="error"
+          size="sm"
+          label="删除"
           @click="removePayLine(idx)"
-        >删除</el-button>
+        />
       </div>
       <div class="pay-actions">
-        <el-button size="small" @click="addPayLine">+ 添加收款方式</el-button>
-        <el-button size="small" @click="fillExact">金额=应收</el-button>
-        <el-button
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="outline"
+          label="+ 添加收款方式"
+          @click="addPayLine"
+        />
+        <UButton size="sm" color="neutral" variant="outline" label="金额=应收" @click="fillExact" />
+        <UButton
           v-if="member && member.status === 1"
-          size="small"
-          type="warning"
+          size="sm"
+          color="warning"
           @click="fillBalance"
-        >储值￥{{ money(balanceCap) }}</el-button>
+        >
+          储值￥{{ money(balanceCap) }}
+        </UButton>
         <template v-if="payDialog.lines[0]?.payType === 'CASH'">
-          <el-button v-for="c in CASH_QUICK" :key="c" size="small" @click="fillCash(c)">￥{{ c }}</el-button>
+          <UButton
+            v-for="c in CASH_QUICK"
+            :key="c"
+            size="sm"
+            color="neutral"
+            variant="outline"
+            :label="`￥${c}`"
+            @click="fillCash(c)"
+          />
         </template>
       </div>
       <div class="pay-summary">
@@ -1523,21 +1735,33 @@ onUnmounted(() => {
       </div>
       <div class="pay-note">实收不得低于应收；实际应收以后端结算取价为准，如有差异以结算结果为准</div>
       <template #footer>
-        <el-button @click="payDialog.visible = false">取消（Esc）</el-button>
-        <el-button type="primary" :loading="payDialog.submitting" @click="submitCheckout">确认结算</el-button>
+        <UButton
+          color="neutral"
+          variant="outline"
+          label="取消（Esc）"
+          @click="payDialog.visible = false"
+        />
+        <UButton :loading="payDialog.submitting" label="确认结算" @click="submitCheckout" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 结算成功（FR-SALE-06 小票回显） -->
-    <el-dialog v-model="doneDialog.visible" title="结算成功" width="420px" :close-on-click-modal="false">
+    <AppModal
+      v-model="doneDialog.visible"
+      title="结算成功"
+      width="420px"
+      :close-on-click-modal="false"
+    >
       <div v-if="doneDialog.result" class="done-body">
-        <div class="done-icon"><el-icon color="#67c23a" :size="42"><CircleCheckFilled /></el-icon></div>
+        <div class="done-icon">
+          <UIcon name="i-lucide-circle-check-big" :size="42" style="color: #67c23a" />
+        </div>
         <div class="done-order">{{ doneDialog.result.orderNo }}</div>
-        <el-alert
+        <UAlert
           v-if="doneDialog.result.memberLevelUpgraded"
-          type="success"
-          :closable="false"
-          show-icon
+          color="success"
+          variant="soft"
+          icon="i-lucide-circle-check-big"
           class="upgrade-alert"
           :title="`恭喜！会员已升级为【${doneDialog.result.memberLevelUpgraded}】（BR-MEM-06）`"
           description="升级折扣率与新积分倍率自下一单生效"
@@ -1557,38 +1781,49 @@ onUnmounted(() => {
         </div>
       </div>
       <template #footer>
-        <el-button @click="printDoneReceipt">打印小票</el-button>
-        <el-button type="primary" @click="closeDone">完成</el-button>
+        <UButton color="neutral" variant="outline" label="打印小票" @click="printDoneReceipt" />
+        <UButton label="完成" @click="closeDone" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 挂单列表（FR-SALE-08：落库 hold_order，仅本人可见，超 24 小时自动清理） -->
-    <el-dialog v-model="holdDialog.visible" title="挂单列表" width="660px">
-      <el-table v-if="holdDialog.holds.length" :data="holdDialog.holds" size="small">
-        <el-table-column label="挂单时间" width="150">
+    <AppModal v-model="holdDialog.visible" title="挂单列表" width="660px">
+      <AppTable v-if="holdDialog.holds.length" :data="holdDialog.holds" size="small">
+        <AppTableColumn label="挂单时间" width="150">
           <template #default="{ row }">{{ fmtHoldTime(row.holdTime) }}</template>
-        </el-table-column>
-        <el-table-column prop="counterNo" label="台号" width="60" align="center" />
-        <el-table-column prop="memberName" label="会员" width="90">
+        </AppTableColumn>
+        <AppTableColumn prop="counterNo" label="台号" width="60" align="center" />
+        <AppTableColumn prop="memberName" label="会员" width="90">
           <template #default="{ row }">{{ row.memberName ?? '散客' }}</template>
-        </el-table-column>
-        <el-table-column prop="itemCount" label="件数" width="70" align="right" />
-        <el-table-column label="金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn prop="itemCount" label="件数" width="70" align="right" />
+        <AppTableColumn label="金额" width="100" align="right">
           <template #default="{ row }">￥{{ money(row.amount) }}</template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip>
+        </AppTableColumn>
+        <AppTableColumn prop="remark" label="备注" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="130" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="130" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="resumeHold(row as HoldVO)">取单</el-button>
-            <el-button link type="danger" @click="removeHold(row as HoldVO)">删除</el-button>
+            <UButton variant="link" size="sm" label="取单" @click="resumeHold(row as HoldVO)" />
+            <UButton
+              variant="link"
+              size="sm"
+              color="error"
+              label="删除"
+              @click="removeHold(row as HoldVO)"
+            />
           </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-else description="暂无挂单" :image-size="60" />
+        </AppTableColumn>
+      </AppTable>
+      <UEmpty
+        v-else
+        icon="i-lucide-inbox"
+        description="暂无挂单"
+        :ui="{ avatar: 'size-14' }"
+      />
       <div class="muted note">挂单不扣库存、不计入报表（BR-RPT-03）；仅本人可见，超过 24 小时未取将自动清理（IR-SW-06）。</div>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -1600,7 +1835,7 @@ onUnmounted(() => {
   gap: 10px;
 
   .input-card {
-    :deep(.el-card__body) {
+    :deep([data-slot='body']) {
       padding: 12px 16px;
     }
 
@@ -1611,24 +1846,27 @@ onUnmounted(() => {
 
       .counter-label {
         font-size: 13px;
-        color: #606266;
+        color: var(--el-text-color-regular);
       }
 
       .scan-input {
         flex: 1;
+        min-width: 0;
 
-        :deep(.el-input__wrapper) {
+        :deep(input) {
           font-size: 15px;
         }
       }
 
       .temp-btn {
         font-weight: 500;
+        /* 关键按钮 ≥44px 支持触屏（IR-UI-06：收银台专项，GAP-P1-12） */
+        min-height: 44px;
       }
 
       .hotkeys {
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         white-space: nowrap;
       }
 
@@ -1638,18 +1876,13 @@ onUnmounted(() => {
       }
     }
 
-    /* 关键按钮 ≥44px 支持触屏（IR-UI-06：收银台专项，GAP-P1-12） */
-    :deep(.el-button--large) {
-      min-height: 44px;
-    }
-
     .candidates {
       margin-top: 10px;
 
       .candidates-tip {
         margin-top: 6px;
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
       }
     }
   }
@@ -1661,7 +1894,7 @@ onUnmounted(() => {
     .browse-tree {
       width: 200px;
       flex-shrink: 0;
-      border-right: 1px solid #ebeef5;
+      border-right: 1px solid var(--el-border-color-lighter);
       padding-right: 8px;
       overflow-y: auto;
       max-height: 440px;
@@ -1671,8 +1904,38 @@ onUnmounted(() => {
         margin-bottom: 8px;
       }
 
+      .category-tree {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .category-node {
+        padding-top: 6px;
+        padding-bottom: 6px;
+        font-size: 13px;
+        line-height: 1.4;
+        color: var(--el-text-color-regular);
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+
+        &:hover {
+          background: var(--el-fill-color-light);
+        }
+
+        &.is-current {
+          background: var(--el-color-primary);
+          color: #fff;
+          font-weight: 500;
+        }
+      }
+
       .node-disabled {
-        color: #c0c4cc;
+        color: var(--el-text-color-placeholder);
+        cursor: not-allowed;
       }
     }
 
@@ -1685,7 +1948,7 @@ onUnmounted(() => {
   .browse-tip {
     margin-right: auto;
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .main-area {
@@ -1700,17 +1963,19 @@ onUnmounted(() => {
       flex-direction: column;
       min-width: 0;
 
-      :deep(.el-card__body) {
+      :deep([data-slot='body']) {
         flex: 1;
         min-height: 0;
         padding: 0;
+        display: flex;
+        flex-direction: column;
       }
 
       .cart-table {
         height: 100%;
 
         /* 明细行字号 ≥16px（IR-UI-06 收银台专项，GAP-P2-01） */
-        :deep(.el-table__cell) {
+        :deep(td) {
           font-size: 16px;
         }
       }
@@ -1720,12 +1985,12 @@ onUnmounted(() => {
       }
 
       .temp-qty {
-        color: #909399;
+        color: var(--el-text-color-secondary);
       }
 
       .goods-sub {
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
 
         span + span::before {
           content: ' · ';
@@ -1734,11 +1999,11 @@ onUnmounted(() => {
 
       .unit {
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
       }
 
       .override-price {
-        color: #f56c6c;
+        color: var(--el-color-danger);
         font-weight: 600;
       }
 
@@ -1769,18 +2034,18 @@ onUnmounted(() => {
         .member-meta {
           margin-top: 4px;
           font-size: 13px;
-          color: #606266;
+          color: var(--el-text-color-regular);
         }
 
         .member-rate {
           margin-top: 4px;
           font-size: 13px;
-          color: #409eff;
+          color: var(--el-color-primary);
         }
 
         /* 停用会员常驻提示（BR-MEM-03/GAP-P2-02） */
         .member-disabled {
-          color: #e6a23c;
+          color: var(--el-color-warning);
         }
 
         .member-disabled-alert {
@@ -1793,7 +2058,7 @@ onUnmounted(() => {
       }
 
       .amount-card {
-        :deep(.el-card__body) {
+        :deep([data-slot='body']) {
           padding: 14px 16px;
         }
 
@@ -1803,7 +2068,7 @@ onUnmounted(() => {
           align-items: center;
           padding: 5px 0;
           font-size: 14px;
-          color: #606266;
+          color: var(--el-text-color-regular);
 
           b {
             font-variant-numeric: tabular-nums;
@@ -1813,12 +2078,12 @@ onUnmounted(() => {
         .payable {
           margin-top: 4px;
           padding-top: 10px;
-          border-top: 1px dashed #dcdfe6;
+          border-top: 1px dashed var(--el-border-color);
           font-size: 16px;
 
           /* 应收金额 ≥32px 加粗（IR-UI-06 硬指标，GAP-P2-01） */
           b {
-            color: #f56c6c;
+            color: var(--el-color-danger);
             font-size: 32px;
             font-weight: 700;
           }
@@ -1829,7 +2094,7 @@ onUnmounted(() => {
           .change-amount {
             font-size: 24px;
             font-weight: 700;
-            color: #e6a23c;
+            color: var(--el-color-warning);
           }
 
           b {
@@ -1842,13 +2107,13 @@ onUnmounted(() => {
         }
 
         .pay-short {
-          color: #e6a23c;
+          color: var(--el-color-warning);
         }
 
         .amount-note {
           margin-top: 6px;
           font-size: 12px;
-          color: #c0c4cc;
+          color: var(--el-text-color-placeholder);
         }
 
         .order-remark {
@@ -1870,16 +2135,14 @@ onUnmounted(() => {
           display: flex;
           gap: 10px;
 
-          .el-button {
+          :deep(button) {
             flex: 1;
             margin-left: 0;
           }
         }
 
         .hold-badge {
-          :deep(.el-badge__content) {
-            top: -14px;
-          }
+          margin-left: 4px;
         }
       }
     }
@@ -1891,7 +2154,7 @@ onUnmounted(() => {
 
   .form-tip {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     line-height: 1.4;
   }
 
@@ -1904,7 +2167,7 @@ onUnmounted(() => {
   .pay-summary {
     margin-bottom: 12px;
     padding: 10px 14px;
-    background: #f5f7fa;
+    background: var(--el-bg-color-page);
     border-radius: 6px;
 
     .pay-row {
@@ -1912,11 +2175,11 @@ onUnmounted(() => {
       justify-content: space-between;
       padding: 3px 0;
       font-size: 14px;
-      color: #606266;
+      color: var(--el-text-color-regular);
 
       /* 应收金额 ≥32px 加粗（IR-UI-06 硬指标，GAP-P2-01） */
       .payable {
-        color: #f56c6c;
+        color: var(--el-color-danger);
         font-size: 32px;
         font-weight: 700;
       }
@@ -1925,11 +2188,11 @@ onUnmounted(() => {
       .change-amount {
         font-size: 24px;
         font-weight: 700;
-        color: #e6a23c;
+        color: var(--el-color-warning);
       }
 
       &.short b {
-        color: #f56c6c;
+        color: var(--el-color-danger);
       }
     }
   }
@@ -1950,7 +2213,7 @@ onUnmounted(() => {
 
   .pay-note {
     font-size: 12px;
-    color: #c0c4cc;
+    color: var(--el-text-color-placeholder);
   }
 
   .done-body {
@@ -1968,7 +2231,7 @@ onUnmounted(() => {
     .done-order {
       font-size: 17px;
       font-weight: 600;
-      color: #303133;
+      color: var(--el-text-color-primary);
       margin-bottom: 12px;
       font-variant-numeric: tabular-nums;
     }
@@ -1979,9 +2242,9 @@ onUnmounted(() => {
       gap: 4px 24px;
       text-align: left;
       font-size: 14px;
-      color: #606266;
+      color: var(--el-text-color-regular);
       padding: 10px 14px;
-      background: #f5f7fa;
+      background: var(--el-bg-color-page);
       border-radius: 6px;
 
       b {
@@ -1990,7 +2253,7 @@ onUnmounted(() => {
       }
 
       .change {
-        color: #e6a23c;
+        color: var(--el-color-warning);
       }
     }
 
@@ -2002,19 +2265,19 @@ onUnmounted(() => {
         margin: 0 4px;
         padding: 2px 10px;
         font-size: 13px;
-        background: #ecf5ff;
-        color: #409eff;
+        background: var(--el-color-primary-light-9);
+        color: var(--el-color-primary);
         border-radius: 4px;
       }
     }
   }
 
   .spec {
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .muted {
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .note {

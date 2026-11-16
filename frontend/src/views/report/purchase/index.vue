@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
+import { cssColor } from '@/utils/css'
 import { onMounted, reactive, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { useRouter } from 'vue-router'
@@ -136,7 +138,7 @@ function renderTrend() {
         type: 'line',
         smooth: true,
         data: priceRows.value.map((r) => Number(r.price)),
-        itemStyle: { color: '#409eff' },
+        itemStyle: { color: cssColor('--el-color-primary', '#409eff') },
         label: { show: true, position: 'top', fontSize: 10 },
       },
     ],
@@ -152,7 +154,7 @@ async function handleExport() {
   exporting.value = true
   try {
     await exportPurchaseReport(view.value, range, { goodsId: selectedGoodsId.value })
-    ElMessage.success('导出成功')
+    notify.success('导出成功')
   } finally {
     exporting.value = false
   }
@@ -341,37 +343,36 @@ onMounted(load)
 <template>
   <div class="page">
     <!-- 筛选区 -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="视图">
-          <el-radio-group v-model="view" @change="search">
-            <el-radio-button v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="视图">
+          <AppRadioGroup v-model="view" @change="search">
+            <AppRadioButton v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
               {{ label }}
-            </el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="view === 'price-trend'" label="商品">
-          <el-select
+            </AppRadioButton>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="view === 'price-trend'" label="商品">
+          <AppSelect
             v-model="selectedGoodsId"
             filterable
             remote
-            reserve-keyword
             placeholder="搜索商品名称/编码"
             :remote-method="searchGoods"
             :loading="goodsLoading"
             style="width: 240px"
             @change="handleGoodsChange"
           >
-            <el-option
+            <AppOption
               v-for="g in goodsOptions"
               :key="g.id"
               :label="`${g.goodsCode} - ${g.name}`"
               :value="g.id"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="日期区间">
-          <el-date-picker
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="日期区间">
+          <AppDatePicker
             v-model="dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -379,174 +380,180 @@ onMounted(load)
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button :loading="exporting" @click="handleExport">导出</el-button>
-          <el-button @click="handlePrint">打印</el-button>
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex items-center gap-2">
+            <UButton @click="search">查询</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
+          </div>
+        </AppFormItem>
+      </AppForm>
       <div class="presets">
-        <el-button v-for="p in RANGE_PRESETS" :key="p.key" size="small" @click="setRange(p.key)">
+        <UButton
+          v-for="p in RANGE_PRESETS"
+          :key="p.key"
+          size="sm"
+          color="neutral"
+          variant="outline"
+          @click="setRange(p.key)"
+        >
           {{ p.label }}
-        </el-button>
+        </UButton>
       </div>
-    </el-card>
+    </UCard>
 
     <!-- 采购汇总（供应商/商品） -->
-    <el-card v-if="view === 'summary-supplier' || view === 'summary-goods'">
+    <UCard v-if="view === 'summary-supplier' || view === 'summary-goods'">
       <template #header>
         <span>{{ view === 'summary-supplier' ? '采购汇总表（供应商维度）' : '采购汇总表（商品维度）' }}</span>
       </template>
-      <el-table v-loading="loading" border :data="summaryRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column v-if="view === 'summary-supplier'" prop="supplierName" label="供应商" min-width="160" show-overflow-tooltip />
-        <el-table-column v-if="view === 'summary-goods'" prop="goodsCode" label="商品编码" width="120" />
-        <el-table-column v-if="view === 'summary-goods'" prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
-        <el-table-column v-if="view === 'summary-goods'" prop="categoryName" label="分类" width="120" show-overflow-tooltip />
-        <el-table-column label="单数" prop="orderCount" width="70" align="right" />
-        <el-table-column label="采购数量" width="90" align="right">
+      <AppTable :loading="loading" border :data="summaryRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn v-if="view === 'summary-supplier'" prop="supplierName" label="供应商" min-width="160" show-overflow-tooltip />
+        <AppTableColumn v-if="view === 'summary-goods'" prop="goodsCode" label="商品编码" width="120" />
+        <AppTableColumn v-if="view === 'summary-goods'" prop="goodsName" label="商品名称" min-width="160" show-overflow-tooltip />
+        <AppTableColumn v-if="view === 'summary-goods'" prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <AppTableColumn label="单数" prop="orderCount" width="70" align="right" />
+        <AppTableColumn label="采购数量" width="90" align="right">
           <template #default="{ row }">{{ qty(row.purchaseQty) }}</template>
-        </el-table-column>
-        <el-table-column label="采购金额" width="110" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="采购金额" width="110" align="right">
           <template #default="{ row }">{{ money(row.purchaseAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="已入库" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="已入库" width="90" align="right">
           <template #default="{ row }">{{ qty(row.receivedQty) }}</template>
-        </el-table-column>
-        <el-table-column label="在途" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="在途" width="80" align="right">
           <template #default="{ row }">{{ qty(row.inTransitQty) }}</template>
-        </el-table-column>
-        <el-table-column label="退货数量" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="退货数量" width="90" align="right">
           <template #default="{ row }">{{ qty(row.returnQty) }}</template>
-        </el-table-column>
-        <el-table-column label="退货金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="退货金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.returnAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="已结算" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="已结算" width="100" align="right">
           <template #default="{ row }">{{ money(row.settledAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="部分结算" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="部分结算" width="100" align="right">
           <template #default="{ row }">{{ money(row.partialSettledAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button
+            <UButton
               v-if="view === 'summary-supplier'"
-              link
-              type="primary"
+              variant="link"
               @click="openDrillOrders({ supplierId: row.supplierId ?? undefined }, `供应商 ${row.supplierName}`)"
             >
               下钻
-            </el-button>
-            <el-button
+            </UButton>
+            <UButton
               v-else
-              link
-              type="primary"
+              variant="link"
               @click="openDrillOrders({ goodsId: row.goodsId ?? undefined }, `商品 ${row.goodsName}`)"
             >
               下钻
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 供应商排行 -->
-    <el-card v-if="view === 'supplier-ranking'">
+    <UCard v-if="view === 'supplier-ranking'">
       <template #header><span>供应商采购排行</span></template>
-      <el-table v-loading="loading" border :data="rankingRows" stripe>
-        <el-table-column type="index" label="排名" width="60" align="center" />
-        <el-table-column prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
-        <el-table-column label="单数" prop="orderCount" width="70" align="right" />
-        <el-table-column label="采购数量" width="100" align="right">
+      <AppTable :loading="loading" border :data="rankingRows" stripe>
+        <AppTableColumn type="index" label="排名" width="60" align="center" />
+        <AppTableColumn prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
+        <AppTableColumn label="单数" prop="orderCount" width="70" align="right" />
+        <AppTableColumn label="采购数量" width="100" align="right">
           <template #default="{ row }">{{ qty(row.purchaseQty) }}</template>
-        </el-table-column>
-        <el-table-column label="采购金额" width="120" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="采购金额" width="120" align="right">
           <template #default="{ row }">
             <b>{{ money(row.purchaseAmount) }}</b>
           </template>
-        </el-table-column>
-        <el-table-column label="占比" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="占比" width="90" align="right">
           <template #default="{ row }">{{ percent(row.shareRate) }}</template>
-        </el-table-column>
-        <el-table-column label="已入库" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="已入库" width="90" align="right">
           <template #default="{ row }">{{ qty(row.receivedQty) }}</template>
-        </el-table-column>
-        <el-table-column label="在途" width="80" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="在途" width="80" align="right">
           <template #default="{ row }">{{ qty(row.inTransitQty) }}</template>
-        </el-table-column>
-        <el-table-column label="退货金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="退货金额" width="100" align="right">
           <template #default="{ row }">{{ money(row.returnAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button
-              link
-              type="primary"
+            <UButton
+              variant="link"
               @click="openDrillOrders({ supplierId: row.supplierId ?? undefined }, `供应商 ${row.supplierName}`)"
             >
               下钻
-            </el-button>
+            </UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 价格波动 -->
-    <el-card v-if="view === 'price-trend'">
+    <UCard v-if="view === 'price-trend'">
       <template #header><span>采购价格波动分析</span></template>
-      <el-alert
+      <UAlert
         v-if="!selectedGoodsId"
         title="请先选择商品"
-        type="info"
-        :closable="false"
-        show-icon
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         class="mb-16"
       />
       <template v-else>
         <div ref="trendChartRef" class="trend-chart" />
-        <el-table v-loading="loading" border :data="priceRows" stripe class="mt-16">
-          <el-table-column type="index" label="#" width="50" align="center" />
-          <el-table-column prop="orderNo" label="采购单号" width="160" />
-          <el-table-column prop="supplierName" label="供应商" min-width="160" show-overflow-tooltip />
-          <el-table-column label="采购时间" width="160">
+        <AppTable :loading="loading" border :data="priceRows" stripe class="mt-16">
+          <AppTableColumn type="index" label="#" width="50" align="center" />
+          <AppTableColumn prop="orderNo" label="采购单号" width="160" />
+          <AppTableColumn prop="supplierName" label="供应商" min-width="160" show-overflow-tooltip />
+          <AppTableColumn label="采购时间" width="160">
             <template #default="{ row }">{{ fmtTime(row.orderTime) }}</template>
-          </el-table-column>
-          <el-table-column label="数量" width="90" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="数量" width="90" align="right">
             <template #default="{ row }">{{ qty(row.quantity) }}</template>
-          </el-table-column>
-          <el-table-column label="单价" width="100" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="单价" width="100" align="right">
             <template #default="{ row }">
               <b>{{ money(row.price) }}</b>
             </template>
-          </el-table-column>
-        </el-table>
+          </AppTableColumn>
+        </AppTable>
       </template>
-    </el-card>
+    </UCard>
 
     <!-- 到货及时率 -->
-    <el-card v-if="view === 'arrival'">
+    <UCard v-if="view === 'arrival'">
       <template #header><span>到货及时率统计</span></template>
-      <el-table v-loading="loading" border :data="arrivalRows" stripe>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
-        <el-table-column label="到货次数" prop="receiptCount" width="100" align="right" />
-        <el-table-column label="按期次数" prop="onTimeCount" width="100" align="right" />
-        <el-table-column label="及时率" width="100" align="right">
+      <AppTable :loading="loading" border :data="arrivalRows" stripe>
+        <AppTableColumn type="index" label="#" width="50" align="center" />
+        <AppTableColumn prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
+        <AppTableColumn label="到货次数" prop="receiptCount" width="100" align="right" />
+        <AppTableColumn label="按期次数" prop="onTimeCount" width="100" align="right" />
+        <AppTableColumn label="及时率" width="100" align="right">
           <template #default="{ row }">
             <span :class="{ success: Number(row.onTimeRate ?? 0) >= 90, warning: Number(row.onTimeRate ?? 0) < 90 }">
               {{ percent(row.onTimeRate) }}
             </span>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDrillReceipts(row as ArrivalRow)">下钻</el-button>
+            <UButton variant="link" @click="openDrillReceipts(row as ArrivalRow)">下钻</UButton>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 下钻单据列表（BR-RPT-06） -->
     <DrillTableDrawer
@@ -556,7 +563,7 @@ onMounted(load)
       :fetch-page="fetchDrillOrdersPage"
     >
       <template #actions="{ row }">
-        <el-button link type="primary" @click="openDrillOrder(row as DrillPurchaseRow)">查看</el-button>
+        <UButton variant="link" @click="openDrillOrder(row as DrillPurchaseRow)">查看</UButton>
       </template>
     </DrillTableDrawer>
     <DrillTableDrawer
@@ -566,7 +573,7 @@ onMounted(load)
       :fetch-page="fetchDrillReceiptsPage"
     >
       <template #actions="{ row }">
-        <el-button link type="primary" @click="openDrillReceipt(row as DrillReceiptRow)">查看</el-button>
+        <UButton variant="link" @click="openDrillReceipt(row as DrillReceiptRow)">查看</UButton>
       </template>
     </DrillTableDrawer>
   </div>
@@ -598,11 +605,11 @@ onMounted(load)
   }
 
   .success {
-    color: #67c23a;
+    color: var(--el-color-success);
   }
 
   .warning {
-    color: #e6a23c;
+    color: var(--el-color-warning);
   }
 }
 </style>

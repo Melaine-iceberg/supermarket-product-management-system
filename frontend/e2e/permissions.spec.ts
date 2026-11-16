@@ -54,7 +54,7 @@ test.describe('收银员前端菜单与越权路由', () => {
     await page.goto('/home')
     await expect(page.locator('.user-info')).toContainText(ACCOUNTS.cashier.realName)
 
-    const aside = page.locator('.aside')
+    const aside = page.locator('#app-sidebar')
     await expect(aside).toContainText('收银台')
     await expect(aside).not.toContainText('系统管理')
     await expect(aside).not.toContainText('经营看板')

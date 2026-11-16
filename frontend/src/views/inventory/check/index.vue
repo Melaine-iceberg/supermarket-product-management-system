@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm, prompt } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { saveBlob } from '@/api/request'
 import { getCategoryTree, pageGoods, type CategoryNode, type GoodsListVO } from '@/api/goods'
@@ -61,7 +61,7 @@ const query = reactive({
   status: '' as string,
   checkerName: '',
   auditorName: '',
-  dateRange: null as [string, string] | null,
+  dateRange: null as string[] | null,
   page: 1,
   size: 20,
 })
@@ -127,7 +127,7 @@ function reasonLabel(value: string | null | undefined) {
 const categoryTree = ref<CategoryNode[]>([])
 const createVisible = ref(false)
 const creating = ref(false)
-const formRef = ref<FormInstance>()
+const formRef = ref()
 const form = reactive({
   scopeType: 'ALL' as 'ALL' | 'CATEGORY' | 'GOODS' | 'WARNING',
   categoryId: '' as number | '',
@@ -180,7 +180,11 @@ function openCreate() {
 }
 
 async function saveCreate() {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   creating.value = true
   try {
     const created = await createStockCheck({
@@ -192,7 +196,7 @@ async function saveCreate() {
     createVisible.value = false
     load()
     try {
-      await ElMessageBox.confirm(
+      await confirm(
         `盘点单 ${created.orderNo} 已创建（共 ${created.itemCount} 个商品），是否立即录入实盘数？`,
         '创建成功',
         { type: 'success', confirmButtonText: '去录入', cancelButtonText: '稍后' },
@@ -345,12 +349,26 @@ function guardClose(done: () => void) {
     done()
     return
   }
-  ElMessageBox.confirm('有未保存的实盘数录入，关闭后将丢失，确定关闭？', '未保存提醒', {
+  confirm('有未保存的实盘数录入，关闭后将丢失，确定关闭？', '未保存提醒', {
     type: 'warning',
   })
     .then(() => done())
     .catch(() => undefined)
 }
+
+/** AppDrawer 未提供 before-close：用可写计算属性拦截关闭，复用未保存录入提醒 */
+const drawerOpen = computed({
+  get: () => drawer.visible,
+  set: (visible: boolean) => {
+    if (visible) {
+      drawer.visible = true
+      return
+    }
+    guardClose(() => {
+      drawer.visible = false
+    })
+  },
+})
 
 function ensureEdit(row: CheckItemVO): EditLine {
   if (!edits.value[row.goodsId]) {
@@ -408,14 +426,14 @@ const saving = ref(false)
 async function saveEntry() {
   const lines = Object.values(edits.value).filter((e) => e.actualQty != null)
   if (!lines.length) {
-    ElMessage.warning('请先录入实盘数量')
+    notify.warning('请先录入实盘数量')
     return
   }
   const noReason = lines.filter(
     (e) => Math.abs(e.actualQty! - e.bookQty) > 1e-9 && !e.diffReason.trim(),
   )
   if (noReason.length) {
-    ElMessage.error(`以下商品实盘与账面存在差异，必须填写原因：${noReason.map((e) => e.name).join('、')}`)
+    notify.error(`以下商品实盘与账面存在差异，必须填写原因：${noReason.map((e) => e.name).join('、')}`)
     return
   }
   saving.value = true
@@ -432,7 +450,7 @@ async function saveEntry() {
       })
     }
     edits.value = {}
-    ElMessage.success(
+    notify.success(
       `已保存 ${lines.length} 行实盘数：盘盈 ${money(summary?.surplusAmount ?? 0)} / 盘亏 ${money(summary?.shortageAmount ?? 0)}`,
     )
     await loadDetail()
@@ -449,10 +467,10 @@ const submitting = ref(false)
 
 async function doSubmit(id: number) {
   if (drawer.visible && drawer.id === id && hasEdits.value) {
-    ElMessage.warning('请先保存已录入的实盘数')
+    notify.warning('请先保存已录入的实盘数')
     return
   }
-  await ElMessageBox.confirm(
+  await confirm(
     '提交后未录入实盘的行将按账面数量确认，单据进入待审核状态，确定提交？',
     '提交审核',
     { type: 'warning' },
@@ -460,7 +478,7 @@ async function doSubmit(id: number) {
   submitting.value = true
   try {
     const summary = await submitStockCheck(id)
-    ElMessage.success(
+    notify.success(
       `已提交审核：盘盈 ${money(summary.surplusAmount)} / 盘亏 ${money(summary.shortageAmount)}`,
     )
     await refreshAfter(id)
@@ -485,11 +503,11 @@ function openAudit(approved: boolean) {
 async function saveAudit() {
   const remark = auditDialog.remark.trim()
   if (!auditDialog.approved && !remark) {
-    ElMessage.warning('驳回意见不能为空')
+    notify.warning('驳回意见不能为空')
     return
   }
   if (!auditDialog.password) {
-    ElMessage.warning('请输入当前账号密码以确认操作')
+    notify.warning('请输入当前账号密码以确认操作')
     return
   }
   auditing.value = true
@@ -497,7 +515,7 @@ async function saveAudit() {
     await auditStockCheck(drawer.id, auditDialog.approved, remark || undefined, auditDialog.password)
     auditDialog.visible = false
     auditDialog.password = ''
-    ElMessage.success(auditDialog.approved ? '审核通过，库存已按实盘数调整' : '已驳回，单据退回盘点中')
+    notify.success(auditDialog.approved ? '审核通过，库存已按实盘数调整' : '已驳回，单据退回盘点中')
     await loadDetail()
     load()
   } catch {
@@ -509,7 +527,7 @@ async function saveAudit() {
 
 // ---------- 作废（§2.2.4：仅盘点中，提交审核前） ----------
 async function doCancel(id: number) {
-  const { value } = await ElMessageBox.prompt(
+  const { value } = await prompt(
     '作废后不可恢复（仅盘点中的单据可作废），请填写作废原因：',
     `作废盘点单 ${order.value?.orderNo ?? ''}`,
     {
@@ -519,7 +537,7 @@ async function doCancel(id: number) {
     },
   )
   await cancelStockCheck(id, value.trim())
-  ElMessage.success('已作废')
+  notify.success('已作废')
   await refreshAfter(id)
 }
 
@@ -559,7 +577,7 @@ async function onImportFile(e: Event) {
   try {
     const res = await importCheckActual(drawer.id, file)
     edits.value = {}
-    ElMessage.success(
+    notify.success(
       `成功导入 ${res.importedCount} 行实盘数：盘盈 ${money(res.summary.surplusAmount)} / 盘亏 ${money(res.summary.shortageAmount)}`,
     )
     await loadDetail()
@@ -576,24 +594,24 @@ async function onImportFile(e: Event) {
 <template>
   <div class="page">
     <!-- 列表查询（FR-INV-07） -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="盘点单号">
-          <el-input v-model="query.orderNo" placeholder="单号模糊查询" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 110px">
-            <el-option v-for="(s, k) in statusMap" :key="k" :label="s.label" :value="k" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="盘点人">
-          <el-input v-model="query.checkerName" placeholder="用户名" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="审核人">
-          <el-input v-model="query.auditorName" placeholder="用户名" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="盘点日期">
-          <el-date-picker
+    <UCard class="search-card" :ui="{ body: 'pb-0.5' }">
+      <AppForm inline>
+        <AppFormItem label="盘点单号">
+          <AppInput v-model="query.orderNo" placeholder="单号模糊查询" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppSelect v-model="query.status" clearable placeholder="全部" style="width: 110px">
+            <AppOption v-for="(s, k) in statusMap" :key="k" :label="s.label" :value="k" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="盘点人">
+          <AppInput v-model="query.checkerName" placeholder="用户名" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="审核人">
+          <AppInput v-model="query.auditorName" placeholder="用户名" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="盘点日期">
+          <AppDatePicker
             v-model="query.dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -601,68 +619,69 @@ async function onImportFile(e: Event) {
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+        <AppFormItem>
+          <div class="flex items-center gap-2">
+            <UButton label="查询" @click="search" />
+            <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+          </div>
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>盘点单</span>
-          <el-button
+          <UButton
             v-if="auth.hasPerm('sys:check:create')"
-            type="primary"
+            icon="i-lucide-plus"
+            label="新建盘点单"
             @click="openCreate"
-          >
-            <el-icon><Plus /></el-icon>新建盘点单
-          </el-button>
+          />
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="orderNo" label="盘点单号" width="140" />
-        <el-table-column label="盘点范围" min-width="200">
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn prop="orderNo" label="盘点单号" width="140" />
+        <AppTableColumn label="盘点范围" min-width="200">
           <template #default="{ row }">
             <div class="scope-cell">
-              <el-tag size="small" effect="plain">{{ scopeTypeMap[row.scopeType] ?? row.scopeType }}</el-tag>
+              <UBadge size="sm" variant="outline">{{ scopeTypeMap[row.scopeType] ?? row.scopeType }}</UBadge>
               <span class="scope-desc">{{ row.scopeDesc }}</span>
             </div>
           </template>
-        </el-table-column>
-        <el-table-column label="状态" width="92" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="92" align="center">
           <template #default="{ row }">
-            <el-tag :type="statusMap[row.status as CheckStatus]?.type ?? 'info'">
+            <UBadge :color="statusMap[row.status as CheckStatus]?.type ?? 'info'" variant="soft">
               {{ statusMap[row.status as CheckStatus]?.label ?? row.status }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="checkerName" label="盘点人" width="90" />
-        <el-table-column label="开始时间" width="160">
+        </AppTableColumn>
+        <AppTableColumn prop="checkerName" label="盘点人" width="90" />
+        <AppTableColumn label="开始时间" width="160">
           <template #default="{ row }">{{ fmtTime(row.startTime) }}</template>
-        </el-table-column>
-        <el-table-column label="录入进度" width="150">
+        </AppTableColumn>
+        <AppTableColumn label="录入进度" width="150">
           <template #default="{ row }">
             <span class="qty">{{ row.enteredCount }}/{{ row.itemCount }}</span>
-            <el-tag v-if="row.diffCount > 0" type="danger" size="small" class="diff-tag">
+            <UBadge v-if="row.diffCount > 0" color="error" variant="soft" size="sm" class="diff-tag">
               差异 {{ row.diffCount }} 行
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="盘盈金额" width="96" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="盘盈金额" width="96" align="right">
           <template #default="{ row }">
             <span :class="Number(row.surplusAmount) > 0 ? 'surplus' : ''">{{ money(row.surplusAmount) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="盘亏金额" width="96" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="盘亏金额" width="96" align="right">
           <template #default="{ row }">
             <span :class="Number(row.shortageAmount) > 0 ? 'shortage' : ''">{{ money(row.shortageAmount) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="审核人 / 时间" width="170">
+        </AppTableColumn>
+        <AppTableColumn label="审核人 / 时间" width="170">
           <template #default="{ row }">
             <div v-if="row.auditorName">
               <div>{{ row.auditorName }}</div>
@@ -670,35 +689,40 @@ async function onImportFile(e: Event) {
             </div>
             <span v-else>—</span>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="210" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="210" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row as CheckOrderVO)">
+            <UButton variant="link" size="sm" @click="openDetail(row as CheckOrderVO)">
               {{ row.status === 'CHECKING' ? '录入' : '详情' }}
-            </el-button>
-            <el-button
+            </UButton>
+            <UButton
               v-if="row.status === 'CHECKING' && auth.hasPerm('sys:check:submit')"
-              link
-              type="primary"
+              variant="link"
+              size="sm"
+              label="提交审核"
               @click="doSubmit(row.id)"
-            >提交审核</el-button>
-            <el-button
+            />
+            <UButton
               v-if="row.status === 'PENDING_AUDIT' && auth.hasPerm('sys:check:audit')"
-              link
-              type="success"
+              variant="link"
+              size="sm"
+              color="success"
+              label="审核"
               @click="openDetail(row as CheckOrderVO)"
-            >审核</el-button>
-            <el-button
+            />
+            <UButton
               v-if="row.status === 'CHECKING' && auth.hasPerm('sys:check:cancel')"
-              link
-              type="danger"
+              variant="link"
+              size="sm"
+              color="error"
+              label="作废"
               @click="doCancel(row.id)"
-            >作废</el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -707,104 +731,97 @@ async function onImportFile(e: Event) {
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
 
     <!-- 新建盘点单（FR-INV-07） -->
-    <el-dialog v-model="createVisible" title="新建盘点单" width="560px" :close-on-click-modal="false">
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+    <AppModal v-model="createVisible" title="新建盘点单" width="560px" :close-on-click-modal="false">
+      <UAlert
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="创建时系统快照账面数量作为盘点基准；同一商品存在未审核完成的盘点单时不可重复创建（BR-INV-09）"
         class="dialog-alert"
       />
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
-        <el-form-item label="盘点范围" prop="scopeType">
-          <el-radio-group v-model="form.scopeType">
-            <el-radio value="ALL">全店</el-radio>
-            <el-radio value="CATEGORY">分类</el-radio>
-            <el-radio value="GOODS">指定商品</el-radio>
-            <el-radio value="WARNING">预警商品</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="form.scopeType === 'CATEGORY'" label="盘点分类" prop="categoryId">
-          <el-tree-select
+      <AppForm ref="formRef" :model="form" :rules="rules" label-width="90px">
+        <AppFormItem label="盘点范围" prop="scopeType">
+          <AppRadioGroup v-model="form.scopeType">
+            <AppRadio value="ALL">全店</AppRadio>
+            <AppRadio value="CATEGORY">分类</AppRadio>
+            <AppRadio value="GOODS">指定商品</AppRadio>
+            <AppRadio value="WARNING">预警商品</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem v-if="form.scopeType === 'CATEGORY'" label="盘点分类" prop="categoryId">
+          <AppTreeSelect
             v-model="form.categoryId"
             :data="categoryTree"
             :props="{ label: 'name', children: 'children' }"
             node-key="id"
-            check-strictly
             clearable
-            default-expand-all
             placeholder="选择分类（含其子分类）"
             style="width: 100%"
           />
-        </el-form-item>
-        <el-form-item v-if="form.scopeType === 'GOODS'" label="选择商品" prop="goodsIds">
-          <el-select
+        </AppFormItem>
+        <AppFormItem v-if="form.scopeType === 'GOODS'" label="选择商品" prop="goodsIds">
+          <AppSelect
             v-model="form.goodsIds"
             multiple
             filterable
             remote
             :remote-method="searchGoods"
             :loading="goodsLoading"
-            reserve-keyword
             placeholder="输入名称或条码搜索，最多 500 个"
             style="width: 100%"
           >
-            <el-option
+            <AppOption
               v-for="g in goodsOptions"
               :key="g.id"
               :label="`${g.name}（${g.goodsCode}）`"
               :value="g.id"
-            >
-              <span>{{ g.name }}</span>
-              <span class="option-sub">{{ g.goodsCode }} / {{ g.barcode || '无条码' }}</span>
-            </el-option>
-          </el-select>
+            />
+          </AppSelect>
           <div class="form-tip">已选 {{ form.goodsIds.length }} 个商品</div>
-        </el-form-item>
-        <el-form-item v-if="form.scopeType === 'WARNING'" label="范围说明">
+        </AppFormItem>
+        <AppFormItem v-if="form.scopeType === 'WARNING'" label="范围说明">
           <span class="form-tip">自动纳入缺货 / 预警 / 积压状态的商品</span>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" maxlength="100" placeholder="选填，拼入范围描述" />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem label="备注">
+          <AppInput v-model="form.remark" maxlength="100" placeholder="选填，拼入范围描述" />
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="saveCreate">创建</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="createVisible = false" />
+        <UButton :loading="creating" label="创建" @click="saveCreate" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 详情 / 实盘录入抽屉（FR-INV-08） -->
-    <el-drawer
-      v-model="drawer.visible"
+    <AppDrawer
+      v-model="drawerOpen"
       :title="`盘点单 ${order?.orderNo ?? ''}`"
       size="92%"
-      :before-close="guardClose"
     >
       <div v-loading="detailLoading" class="detail">
         <!-- 单头信息 -->
-        <el-descriptions :column="4" border size="small" class="head">
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusMap[order?.status as CheckStatus]?.type ?? 'info'" size="small">
+        <AppDescriptions :column="4" border size="small" class="head">
+          <AppDescriptionsItem label="状态">
+            <UBadge :color="statusMap[order?.status as CheckStatus]?.type ?? 'info'" variant="soft" size="sm">
               {{ statusMap[order?.status as CheckStatus]?.label ?? order?.status }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="盘点范围" :span="2">{{ order?.scopeDesc }}</el-descriptions-item>
-          <el-descriptions-item label="盘点人">{{ order?.checkerName }}</el-descriptions-item>
-          <el-descriptions-item label="开始时间">{{ fmtTime(order?.startTime) }}</el-descriptions-item>
-          <el-descriptions-item label="账面基准时间">{{ fmtTime(order?.baseTime) }}</el-descriptions-item>
-          <el-descriptions-item label="审核人">{{ order?.auditorName || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="审核时间">{{ fmtTime(order?.auditTime) }}</el-descriptions-item>
-          <el-descriptions-item v-if="order?.auditRemark" label="审核意见" :span="2">
+            </UBadge>
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="盘点范围" :span="2">{{ order?.scopeDesc }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="盘点人">{{ order?.checkerName }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="开始时间">{{ fmtTime(order?.startTime) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="账面基准时间">{{ fmtTime(order?.baseTime) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="审核人">{{ order?.auditorName || '—' }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="审核时间">{{ fmtTime(order?.auditTime) }}</AppDescriptionsItem>
+          <AppDescriptionsItem v-if="order?.auditRemark" label="审核意见" :span="2">
             {{ order.auditRemark }}
-          </el-descriptions-item>
-          <el-descriptions-item v-if="order?.cancelReason" label="作废原因" :span="2">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem v-if="order?.cancelReason" label="作废原因" :span="2">
             {{ order.cancelReason }}
-          </el-descriptions-item>
-        </el-descriptions>
+          </AppDescriptionsItem>
+        </AppDescriptions>
 
         <!-- 汇总指标（FR-INV-08 实时口径） -->
         <div class="stats">
@@ -829,52 +846,57 @@ async function onImportFile(e: Event) {
         </div>
 
         <!-- 提示区 -->
-        <el-alert
+        <UAlert
           v-if="order?.status === 'CHECKING' && order.auditRemark"
-          type="warning"
-          :closable="false"
-          show-icon
+          color="warning"
+          variant="soft"
+          icon="i-lucide-triangle-alert"
           :title="`审核驳回：${order.auditRemark}（单据已退回盘点中，录入数据已保留）`"
           class="detail-alert"
         />
-        <el-alert
+        <UAlert
           v-if="order?.status === 'AUDITED' && (order.duringChangeCount ?? 0) > 0"
-          type="info"
-          :closable="false"
-          show-icon
+          color="info"
+          variant="soft"
+          icon="i-lucide-info"
           :title="`盘点期间发生 ${order.duringChangeCount} 笔出入库，差异以审核时结存为准（BR-INV-10）`"
           class="detail-alert"
         />
-        <el-alert
+        <UAlert
           v-if="order?.status === 'CHECKING'"
-          type="info"
-          :closable="false"
-          show-icon
+          color="info"
+          variant="soft"
+          icon="i-lucide-info"
           title="未录入实盘的行提交审核时按账面数量确认；实盘与账面存在差异的行必须填写差异原因"
           class="detail-alert"
         />
 
         <!-- 明细工具栏 -->
         <div class="toolbar">
-          <el-input
+          <AppInput
             v-model="itemsQuery.keyword"
             placeholder="扫码 / 编码 / 条码 / 名称定位行"
             clearable
+            prefix-icon="i-lucide-search"
             style="width: 240px"
             @keyup.enter="searchItems"
             @clear="searchItems"
-          >
-            <template #prefix><el-icon><Search /></el-icon></template>
-          </el-input>
-          <el-checkbox v-model="itemsQuery.onlyDiff" @change="searchItems">只看差异行</el-checkbox>
+          />
+          <UCheckbox v-model="itemsQuery.onlyDiff" label="只看差异行" @change="searchItems" />
           <div class="toolbar-spacer" />
           <template v-if="editable">
-            <el-button :loading="downloading" @click="downloadTemplate">
-              <el-icon><Download /></el-icon>下载模板
-            </el-button>
-            <el-button :loading="importing" @click="pickImportFile">
-              <el-icon><Upload /></el-icon>Excel 导入
-            </el-button>
+            <UButton
+              icon="i-lucide-download"
+              :loading="downloading"
+              label="下载模板"
+              @click="downloadTemplate"
+            />
+            <UButton
+              icon="i-lucide-upload"
+              :loading="importing"
+              label="Excel 导入"
+              @click="pickImportFile"
+            />
             <input
               ref="fileInputRef"
               type="file"
@@ -886,21 +908,21 @@ async function onImportFile(e: Event) {
         </div>
 
         <!-- 明细表（FR-INV-08：逐行录入，差异实时计算） -->
-        <el-table :data="items" stripe size="small" :empty-text="itemsQuery.onlyDiff ? '没有差异行' : '暂无数据'">
-          <el-table-column label="商品" min-width="200" fixed="left">
+        <AppTable :data="items" stripe size="small" :empty-text="itemsQuery.onlyDiff ? '没有差异行' : '暂无数据'">
+          <AppTableColumn label="商品" min-width="200" fixed="left">
             <template #default="{ row }">
               <div class="goods-name">{{ row.name }}</div>
               <div class="sub">{{ row.goodsCode }} / {{ row.barcode || '无条码' }}<template v-if="row.spec"> / {{ row.spec }}</template></div>
             </template>
-          </el-table-column>
-          <el-table-column prop="categoryName" label="分类" width="96" />
-          <el-table-column prop="unitName" label="单位" width="56" align="center" />
-          <el-table-column prop="bookQty" label="账面数量" width="92" align="right">
+          </AppTableColumn>
+          <AppTableColumn prop="categoryName" label="分类" width="96" />
+          <AppTableColumn prop="unitName" label="单位" width="56" align="center" />
+          <AppTableColumn prop="bookQty" label="账面数量" width="92" align="right">
             <template #default="{ row }">{{ qty(row.bookQty) }}</template>
-          </el-table-column>
-          <el-table-column label="实盘数量" width="130" align="center">
+          </AppTableColumn>
+          <AppTableColumn label="实盘数量" width="130" align="center">
             <template #default="{ row }">
-              <el-input-number
+              <AppInputNumber
                 v-if="editable"
                 :model-value="displayActual(row as CheckItemVO)"
                 :precision="(row as CheckItemVO).isWeighed === 1 ? 3 : 0"
@@ -910,30 +932,30 @@ async function onImportFile(e: Event) {
                 :controls="false"
                 placeholder="未盘"
                 class="qty-input"
-                @update:model-value="(v: number | undefined) => setActual(row as CheckItemVO, v)"
+                @update:model-value="(v: number | null) => setActual(row as CheckItemVO, v)"
               />
               <span v-else>{{ row.actualQty == null ? '未盘' : qty(row.actualQty) }}</span>
             </template>
-          </el-table-column>
-          <el-table-column label="差异数量" width="92" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="差异数量" width="92" align="right">
             <template #default="{ row }">
               <span v-if="calcDiff(row as CheckItemVO) != null" :class="calcDiff(row as CheckItemVO)! > 0 ? 'surplus' : calcDiff(row as CheckItemVO)! < 0 ? 'shortage' : ''">
                 {{ calcDiff(row as CheckItemVO)!.toFixed(3).replace(/\.?0+$/, '') || '0' }}
               </span>
               <span v-else>—</span>
             </template>
-          </el-table-column>
-          <el-table-column label="差异金额" width="88" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="差异金额" width="88" align="right">
             <template #default="{ row }">
               <span v-if="calcDiffAmount(row as CheckItemVO) != null" :class="calcDiffAmount(row as CheckItemVO)! > 0 ? 'surplus' : calcDiffAmount(row as CheckItemVO)! < 0 ? 'shortage' : ''">
                 {{ money(calcDiffAmount(row as CheckItemVO)) }}
               </span>
               <span v-else>—</span>
             </template>
-          </el-table-column>
-          <el-table-column label="差异原因" width="150">
+          </AppTableColumn>
+          <AppTableColumn label="差异原因" width="150">
             <template #default="{ row }">
-              <el-select
+              <AppSelect
                 v-if="editable"
                 :model-value="displayReason(row as CheckItemVO)"
                 filterable
@@ -942,27 +964,27 @@ async function onImportFile(e: Event) {
                 class="reason-select"
                 @update:model-value="(v: string) => setReason(row as CheckItemVO, v)"
               >
-                <el-option v-for="r in diffReasonOptions" :key="r.value" :label="r.label" :value="r.value" />
-              </el-select>
+                <AppOption v-for="r in diffReasonOptions" :key="r.value" :label="r.label" :value="r.value" />
+              </AppSelect>
               <span v-else>{{ reasonLabel(row.diffReason) }}</span>
             </template>
-          </el-table-column>
-          <el-table-column label="备注" width="130">
+          </AppTableColumn>
+          <AppTableColumn label="备注" width="130">
             <template #default="{ row }">
-              <el-input
+              <AppInput
                 v-if="editable"
                 :model-value="displayRemark(row as CheckItemVO)"
                 size="small"
                 maxlength="100"
                 placeholder="选填"
-                @update:model-value="(v: string) => setRemark(row as CheckItemVO, v)"
+                @update:model-value="(v: string | number | null) => setRemark(row as CheckItemVO, String(v ?? ''))"
               />
               <span v-else>{{ row.remark || '—' }}</span>
             </template>
-          </el-table-column>
-        </el-table>
+          </AppTableColumn>
+        </AppTable>
 
-        <el-pagination
+        <AppPagination
           v-model:current-page="itemsQuery.page"
           v-model:page-size="itemsQuery.size"
           :total="itemsTotal"
@@ -979,57 +1001,59 @@ async function onImportFile(e: Event) {
           <div class="footer-tip">
             <template v-if="hasEdits">有 {{ Object.keys(edits).length }} 行未保存的录入</template>
           </div>
-          <div>
-            <el-button :loading="printing" @click="printDiff">打印差异表</el-button>
-            <el-button v-if="editable" :loading="saving" type="primary" @click="saveEntry">
-              保存录入
-            </el-button>
-            <el-button
+          <div class="footer-actions">
+            <UButton color="neutral" variant="outline" :loading="printing" label="打印差异表" @click="printDiff" />
+            <UButton v-if="editable" :loading="saving" label="保存录入" @click="saveEntry" />
+            <UButton
               v-if="order?.status === 'CHECKING' && auth.hasPerm('sys:check:submit')"
               :loading="submitting"
-              type="warning"
-              plain
+              color="warning"
+              variant="outline"
+              label="提交审核"
               @click="doSubmit(drawer.id)"
-            >提交审核</el-button>
-            <el-button
+            />
+            <UButton
               v-if="order?.status === 'CHECKING' && auth.hasPerm('sys:check:cancel')"
-              type="danger"
-              plain
+              color="error"
+              variant="outline"
+              label="作废"
               @click="doCancel(drawer.id)"
-            >作废</el-button>
-            <el-button
+            />
+            <UButton
               v-if="order?.status === 'PENDING_AUDIT' && auth.hasPerm('sys:check:audit')"
-              type="success"
+              color="success"
+              label="审核通过"
               @click="openAudit(true)"
-            >审核通过</el-button>
-            <el-button
+            />
+            <UButton
               v-if="order?.status === 'PENDING_AUDIT' && auth.hasPerm('sys:check:audit')"
-              type="danger"
-              plain
+              color="error"
+              variant="outline"
+              label="驳回"
               @click="openAudit(false)"
-            >驳回</el-button>
-            <el-tag v-if="order?.status === 'PENDING_AUDIT' && auditBlockedBySeparation" type="warning">
+            />
+            <UBadge v-if="order?.status === 'PENDING_AUDIT' && auditBlockedBySeparation" color="warning" variant="soft">
               本人盘点的单据：按参数职责分离策略处理，可能被拒绝或放行并记异常日志（BR-SYS-01）
-            </el-tag>
-            <el-tag v-else-if="order?.status === 'PENDING_AUDIT' && selfCheck" type="info">
+            </UBadge>
+            <UBadge v-else-if="order?.status === 'PENDING_AUDIT' && selfCheck" color="info" variant="soft">
               超级管理员代审将记录异常日志（BR-SYS-01）
-            </el-tag>
+            </UBadge>
           </div>
         </div>
       </template>
-    </el-drawer>
+    </AppDrawer>
 
     <!-- 审核对话框（FR-INV-09） -->
-    <el-dialog
+    <AppModal
       v-model="auditDialog.visible"
       :title="auditDialog.approved ? '审核通过' : '驳回盘点单'"
       width="480px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        :type="auditDialog.approved ? 'success' : 'warning'"
-        :closable="false"
-        show-icon
+      <UAlert
+        :color="auditDialog.approved ? 'success' : 'warning'"
+        variant="soft"
+        :icon="auditDialog.approved ? 'i-lucide-circle-check-big' : 'i-lucide-triangle-alert'"
         class="dialog-alert"
         :title="
           auditDialog.approved
@@ -1037,14 +1061,14 @@ async function onImportFile(e: Event) {
             : '驳回后单据退回盘点中，已录入数据保留供修改后重新提交'
         "
       />
-      <el-input
+      <AppInput
         v-model="auditDialog.remark"
         type="textarea"
         :rows="3"
         maxlength="200"
         :placeholder="auditDialog.approved ? '审核意见（选填）' : '驳回意见（必填）'"
       />
-      <el-input
+      <AppInput
         v-model="auditDialog.password"
         type="password"
         show-password
@@ -1053,16 +1077,15 @@ async function onImportFile(e: Event) {
         class="audit-pwd"
       />
       <template #footer>
-        <el-button @click="auditDialog.visible = false">取消</el-button>
-        <el-button
-          :type="auditDialog.approved ? 'success' : 'danger'"
+        <UButton color="neutral" variant="outline" label="取消" @click="auditDialog.visible = false" />
+        <UButton
+          :color="auditDialog.approved ? 'success' : 'error'"
           :loading="auditing"
+          :label="auditDialog.approved ? '确认通过' : '确认驳回'"
           @click="saveAudit"
-        >
-          {{ auditDialog.approved ? '确认通过' : '确认驳回' }}
-        </el-button>
+        />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -1070,10 +1093,6 @@ async function onImportFile(e: Event) {
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .card-head {
@@ -1103,18 +1122,18 @@ async function onImportFile(e: Event) {
   }
 
   .surplus {
-    color: #67c23a;
+    color: var(--ui-success);
     font-weight: 600;
   }
 
   .shortage {
-    color: #f56c6c;
+    color: var(--ui-error);
     font-weight: 600;
   }
 
   .sub {
     font-size: 12px;
-    color: #909399;
+    color: var(--ui-text-muted);
   }
 
   .pager {
@@ -1132,14 +1151,8 @@ async function onImportFile(e: Event) {
 
   .form-tip {
     font-size: 12px;
-    color: #909399;
+    color: var(--ui-text-muted);
     line-height: 1.6;
-  }
-
-  .option-sub {
-    float: right;
-    font-size: 12px;
-    color: #909399;
   }
 
   .detail {
@@ -1158,13 +1171,13 @@ async function onImportFile(e: Event) {
 
       .stat {
         flex: 1;
-        background: #f5f7fa;
+        background: var(--ui-bg-muted);
         border-radius: 6px;
         padding: 10px 14px;
 
         .stat-label {
           font-size: 12px;
-          color: #909399;
+          color: var(--ui-text-muted);
         }
 
         .stat-value {
@@ -1211,7 +1224,15 @@ async function onImportFile(e: Event) {
 
     .footer-tip {
       font-size: 13px;
-      color: #e6a23c;
+      color: var(--ui-warning);
+    }
+
+    .footer-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
     }
   }
 }

@@ -1,5 +1,6 @@
 import { getPrintInfo, type PrintInfoVO } from '@/api/system'
 import { moneyText } from './format'
+import { notify } from './notify'
 
 /**
  * 打印视图（FR-RPT-09、IR-UI-08、IR-HW-02）。
@@ -191,7 +192,7 @@ function tableHtml<T>(columns: PrintColumn<T>[], rows: T[]): string {
 export function openPrintWindow(paper: Paper = 'A4'): Window | null {
   const win = window.open('', '_blank', paper === 'receipt' ? 'width=420,height=640' : 'width=960,height=720')
   if (!win) {
-    ElMessage.warning('浏览器拦截了打印窗口，请允许弹出窗口后重试')
+    notify.warning('浏览器拦截了打印窗口，请允许弹出窗口后重试')
     return null
   }
   win.document.write(

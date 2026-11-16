@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import type { FormInstance } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { useAuthStore } from '@/stores/auth'
 import {
   listUnits,
@@ -27,7 +26,7 @@ async function load() {
 // ---------- 新增 / 编辑（FR-GOODS-08） ----------
 const dialogVisible = ref(false)
 const editing = ref<UnitVO | null>(null)
-const formRef = ref<FormInstance>()
+const formRef = ref<{ validate: () => Promise<boolean> }>()
 const saving = ref(false)
 const form = reactive({ name: '', symbol: '', isWeight: 0, status: 1 })
 
@@ -54,7 +53,11 @@ function openEdit(row: UnitVO) {
 }
 
 async function save() {
-  await formRef.value?.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   saving.value = true
   try {
     const payload = {
@@ -65,10 +68,10 @@ async function save() {
     }
     if (editing.value) {
       await updateUnit(editing.value.id, payload)
-      ElMessage.success('单位已更新')
+      notify.success('单位已更新')
     } else {
       await createUnit(payload)
-      ElMessage.success('单位已创建')
+      notify.success('单位已创建')
     }
     dialogVisible.value = false
     load()
@@ -84,99 +87,98 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <el-card>
+    <UCard>
       <template #header>
-        <div class="card-head">
-          <span>计量单位（称重商品只能选择重量单位）</span>
-          <el-button
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-medium text-default">计量单位（称重商品只能选择重量单位）</span>
+          <UButton
             v-if="auth.hasPerm('sys:unit:create')"
-            type="primary"
+            icon="i-lucide-plus"
+            label="新增单位"
             @click="openCreate"
-          >
-            <el-icon><Plus /></el-icon>新增单位
-          </el-button>
+          />
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="name" label="单位名称" width="160" />
-        <el-table-column label="符号" width="120">
+      <AppTable :data="list" :loading="loading" border stripe>
+        <AppTableColumn prop="name" label="单位名称" width="160" />
+
+        <AppTableColumn label="符号" width="120">
           <template #default="{ row }">{{ row.symbol || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="类型" width="140">
+        </AppTableColumn>
+
+        <AppTableColumn label="类型" width="140">
           <template #default="{ row }">
-            <el-tag v-if="row.isWeight === 1" type="warning" size="small">重量单位</el-tag>
-            <el-tag v-else type="info" size="small" effect="plain">计数单位</el-tag>
+            <UBadge
+              v-if="row.isWeight === 1"
+              color="warning"
+              variant="soft"
+              size="sm"
+            >
+              重量单位
+            </UBadge>
+            <UBadge v-else color="neutral" variant="outline" size="sm">计数单位</UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
+        </AppTableColumn>
+
+        <AppTableColumn label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'">
+            <UBadge :color="row.status === 1 ? 'success' : 'error'" variant="soft" size="sm">
               {{ row.status === 1 ? '启用' : '停用' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" min-width="170" />
-        <el-table-column label="操作" width="100" fixed="right">
+        </AppTableColumn>
+
+        <AppTableColumn prop="createTime" label="创建时间" min-width="170" />
+
+        <AppTableColumn label="操作" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button
+            <UButton
               v-if="auth.hasPerm('sys:unit:update')"
-              link
-              type="primary"
+              variant="link"
+              size="sm"
+              label="编辑"
               @click="openEdit(row as UnitVO)"
-            >编辑</el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+        </AppTableColumn>
+      </AppTable>
+    </UCard>
 
     <!-- 新增 / 编辑对话框 -->
-    <el-dialog
+    <AppModal
       v-model="dialogVisible"
       :title="editing ? `编辑单位：${editing.name}` : '新增单位'"
       width="440px"
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="88px">
-        <el-form-item label="单位名称" prop="name">
-          <el-input v-model="form.name" maxlength="10" placeholder="如 瓶/袋/kg，全局唯一" />
-        </el-form-item>
-        <el-form-item label="单位符号" prop="symbol">
-          <el-input v-model="form.symbol" maxlength="10" placeholder="选填，如 kg" />
-        </el-form-item>
-        <el-form-item label="重量单位">
-          <el-radio-group v-model="form.isWeight">
-            <el-radio :value="1">是</el-radio>
-            <el-radio :value="0">否</el-radio>
-          </el-radio-group>
-          <div class="field-tip">被商品引用后不可变更，否则保存将被拒绝</div>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="0">停用</el-radio>
-          </el-radio-group>
-        </el-form-item>
-      </el-form>
+      <AppForm ref="formRef" :model="form" :rules="rules" label-width="88px">
+        <AppFormItem label="单位名称" prop="name">
+          <AppInput v-model="form.name" maxlength="10" placeholder="如 瓶/袋/kg，全局唯一" />
+        </AppFormItem>
+        <AppFormItem label="单位符号" prop="symbol">
+          <AppInput v-model="form.symbol" maxlength="10" placeholder="选填，如 kg" />
+        </AppFormItem>
+        <AppFormItem label="重量单位">
+          <AppRadioGroup v-model="form.isWeight">
+            <AppRadio :value="1">是</AppRadio>
+            <AppRadio :value="0">否</AppRadio>
+          </AppRadioGroup>
+          <div class="mt-1 text-xs leading-snug text-muted">
+            被商品引用后不可变更，否则保存将被拒绝
+          </div>
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppRadioGroup v-model="form.status">
+            <AppRadio :value="1">启用</AppRadio>
+            <AppRadio :value="0">停用</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
+      </AppForm>
+
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="dialogVisible = false" />
+        <UButton :loading="saving" label="保存" @click="save" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
-
-<style scoped lang="scss">
-.page {
-  .card-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .field-tip {
-    font-size: 12px;
-    color: #909399;
-    line-height: 1.4;
-  }
-}
-</style>

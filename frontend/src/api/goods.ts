@@ -1,4 +1,4 @@
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { http } from './request'
 import { runExportTask, runImportTask } from './task'
 import type { PageResult } from './request'
@@ -476,7 +476,7 @@ export async function exportGoodsFailedRows(file: File) {
   const blob = await http.postDownload('/goods/import/failed-export', file)
   if (blob.type.includes('application/json')) {
     const body = JSON.parse(await blob.text()) as { message?: string }
-    ElMessage.error(body.message || '失败行导出失败')
+    notify.error(body.message || '失败行导出失败')
     throw new Error(body.message || '失败行导出失败')
   }
   return blob

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm, prompt } from '@/utils/confirm'
 import { onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -90,7 +92,11 @@ function openEdit(row: SysUserVO) {
 }
 
 async function save() {
-  await formRef.value.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   saving.value = true
   try {
     if (editing.value) {
@@ -100,7 +106,7 @@ async function save() {
         remark: form.remark || undefined,
         roleIds: form.roleIds,
       })
-      ElMessage.success('用户已更新')
+      notify.success('用户已更新')
     } else {
       const created = await createUser({
         username: form.username,
@@ -130,7 +136,7 @@ function showInitialPassword(password: string) {
 
 async function copyPassword() {
   await navigator.clipboard.writeText(pwdDialog.password)
-  ElMessage.success('已复制到剪贴板')
+  notify.success('已复制到剪贴板')
 }
 
 // ---------- 停用 / 启用 ----------
@@ -139,9 +145,9 @@ async function toggleStatus(row: SysUserVO) {
   const tip = disabling
     ? `停用后 ${row.username} 的登录将立即失效，确定停用？`
     : `确定启用账号 ${row.username}？`
-  await ElMessageBox.confirm(tip, disabling ? '停用用户' : '启用用户', { type: 'warning' })
+  await confirm(tip, disabling ? '停用用户' : '启用用户', { type: 'warning' })
   await updateUserStatus(row.id, disabling ? 0 : 1)
-  ElMessage.success(disabling ? '已停用' : '已启用')
+  notify.success(disabling ? '已停用' : '已启用')
   load()
 }
 
@@ -149,7 +155,7 @@ async function toggleStatus(row: SysUserVO) {
 const resetting = ref(false)
 
 async function handleResetPwd(row: SysUserVO) {
-  const { value: confirmPwd } = await ElMessageBox.prompt(
+  const { value: confirmPwd } = await prompt(
     `将为 ${row.realName}（${row.username}）生成随机初始密码，并要求其首次登录后修改。请输入您的登录密码确认：`,
     '重置密码（敏感操作二次确认）',
     {
@@ -177,94 +183,104 @@ onMounted(() => {
 <template>
   <div class="page">
     <!-- 搜索栏 -->
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="用户名">
-          <el-input v-model="query.username" placeholder="用户名模糊查询" clearable />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 110px">
-            <el-option label="启用" :value="1" />
-            <el-option label="停用" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="query.page = 1; load()">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <UCard class="search-card" :ui="{ body: 'pb-2' }">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="用户名">
+          <AppInput v-model="query.username" placeholder="用户名模糊查询" clearable />
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppSelect v-model="query.status" clearable placeholder="全部" style="width: 110px">
+            <AppOption label="启用" :value="1" />
+            <AppOption label="停用" :value="0" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="query.page = 1; load()" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>用户列表（用户不可删除，仅可停用）</span>
-          <el-button
+          <UButton
             v-if="auth.hasPerm('sys:user:create')"
-            type="primary"
+            icon="i-lucide-plus"
+            label="新增用户"
             @click="openCreate"
-          >
-            <el-icon><Plus /></el-icon>新增用户
-          </el-button>
+          />
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="username" label="用户名" width="110" />
-        <el-table-column prop="realName" label="真实姓名" width="100" />
-        <el-table-column prop="phone" label="手机号" width="130">
+      <AppTable :data="list" :loading="loading" border stripe>
+        <AppTableColumn prop="username" label="用户名" width="110" />
+        <AppTableColumn prop="realName" label="真实姓名" width="100" />
+        <AppTableColumn prop="phone" label="手机号" width="130">
           <template #default="{ row }">{{ row.phone || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="角色" min-width="140">
+        </AppTableColumn>
+        <AppTableColumn label="角色" min-width="140">
           <template #default="{ row }">
-            <el-tag v-for="name in row.roleNames" :key="name" size="small" class="role-tag">
+            <UBadge
+              v-for="name in row.roleNames"
+              :key="name"
+              size="sm"
+              variant="soft"
+              class="role-tag"
+            >
               {{ name }}
-            </el-tag>
+            </UBadge>
             <span v-if="!row.roleNames.length">—</span>
           </template>
-        </el-table-column>
-        <el-table-column label="状态" width="80">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="80">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'">
+            <UBadge :color="row.status === 1 ? 'success' : 'error'" variant="soft">
               {{ row.status === 1 ? '启用' : '停用' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column label="待改密" width="80">
+        </AppTableColumn>
+        <AppTableColumn label="待改密" width="80">
           <template #default="{ row }">
-            <el-tag v-if="row.mustChangePwd" type="warning" size="small">是</el-tag>
+            <UBadge v-if="row.mustChangePwd" color="warning" size="sm" variant="soft">是</UBadge>
             <span v-else>—</span>
           </template>
-        </el-table-column>
-        <el-table-column prop="lastLoginTime" label="最后登录" width="160">
+        </AppTableColumn>
+        <AppTableColumn prop="lastLoginTime" label="最后登录" width="160">
           <template #default="{ row }">{{ row.lastLoginTime || '从未登录' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="230" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="230" fixed="right">
           <template #default="{ row }">
-            <el-button
+            <UButton
               v-if="auth.hasPerm('sys:user:update')"
-              link
-              type="primary"
+              variant="link"
+              size="sm"
+              label="编辑"
               @click="openEdit(row as SysUserVO)"
-            >编辑</el-button>
-            <el-button
+            />
+            <UButton
               v-if="auth.hasPerm('sys:user:status')"
-              link
-              :type="row.status === 1 ? 'danger' : 'success'"
+              variant="link"
+              size="sm"
+              :color="row.status === 1 ? 'error' : 'success'"
+              :label="row.status === 1 ? '停用' : '启用'"
               @click="toggleStatus(row as SysUserVO)"
-            >{{ row.status === 1 ? '停用' : '启用' }}</el-button>
-            <el-button
+            />
+            <UButton
               v-if="auth.hasPerm('sys:user:reset-password')"
-              link
-              type="warning"
+              variant="link"
+              size="sm"
+              color="warning"
+              label="重置密码"
               :loading="resetting"
               @click="handleResetPwd(row as SysUserVO)"
-            >重置密码</el-button>
+            />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -273,67 +289,65 @@ onMounted(() => {
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
 
     <!-- 新增 / 编辑对话框 -->
-    <el-dialog
+    <AppModal
       v-model="dialogVisible"
       :title="editing ? `编辑用户：${editing.username}` : '新增用户'"
       width="480px"
     >
-      <el-alert
+      <UAlert
         v-if="!editing"
-        type="info"
-        :closable="false"
-        show-icon
+        color="info"
+        icon="i-lucide-info"
         title="初始密码由系统随机生成，用户首次登录后须修改"
         class="dialog-alert"
       />
-      <el-form ref="formRef" :model="form" :rules="editing ? editRules : createRules" label-width="80px">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="form.username" :disabled="!!editing" placeholder="登录账号，创建后不可修改" />
-        </el-form-item>
-        <el-form-item label="真实姓名" prop="realName">
-          <el-input v-model="form.realName" maxlength="30" />
-        </el-form-item>
-        <el-form-item label="手机号" prop="phone">
-          <el-input v-model="form.phone" maxlength="11" placeholder="选填" />
-        </el-form-item>
-        <el-form-item label="角色" prop="roleIds">
-          <el-select v-model="form.roleIds" multiple placeholder="可多选" style="width: 100%">
-            <el-option
+      <AppForm ref="formRef" :model="form" :rules="editing ? editRules : createRules" label-width="80px">
+        <AppFormItem label="用户名" prop="username">
+          <AppInput v-model="form.username" :disabled="!!editing" placeholder="登录账号，创建后不可修改" />
+        </AppFormItem>
+        <AppFormItem label="真实姓名" prop="realName">
+          <AppInput v-model="form.realName" maxlength="30" />
+        </AppFormItem>
+        <AppFormItem label="手机号" prop="phone">
+          <AppInput v-model="form.phone" maxlength="11" placeholder="选填" />
+        </AppFormItem>
+        <AppFormItem label="角色" prop="roleIds">
+          <AppSelect v-model="form.roleIds" multiple placeholder="可多选" style="width: 100%">
+            <AppOption
               v-for="role in roles.filter((r) => r.status === 1)"
               :key="role.id"
               :label="role.roleName"
               :value="role.id"
               :disabled="role.roleCode === 'SUPER_ADMIN' && editing?.id !== 1"
             />
-          </el-select>
+          </AppSelect>
           <div class="role-tip">超级管理员角色仅可授予初始账号（BR-SYS-03）</div>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" maxlength="200" />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+        <AppFormItem label="备注">
+          <AppInput v-model="form.remark" type="textarea" maxlength="200" />
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="dialogVisible = false" />
+        <UButton :loading="saving" label="保存" @click="save" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 初始密码展示 -->
-    <el-dialog v-model="pwdDialog.visible" title="一次性初始密码" width="420px">
-      <el-alert
-        type="warning"
-        :closable="false"
-        show-icon
+    <AppModal v-model="pwdDialog.visible" title="一次性初始密码" width="420px">
+      <UAlert
+        color="warning"
+        icon="i-lucide-triangle-alert"
         title="请立即复制并安全告知该用户，密码仅展示一次"
       />
       <div class="pwd-box">{{ pwdDialog.password }}</div>
       <template #footer>
-        <el-button type="primary" @click="copyPassword">复制密码</el-button>
+        <UButton label="复制密码" @click="copyPassword" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -341,10 +355,6 @@ onMounted(() => {
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .card-head {
@@ -380,7 +390,7 @@ onMounted(() => {
     font-size: 22px;
     letter-spacing: 2px;
     font-family: monospace;
-    background: #f5f7fa;
+    background: var(--el-bg-color-page);
     border-radius: 6px;
   }
 }

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm, prompt } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   closeShift,
@@ -27,6 +28,14 @@ function money(v: number | null | undefined) {
   return v == null ? '0.00' : moneyText(v, 2)
 }
 
+/** Element 标签类型 → Nuxt UI 徽标颜色 */
+function tagColor(type?: 'info' | 'warning' | 'success' | 'danger') {
+  if (type === 'success') return 'success' as const
+  if (type === 'warning') return 'warning' as const
+  if (type === 'danger') return 'error' as const
+  return 'neutral' as const
+}
+
 const canOpen = computed(() => auth.hasPerm('sys:shift:open'))
 const canClose = computed(() => auth.hasPerm('sys:shift:close'))
 
@@ -39,7 +48,7 @@ async function loadCurrent() {
 }
 
 async function doOpenShift() {
-  const { value } = await ElMessageBox.prompt(
+  const { value } = await prompt(
     '请输入收银台号（1~99）',
     '开班登记',
     {
@@ -52,7 +61,7 @@ async function doOpenShift() {
   acting.value = true
   try {
     currentShift.value = await openShift(Number(value))
-    ElMessage.success(`已在 ${currentShift.value.counterNo} 号台开班`)
+    notify.success(`已在 ${currentShift.value.counterNo} 号台开班`)
     load()
   } catch {
     // 拦截器已提示
@@ -69,7 +78,7 @@ async function doCloseShift() {
   } catch {
     // 查询失败不阻断交班
   }
-  await ElMessageBox.confirm(
+  await confirm(
     holds > 0
       ? `您还有 ${holds} 张未取挂单（挂单不扣库存、不计入报表），建议先取单结算或删除。确认继续交班？`
       : '交班后将统计本班次销售与退款生成交班单，本班次单据的退货须店长处理（BR-SALE-09）。确认交班？',
@@ -200,13 +209,13 @@ function printShift(detail: ShiftDetailVO) {
 
 <template>
   <div class="page">
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="收银员">
-          <el-input v-model="query.cashierName" placeholder="姓名" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="收银台">
-          <el-input-number
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="收银员">
+          <AppInput v-model="query.cashierName" placeholder="姓名" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="收银台">
+          <AppInputNumber
             v-model="query.counterNo"
             :min="1"
             :max="99"
@@ -214,14 +223,14 @@ function printShift(detail: ShiftDetailVO) {
             placeholder="台号"
             style="width: 90px"
           />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 100px">
-            <el-option v-for="(v, k) in SHIFT_STATUS_MAP" :key="k" :label="v.label" :value="k" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="开班日期">
-          <el-date-picker
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppSelect v-model="query.status" clearable placeholder="全部" style="width: 100px">
+            <AppOption v-for="(v, k) in SHIFT_STATUS_MAP" :key="k" :label="v.label" :value="k" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="开班日期">
+          <AppDatePicker
             v-model="query.dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -229,88 +238,90 @@ function printShift(detail: ShiftDetailVO) {
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="search" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>
             班次列表
-            <el-tag v-if="currentShift" type="success" size="small" class="working-tag">
+            <UBadge v-if="currentShift" color="success" variant="soft" size="sm" class="working-tag">
               当前在班：{{ currentShift.cashierName }} @ {{ String(currentShift.counterNo).padStart(2, '0') }} 号台（{{ fmtTime(currentShift.startTime) }} 开班）
-            </el-tag>
+            </UBadge>
           </span>
           <div>
-            <el-button v-if="canOpen && !currentShift" type="primary" :loading="acting" @click="doOpenShift">
-              开班
-            </el-button>
-            <el-button v-if="canClose && currentShift" type="warning" :loading="acting" @click="doCloseShift">
-              交班
-            </el-button>
+            <UButton v-if="canOpen && !currentShift" label="开班" :loading="acting" @click="doOpenShift" />
+            <UButton
+              v-if="canClose && currentShift"
+              color="warning"
+              label="交班"
+              :loading="acting"
+              @click="doCloseShift"
+            />
           </div>
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column label="班次" width="90" fixed="left">
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn label="班次" width="90" fixed="left">
           <template #default="{ row }">#{{ row.id }}</template>
-        </el-table-column>
-        <el-table-column prop="cashierName" label="收银员" width="90" />
-        <el-table-column prop="counterNo" label="台号" width="60" align="center">
+        </AppTableColumn>
+        <AppTableColumn prop="cashierName" label="收银员" width="90" />
+        <AppTableColumn prop="counterNo" label="台号" width="60" align="center">
           <template #default="{ row }">{{ String(row.counterNo).padStart(2, '0') }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="SHIFT_STATUS_MAP[row.status]?.type ?? 'info'" size="small">
+            <UBadge :color="tagColor(SHIFT_STATUS_MAP[row.status]?.type)" variant="soft" size="sm">
               {{ SHIFT_STATUS_MAP[row.status]?.label ?? row.status }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="orderCount" label="销售单数" width="85" align="right" />
-        <el-table-column label="净销售额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn prop="orderCount" label="销售单数" width="85" align="right" />
+        <AppTableColumn label="净销售额" width="100" align="right">
           <template #default="{ row }">
             <b>{{ money(row.salesAmount) }}</b>
           </template>
-        </el-table-column>
-        <el-table-column label="现金" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="现金" width="90" align="right">
           <template #default="{ row }">{{ money(row.cashAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="银行卡" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="银行卡" width="90" align="right">
           <template #default="{ row }">{{ money(row.bankAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="移动支付" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="移动支付" width="90" align="right">
           <template #default="{ row }">{{ money(row.mobileAmount) }}</template>
-        </el-table-column>
-        <el-table-column label="退货额" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="退货额" width="90" align="right">
           <template #default="{ row }">
             <span :class="{ refunded: Number(row.returnAmount) > 0 }">{{ money(row.returnAmount) }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="应收现金" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="应收现金" width="100" align="right">
           <template #default="{ row }">
             <b class="payable">{{ money(row.expectedCash) }}</b>
           </template>
-        </el-table-column>
-        <el-table-column label="开班时间" width="165">
+        </AppTableColumn>
+        <AppTableColumn label="开班时间" width="165">
           <template #default="{ row }">{{ fmtTime(row.startTime) }}</template>
-        </el-table-column>
-        <el-table-column label="交班时间" width="165">
+        </AppTableColumn>
+        <AppTableColumn label="交班时间" width="165">
           <template #default="{ row }">{{ fmtTime(row.endTime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row as ShiftVO)">交班单</el-button>
+            <UButton variant="link" size="sm" label="交班单" @click="openDetail(row as ShiftVO)" />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -319,25 +330,25 @@ function printShift(detail: ShiftDetailVO) {
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
 
     <!-- 班次详情（交班单） -->
-    <el-drawer v-model="drawer.visible" title="交班单" size="56%">
+    <AppDrawer v-model="drawer.visible" title="交班单" size="56%">
       <div v-loading="drawer.loading">
         <template v-if="drawer.detail">
           <div class="detail-head">
             <div class="detail-actions">
-              <el-button type="primary" @click="printShift(drawer.detail)">打印交班单</el-button>
+              <UButton label="打印交班单" @click="printShift(drawer.detail)" />
             </div>
           </div>
-          <el-descriptions :column="3" border size="small">
-            <el-descriptions-item label="班次">#{{ drawer.detail.shift.id }}</el-descriptions-item>
-            <el-descriptions-item label="收银员">{{ drawer.detail.shift.cashierName }}</el-descriptions-item>
-            <el-descriptions-item label="收银台">{{ String(drawer.detail.shift.counterNo).padStart(2, '0') }} 号</el-descriptions-item>
-            <el-descriptions-item label="开班时间">{{ fmtTime(drawer.detail.shift.startTime) }}</el-descriptions-item>
-            <el-descriptions-item label="交班时间">{{ fmtTime(drawer.detail.shift.endTime) }}</el-descriptions-item>
-            <el-descriptions-item label="销售单数">{{ drawer.detail.shift.orderCount }}</el-descriptions-item>
-          </el-descriptions>
+          <AppDescriptions :column="3" border size="small">
+            <AppDescriptionsItem label="班次">#{{ drawer.detail.shift.id }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="收银员">{{ drawer.detail.shift.cashierName }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="收银台">{{ String(drawer.detail.shift.counterNo).padStart(2, '0') }} 号</AppDescriptionsItem>
+            <AppDescriptionsItem label="开班时间">{{ fmtTime(drawer.detail.shift.startTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="交班时间">{{ fmtTime(drawer.detail.shift.endTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="销售单数">{{ drawer.detail.shift.orderCount }}</AppDescriptionsItem>
+          </AppDescriptions>
 
           <h4 class="section-title">对账统计</h4>
           <div class="stats-grid">
@@ -365,46 +376,46 @@ function printShift(detail: ShiftDetailVO) {
           </div>
 
           <h4 class="section-title">班次内销售单（{{ drawer.detail.orders.length }} 单）</h4>
-          <el-table :data="drawer.detail.orders" size="small" border max-height="380">
-            <el-table-column prop="orderNo" label="销售单号" width="170" />
-            <el-table-column prop="saleTime" label="销售时间" width="160">
+          <AppTable :data="drawer.detail.orders" size="small" border max-height="380">
+            <AppTableColumn prop="orderNo" label="销售单号" width="170" />
+            <AppTableColumn prop="saleTime" label="销售时间" width="160">
               <template #default="{ row }">{{ fmtTime(row.saleTime) }}</template>
-            </el-table-column>
-            <el-table-column prop="itemCount" label="件数" width="60" align="right" />
-            <el-table-column label="应收" width="85" align="right">
+            </AppTableColumn>
+            <AppTableColumn prop="itemCount" label="件数" width="60" align="right" />
+            <AppTableColumn label="应收" width="85" align="right">
               <template #default="{ row }">{{ money(row.payableAmount) }}</template>
-            </el-table-column>
-            <el-table-column label="实收" width="85" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="实收" width="85" align="right">
               <template #default="{ row }">{{ money(row.paidAmount) }}</template>
-            </el-table-column>
-            <el-table-column label="找零" width="75" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="找零" width="75" align="right">
               <template #default="{ row }">{{ money(row.changeAmount) }}</template>
-            </el-table-column>
-            <el-table-column label="退货状态" width="90" align="center">
+            </AppTableColumn>
+            <AppTableColumn label="退货状态" width="90" align="center">
               <template #default="{ row }">
-                <el-tag :type="RETURN_STATUS_MAP[row.returnStatus]?.type ?? 'info'" size="small">
+                <UBadge :color="tagColor(RETURN_STATUS_MAP[row.returnStatus]?.type)" variant="soft" size="sm">
                   {{ RETURN_STATUS_MAP[row.returnStatus]?.label ?? row.returnStatus }}
-                </el-tag>
+                </UBadge>
               </template>
-            </el-table-column>
-            <el-table-column label="退款" width="80" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="退款" width="80" align="right">
               <template #default="{ row }">
                 <span v-if="Number(row.refundAmount) > 0" class="refunded">{{ money(row.refundAmount) }}</span>
                 <span v-else class="muted">—</span>
               </template>
-            </el-table-column>
-          </el-table>
+            </AppTableColumn>
+          </AppTable>
           <div class="muted note">注：交班后本班次单据的退货须店长处理（BR-SALE-09），退货额实时计入原班次。</div>
         </template>
       </div>
-    </el-drawer>
+    </AppDrawer>
 
     <!-- 交班结果（FR-SALE-12：交班单供核对） -->
-    <el-dialog v-model="resultDialog.visible" title="交班完成" width="520px">
+    <AppModal v-model="resultDialog.visible" title="交班完成" width="520px">
       <template v-if="resultDialog.detail">
         <div class="result-body">
           <div class="result-head">
-            <el-icon color="#67c23a" :size="40"><CircleCheckFilled /></el-icon>
+            <UIcon name="i-lucide-circle-check-big" class="size-10 text-success" />
             <div class="result-title">交班单已生成</div>
             <div class="result-meta">
               {{ resultDialog.detail.shift.cashierName }} @ {{ String(resultDialog.detail.shift.counterNo).padStart(2, '0') }} 号台 ｜
@@ -434,10 +445,10 @@ function printShift(detail: ShiftDetailVO) {
         </div>
       </template>
       <template #footer>
-        <el-button @click="resultDialog.visible = false">关闭</el-button>
-        <el-button type="primary" @click="printShift(resultDialog.detail!)">打印交班单</el-button>
+        <UButton color="neutral" variant="outline" label="关闭" @click="resultDialog.visible = false" />
+        <UButton label="打印交班单" @click="printShift(resultDialog.detail!)" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
@@ -446,7 +457,7 @@ function printShift(detail: ShiftDetailVO) {
   .search-card {
     margin-bottom: 12px;
 
-    :deep(.el-card__body) {
+    :deep([data-slot='body']) {
       padding-bottom: 2px;
     }
   }
@@ -467,15 +478,15 @@ function printShift(detail: ShiftDetailVO) {
   }
 
   .muted {
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .payable {
-    color: #f56c6c;
+    color: var(--el-color-danger);
   }
 
   .refunded {
-    color: #e6a23c;
+    color: var(--el-color-warning);
   }
 
   .detail-head {
@@ -487,7 +498,7 @@ function printShift(detail: ShiftDetailVO) {
   .section-title {
     margin: 18px 0 8px;
     font-size: 14px;
-    color: #303133;
+    color: var(--el-text-color-primary);
   }
 
   .stats-grid {
@@ -500,12 +511,12 @@ function printShift(detail: ShiftDetailVO) {
       flex-direction: column;
       gap: 2px;
       padding: 10px 14px;
-      background: #f5f7fa;
+      background: var(--el-bg-color-page);
       border-radius: 6px;
 
       span {
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
       }
 
       b {
@@ -514,10 +525,10 @@ function printShift(detail: ShiftDetailVO) {
       }
 
       &.highlight {
-        background: #fdf6ec;
+        background: var(--el-color-warning-light-9);
 
         b {
-          color: #e6a23c;
+          color: var(--el-color-warning);
         }
       }
     }
@@ -542,7 +553,7 @@ function printShift(detail: ShiftDetailVO) {
       .result-meta {
         margin-top: 4px;
         font-size: 13px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
       }
     }
 

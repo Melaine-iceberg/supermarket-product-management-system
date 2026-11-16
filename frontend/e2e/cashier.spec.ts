@@ -16,7 +16,7 @@ test.describe('收银员分类树浏览', () => {
     await page.goto('/sale/cashier')
     // 独立全屏布局（IR-UI-02/GAP-P1-12）：无管理端侧边栏与面包屑，页面主体可见
     await expect(page.locator('.cashier-page')).toBeVisible()
-    await expect(page.locator('.el-aside')).toHaveCount(0)
+    await expect(page.locator('#app-sidebar')).toHaveCount(0)
 
     // 打开「分类浏览」→ 分类树经 /sales/cashier/categories 加载（DEF-19 原 403 接口）
     const categoriesResponse = page.waitForResponse(
@@ -27,7 +27,7 @@ test.describe('收银员分类树浏览', () => {
 
     const dialog = page.getByRole('dialog', { name: '分类浏览选品' })
     await expect(dialog).toBeVisible()
-    await expect(dialog.locator('.el-tree-node').first()).toBeVisible()
+    await expect(dialog.locator('.app-tree-node').first()).toBeVisible()
 
     // 点击「食品」分类 → 经 /sales/cashier/browse 加载分类商品
     const browseResponse = page.waitForResponse(
@@ -37,10 +37,10 @@ test.describe('收银员分类树浏览', () => {
     await browseResponse
 
     // 种子商品可见并可点选加入购物车
-    const row = dialog.locator('tr.el-table__row', { hasText: SEED.goods.name })
+    const row = dialog.locator('.app-table tbody tr', { hasText: SEED.goods.name })
     await expect(row).toBeVisible()
     await row.click()
-    await expect(page.locator('.el-message--success')).toContainText(`已加入：${SEED.goods.name}`)
+    await expect(page.locator('.app-toast')).toContainText(`已加入：${SEED.goods.name}`)
     await expect(page.locator('.cart-table')).toContainText(SEED.goods.name)
 
     expect(await settleFailures(page, collector)).toEqual([])
@@ -50,8 +50,8 @@ test.describe('收银员分类树浏览', () => {
     await page.goto('/sale/cashier')
     await expect(page.locator('.cashier-page')).toBeVisible()
     // 独立全屏：不渲染管理端侧边栏与面包屑
-    await expect(page.locator('.el-aside')).toHaveCount(0)
-    await expect(page.locator('.el-breadcrumb')).toHaveCount(0)
+    await expect(page.locator('#app-sidebar')).toHaveCount(0)
+    await expect(page.locator('.app-breadcrumb')).toHaveCount(0)
     // 汇总区常驻实收/找零
     const amount = page.locator('.amount-card')
     await expect(amount).toContainText('实收合计')

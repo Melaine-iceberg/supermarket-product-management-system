@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import {
   createReturn,
@@ -28,6 +29,14 @@ function fmtTime(v: string | null | undefined) {
 
 function money(v: number | null | undefined) {
   return v == null ? '—' : moneyText(v, 2)
+}
+
+/** Element 标签类型 → Nuxt UI 徽标颜色 */
+function tagColor(type?: 'info' | 'warning' | 'success' | 'danger') {
+  if (type === 'success') return 'success' as const
+  if (type === 'warning') return 'warning' as const
+  if (type === 'danger') return 'error' as const
+  return 'neutral' as const
 }
 
 /** 行退款预估（与后端 BR-SALE-06 同口径：实付×数量比，HALF_UP 到分） */
@@ -200,19 +209,19 @@ function openCreateDialog() {
 async function findOrder() {
   const kw = createDialog.orderKeyword.trim()
   if (!kw) {
-    ElMessage.warning('请输入原销售单号')
+    notify.warning('请输入原销售单号')
     return
   }
   createDialog.loading = true
   try {
     const page = await pageSalesOrders({ orderNo: kw, page: 1, size: 1 })
     if (page.list.length === 0) {
-      ElMessage.warning('未找到该销售单（或无权查看，BR-SALE-09）')
+      notify.warning('未找到该销售单（或无权查看，BR-SALE-09）')
       return
     }
     const order = await getSalesOrderDetail(page.list[0].id)
     if (order.returnStatus === 'ALL') {
-      ElMessage.warning('该销售单已全部退货')
+      notify.warning('该销售单已全部退货')
       return
     }
     createDialog.order = order
@@ -272,21 +281,21 @@ function onLineCheck(line: ReturnLine, checked: boolean) {
 async function submitReturn() {
   const selected = createDialog.lines.filter((l) => l.selected && l.returnQty != null && l.returnQty > 0)
   if (selected.length === 0) {
-    ElMessage.warning('请勾选退货明细并填写退货数量')
+    notify.warning('请勾选退货明细并填写退货数量')
     return
   }
   const over = selected.find((l) => l.returnQty! > l.available)
   if (over) {
-    ElMessage.warning(`【${over.goodsName}】退货数量超过可退数量 ${over.available}`)
+    notify.warning(`【${over.goodsName}】退货数量超过可退数量 ${over.available}`)
     return
   }
   if (!createDialog.returnReason) {
-    ElMessage.warning('请选择退货原因')
+    notify.warning('请选择退货原因')
     return
   }
   if (needAuth.value) {
     if (!createDialog.authorizerUsername.trim()) {
-      ElMessage.warning(
+      notify.warning(
         createDialog.returnReason === 'MISTAKE'
           ? '误操作退货须店长授权（FR-SALE-11），请输入店长账号'
           : `退款金额超过 ${bizParams.returnAuthAmount} 元须店长授权（FR-SALE-11），请输入店长账号`,
@@ -294,17 +303,17 @@ async function submitReturn() {
       return
     }
     if (!createDialog.authorizerPassword) {
-      ElMessage.warning('请输入授权密码（店长账号密码，FR-SALE-11）')
+      notify.warning('请输入授权密码（店长账号密码，FR-SALE-11）')
       return
     }
     if (createDialog.authorizerUsername.trim() === auth.user?.username) {
-      ElMessage.warning('授权人不得为退货发起人本人（FR-SALE-11）')
+      notify.warning('授权人不得为退货发起人本人（FR-SALE-11）')
       return
     }
   }
   if (!needAuth.value && expired.value && createDialog.authorizerUsername.trim()
       && !createDialog.authorizerPassword) {
-    ElMessage.warning('请输入授权密码（店长账号密码）')
+    notify.warning('请输入授权密码（店长账号密码）')
     return
   }
   createDialog.submitting = true
@@ -326,7 +335,7 @@ async function submitReturn() {
     })
     createDialog.visible = false
     createDialog.authorizerPassword = ''
-    ElMessage.success(`退货完成：${result.orderNo}，退款 ￥${money(result.refundAmount)}`)
+    notify.success(`退货完成：${result.orderNo}，退款 ￥${money(result.refundAmount)}`)
     load()
     offerPrintVoucher(result)
   } catch {
@@ -338,7 +347,7 @@ async function submitReturn() {
 
 /** 退货办完询问是否出凭证（FR-RPT-09）：确认按钮本身是用户手势，弹窗才不会被拦截 */
 function offerPrintVoucher(d: ReturnOrderDetailVO) {
-  ElMessageBox.confirm('退货已办理，是否打印退货凭证？', '打印凭证', {
+  confirm('退货已办理，是否打印退货凭证？', '打印凭证', {
     confirmButtonText: '打印',
     cancelButtonText: '暂不',
     type: 'info',
@@ -350,29 +359,29 @@ function offerPrintVoucher(d: ReturnOrderDetailVO) {
 
 <template>
   <div class="page">
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="退货单号">
-          <el-input v-model="query.orderNo" placeholder="XT 单号" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="原销售单号">
-          <el-input v-model="query.salesOrderNo" placeholder="XS 单号" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="会员">
-          <el-input v-model="query.memberKeyword" placeholder="姓名/手机号" clearable @keyup.enter="search" />
-        </el-form-item>
-        <el-form-item label="退款方式">
-          <el-select v-model="query.refundType" clearable placeholder="全部" style="width: 110px">
-            <el-option v-for="(label, type) in PAY_TYPE_MAP" :key="type" :label="label" :value="type" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="退货原因">
-          <el-select v-model="query.returnReason" clearable placeholder="全部" style="width: 110px">
-            <el-option v-for="(label, k) in RETURN_REASON_MAP" :key="k" :label="label" :value="k" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="退货日期">
-          <el-date-picker
+    <UCard class="search-card">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="退货单号">
+          <AppInput v-model="query.orderNo" placeholder="XT 单号" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="原销售单号">
+          <AppInput v-model="query.salesOrderNo" placeholder="XS 单号" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="会员">
+          <AppInput v-model="query.memberKeyword" placeholder="姓名/手机号" clearable @keyup.enter="search" />
+        </AppFormItem>
+        <AppFormItem label="退款方式">
+          <AppSelect v-model="query.refundType" clearable placeholder="全部" style="width: 110px">
+            <AppOption v-for="(label, type) in PAY_TYPE_MAP" :key="type" :label="label" :value="type" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="退货原因">
+          <AppSelect v-model="query.returnReason" clearable placeholder="全部" style="width: 110px">
+            <AppOption v-for="(label, k) in RETURN_REASON_MAP" :key="k" :label="label" :value="k" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="退货日期">
+          <AppDatePicker
             v-model="query.dateRange"
             type="daterange"
             value-format="YYYY-MM-DD"
@@ -380,59 +389,62 @@ function offerPrintVoucher(d: ReturnOrderDetailVO) {
             end-placeholder="结束"
             style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="search" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>
         <div class="card-head">
           <span>退货单列表</span>
-          <el-button v-if="canCreate" type="primary" @click="openCreateDialog">
-            <el-icon><RefreshLeft /></el-icon>办理退货
-          </el-button>
+          <UButton
+            v-if="canCreate"
+            icon="i-lucide-rotate-ccw"
+            label="办理退货"
+            @click="openCreateDialog"
+          />
         </div>
       </template>
 
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="orderNo" label="退货单号" width="170" fixed="left" />
-        <el-table-column prop="salesOrderNo" label="原销售单号" width="170" />
-        <el-table-column label="会员" width="120" show-overflow-tooltip>
+      <AppTable :loading="loading" border :data="list" stripe>
+        <AppTableColumn prop="orderNo" label="退货单号" width="170" fixed="left" />
+        <AppTableColumn prop="salesOrderNo" label="原销售单号" width="170" />
+        <AppTableColumn label="会员" width="120" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.memberName">{{ row.memberName }}</span>
             <span v-else class="muted">散客</span>
           </template>
-        </el-table-column>
-        <el-table-column label="退款金额" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="退款金额" width="100" align="right">
           <template #default="{ row }">
             <b class="refund">￥{{ money(row.refundAmount) }}</b>
           </template>
-        </el-table-column>
-        <el-table-column label="原因" width="90" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="原因" width="90" align="center">
           <template #default="{ row }">{{ RETURN_REASON_MAP[row.returnReason] ?? row.returnReason }}</template>
-        </el-table-column>
-        <el-table-column label="退款方式" width="90" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="退款方式" width="90" align="center">
           <template #default="{ row }">{{ PAY_TYPE_MAP[row.refundType] ?? row.refundType }}</template>
-        </el-table-column>
-        <el-table-column prop="cashierName" label="经办人" width="90" />
-        <el-table-column label="授权人" width="90">
+        </AppTableColumn>
+        <AppTableColumn prop="cashierName" label="经办人" width="90" />
+        <AppTableColumn label="授权人" width="90">
           <template #default="{ row }">{{ row.authorizerName ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="returnTime" label="退货时间" width="165">
+        </AppTableColumn>
+        <AppTableColumn prop="returnTime" label="退货时间" width="165">
           <template #default="{ row }">{{ fmtTime(row.returnTime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row as ReturnOrderVO)">详情</el-button>
+            <UButton variant="link" size="sm" label="详情" @click="openDetail(row as ReturnOrderVO)" />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
 
-      <el-pagination
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -441,95 +453,94 @@ function offerPrintVoucher(d: ReturnOrderDetailVO) {
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
 
     <!-- 办理退货（FR-SALE-10/11） -->
-    <el-dialog
+    <AppModal
       v-model="createDialog.visible"
       title="办理退货"
       width="860px"
-      top="6vh"
       :close-on-click-modal="false"
     >
       <!-- 第 1 步：定位原销售单 -->
       <template v-if="createDialog.step === 1">
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
+        <UAlert
+          color="info"
+          icon="i-lucide-info"
           title="输入原销售单号（XS 开头）调取原单；退款按原成交单价计算（BR-SALE-06）"
           class="dialog-alert"
         />
         <div class="find-row">
-          <el-input
+          <AppInput
             v-model="createDialog.orderKeyword"
             placeholder="原销售单号，如 XS2026092001 0001"
             size="large"
             clearable
             @keyup.enter="findOrder"
           />
-          <el-button type="primary" size="large" :loading="createDialog.loading" @click="findOrder">
-            查询原单
-          </el-button>
+          <UButton size="lg" label="查询原单" :loading="createDialog.loading" @click="findOrder" />
         </div>
       </template>
 
       <!-- 第 2 步：选择明细与退款信息 -->
       <template v-else-if="createDialog.order">
-        <el-descriptions :column="4" border size="small" class="order-desc">
-          <el-descriptions-item label="原销售单号" :span="2">
+        <AppDescriptions :column="4" border size="small" class="order-desc">
+          <AppDescriptionsItem label="原销售单号" :span="2">
             <b>{{ createDialog.order.orderNo }}</b>
-          </el-descriptions-item>
-          <el-descriptions-item label="退货状态">
-            <el-tag :type="RETURN_STATUS_MAP[createDialog.order.returnStatus]?.type ?? 'info'" size="small">
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="退货状态">
+            <UBadge :color="tagColor(RETURN_STATUS_MAP[createDialog.order.returnStatus]?.type)" variant="soft" size="sm">
               {{ RETURN_STATUS_MAP[createDialog.order.returnStatus]?.label ?? createDialog.order.returnStatus }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="销售时间">{{ fmtTime(createDialog.order.saleTime) }}</el-descriptions-item>
-          <el-descriptions-item label="收银员">{{ createDialog.order.cashierName }}</el-descriptions-item>
-          <el-descriptions-item label="会员">
+            </UBadge>
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="销售时间">{{ fmtTime(createDialog.order.saleTime) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="收银员">{{ createDialog.order.cashierName }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="会员">
             {{ createDialog.order.memberName ?? '散客' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="应收">￥{{ money(createDialog.order.payableAmount) }}</el-descriptions-item>
-          <el-descriptions-item label="已累计退款">￥{{ money(createDialog.order.returns.reduce((s, r) => s + Number(r.refundAmount), 0)) }}</el-descriptions-item>
-        </el-descriptions>
+          </AppDescriptionsItem>
+          <AppDescriptionsItem label="应收">￥{{ money(createDialog.order.payableAmount) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="已累计退款">￥{{ money(createDialog.order.returns.reduce((s, r) => s + Number(r.refundAmount), 0)) }}</AppDescriptionsItem>
+        </AppDescriptions>
 
-        <el-alert
-v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
-          :title="`已超过退货有效期（${bizParams.returnValidDays} 天，BR-SALE-05）：收银员不可办理，店长办理请在下方填写授权人`" />
+        <UAlert
+          v-if="expired"
+          color="warning"
+          icon="i-lucide-triangle-alert"
+          class="dialog-alert"
+          :title="`已超过退货有效期（${bizParams.returnValidDays} 天，BR-SALE-05）：收银员不可办理，店长办理请在下方填写授权人`"
+        />
 
-        <el-table :data="createDialog.lines" size="small" border max-height="300">
-          <el-table-column label="" width="44" align="center">
+        <AppTable :data="createDialog.lines" size="small" border max-height="300">
+          <AppTableColumn label="" width="44" align="center">
             <template #default="{ row }">
-              <el-tooltip
+              <UTooltip
                 v-if="row.allowReturn === 0"
-                content="该商品不支持退货（BR-SALE-07：生鲜/散装等）"
-                placement="top"
+                text="该商品不支持退货（BR-SALE-07：生鲜/散装等）"
               >
-                <el-checkbox :model-value="false" disabled />
-              </el-tooltip>
-              <el-checkbox
+                <UCheckbox :model-value="false" disabled />
+              </UTooltip>
+              <UCheckbox
                 v-else
                 :model-value="row.selected"
-                @change="(v: boolean | string | number) => onLineCheck(row as ReturnLine, !!v)"
+                @update:model-value="(v: boolean | 'indeterminate') => onLineCheck(row as ReturnLine, !!v)"
               />
             </template>
-          </el-table-column>
-          <el-table-column prop="goodsName" label="商品" min-width="150">
+          </AppTableColumn>
+          <AppTableColumn prop="goodsName" label="商品" min-width="150">
             <template #default="{ row }">
               {{ row.goodsName }}<span v-if="row.barcode" class="muted">（{{ row.barcode }}）</span>
-              <el-tag v-if="row.allowReturn === 0" size="small" type="info" class="no-return-tag">不允许退货</el-tag>
+              <UBadge v-if="row.allowReturn === 0" size="sm" color="neutral" variant="soft" class="no-return-tag">不允许退货</UBadge>
             </template>
-          </el-table-column>
-          <el-table-column label="成交单价" width="85" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="成交单价" width="85" align="right">
             <template #default="{ row }">￥{{ money(row.paidAmount / row.quantity) }}</template>
-          </el-table-column>
-          <el-table-column prop="quantity" label="原数量" width="75" align="right" />
-          <el-table-column prop="returnedQty" label="已退" width="60" align="right" />
-          <el-table-column prop="available" label="可退" width="60" align="right" />
-          <el-table-column label="退货数量" width="150" align="center">
+          </AppTableColumn>
+          <AppTableColumn prop="quantity" label="原数量" width="75" align="right" />
+          <AppTableColumn prop="returnedQty" label="已退" width="60" align="right" />
+          <AppTableColumn prop="available" label="可退" width="60" align="right" />
+          <AppTableColumn label="退货数量" width="150" align="center">
             <template #default="{ row }">
-              <el-input-number
+              <AppInputNumber
                 v-model="row.returnQty"
                 :min="0"
                 :max="row.available"
@@ -540,56 +551,56 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
                 style="width: 110px"
               />
             </template>
-          </el-table-column>
-          <el-table-column label="退款预估" width="95" align="right">
+          </AppTableColumn>
+          <AppTableColumn label="退款预估" width="95" align="right">
             <template #default="{ row }">
               <span v-if="row.selected && row.returnQty > 0">
                 ￥{{ money(estRefund(row.paidAmount, row.quantity, row.returnQty)) }}
               </span>
               <span v-else class="muted">—</span>
             </template>
-          </el-table-column>
-          <el-table-column label="行备注" width="110">
+          </AppTableColumn>
+          <AppTableColumn label="行备注" width="110">
             <template #default="{ row }">
-              <el-input v-model="row.remark" size="small" placeholder="选填" :disabled="!row.selected" />
+              <AppInput v-model="row.remark" size="small" placeholder="选填" :disabled="!row.selected" />
             </template>
-          </el-table-column>
-        </el-table>
+          </AppTableColumn>
+        </AppTable>
 
         <div class="refund-form">
           <div class="refund-summary">
             退款预估合计：<b class="refund">￥{{ money(estTotalRefund) }}</b>
-            <el-tag v-if="needAuth" type="danger" size="small" class="auth-tag">须店长授权</el-tag>
+            <UBadge v-if="needAuth" color="error" variant="soft" size="sm" class="auth-tag">须店长授权</UBadge>
           </div>
-          <el-form label-width="90px" inline>
-            <el-form-item label="退款方式">
-              <el-select v-model="createDialog.refundType" style="width: 120px">
-                <el-option
+          <AppForm label-width="90px" inline>
+            <AppFormItem label="退款方式">
+              <AppSelect v-model="createDialog.refundType" style="width: 120px">
+                <AppOption
                   v-for="opt in refundTypeOptions"
                   :key="opt.value"
                   :label="opt.label"
                   :value="opt.value"
                   :disabled="opt.value === 'BALANCE' && !createDialog.order?.memberId"
                 />
-              </el-select>
+              </AppSelect>
               <div v-if="createDialog.order?.memberId" class="form-tip">
                 会员单可选储值退款，退款直接回充会员余额（FR-MEM-08）
               </div>
-            </el-form-item>
-            <el-form-item label="退货原因">
-              <el-select v-model="createDialog.returnReason" placeholder="必选" style="width: 130px">
-                <el-option v-for="opt in reasonOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-              </el-select>
-            </el-form-item>
-            <el-form-item v-if="needAuth || expired" label="授权账号" :required="needAuth">
-              <el-input
+            </AppFormItem>
+            <AppFormItem label="退货原因">
+              <AppSelect v-model="createDialog.returnReason" placeholder="必选" style="width: 130px">
+                <AppOption v-for="opt in reasonOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </AppSelect>
+            </AppFormItem>
+            <AppFormItem v-if="needAuth || expired" label="授权账号" :required="needAuth">
+              <AppInput
                 v-model="createDialog.authorizerUsername"
                 placeholder="店长登录账号"
                 style="width: 150px"
               />
-            </el-form-item>
-            <el-form-item v-if="needAuth || expired" label="授权密码" :required="needAuth">
-              <el-input
+            </AppFormItem>
+            <AppFormItem v-if="needAuth || expired" label="授权密码" :required="needAuth">
+              <AppInput
                 v-model="createDialog.authorizerPassword"
                 type="password"
                 show-password
@@ -597,11 +608,11 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
                 placeholder="店长账号密码"
                 style="width: 150px"
               />
-            </el-form-item>
-            <el-form-item label="原因说明">
-              <el-input v-model="createDialog.reasonRemark" placeholder="选填" style="width: 220px" />
-            </el-form-item>
-          </el-form>
+            </AppFormItem>
+            <AppFormItem label="原因说明">
+              <AppInput v-model="createDialog.reasonRemark" placeholder="选填" style="width: 220px" />
+            </AppFormItem>
+          </AppForm>
           <div v-if="needAuth" class="auth-tip">
             退款超 {{ bizParams.returnAuthAmount }} 元或原因为"误操作"须店长输入账号密码现场授权，且授权人 ≠ 发起人（FR-SALE-11）
           </div>
@@ -610,79 +621,87 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
 
       <template #footer>
         <template v-if="createDialog.step === 1">
-          <el-button @click="createDialog.visible = false">取消</el-button>
+          <UButton color="neutral" variant="outline" label="取消" @click="createDialog.visible = false" />
         </template>
         <template v-else>
-          <el-button @click="createDialog.step = 1">上一步</el-button>
-          <el-button type="primary" :loading="createDialog.submitting" @click="submitReturn">
-            确认退货
-          </el-button>
+          <UButton color="neutral" variant="outline" label="上一步" @click="createDialog.step = 1" />
+          <UButton
+            label="确认退货"
+            :loading="createDialog.submitting"
+            @click="submitReturn"
+          />
         </template>
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 退货单详情 -->
-    <el-drawer v-model="drawer.visible" title="退货单详情" size="62%">
+    <AppDrawer v-model="drawer.visible" title="退货单详情" size="62%">
       <div v-loading="drawer.loading">
         <template v-if="drawer.detail">
-          <el-descriptions :column="3" border size="small">
-            <el-descriptions-item label="退货单号" :span="2">
+          <AppDescriptions :column="3" border size="small">
+            <AppDescriptionsItem label="退货单号" :span="2">
               <b>{{ drawer.detail.orderNo }}</b>
-            </el-descriptions-item>
-            <el-descriptions-item label="退货时间">{{ fmtTime(drawer.detail.returnTime) }}</el-descriptions-item>
-            <el-descriptions-item label="原销售单号">{{ drawer.detail.salesOrderNo }}</el-descriptions-item>
-            <el-descriptions-item label="原销售时间">{{ fmtTime(drawer.detail.salesTime) }}</el-descriptions-item>
-            <el-descriptions-item label="会员">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem label="退货时间">{{ fmtTime(drawer.detail.returnTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="原销售单号">{{ drawer.detail.salesOrderNo }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="原销售时间">{{ fmtTime(drawer.detail.salesTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="会员">
               <template v-if="drawer.detail.memberName">
                 {{ drawer.detail.memberName }}（{{ drawer.detail.memberPhone }}）
               </template>
               <span v-else class="muted">散客</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="退款金额">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem label="退款金额">
               <b class="refund">￥{{ money(drawer.detail.refundAmount) }}</b>
-            </el-descriptions-item>
-            <el-descriptions-item label="退款方式">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem label="退款方式">
               {{ PAY_TYPE_MAP[drawer.detail.refundType] ?? drawer.detail.refundType }}
-            </el-descriptions-item>
-            <el-descriptions-item label="原因">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem label="原因">
               {{ RETURN_REASON_MAP[drawer.detail.returnReason] ?? drawer.detail.returnReason }}
               <span v-if="drawer.detail.reasonRemark" class="muted">（{{ drawer.detail.reasonRemark }}）</span>
-            </el-descriptions-item>
-            <el-descriptions-item label="经办人">{{ drawer.detail.cashierName }}</el-descriptions-item>
-            <el-descriptions-item label="授权人">{{ drawer.detail.authorizerName ?? '—' }}</el-descriptions-item>
-            <el-descriptions-item label="授权时间">{{ fmtTime(drawer.detail.authorizeTime) }}</el-descriptions-item>
-          </el-descriptions>
+            </AppDescriptionsItem>
+            <AppDescriptionsItem label="经办人">{{ drawer.detail.cashierName }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="授权人">{{ drawer.detail.authorizerName ?? '—' }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="授权时间">{{ fmtTime(drawer.detail.authorizeTime) }}</AppDescriptionsItem>
+          </AppDescriptions>
 
           <h4 class="section-title">退货明细（按原成交单价退款，成本快照回冲）</h4>
-          <el-table :data="drawer.detail.items" size="small" border>
-            <el-table-column type="index" label="#" width="44" align="center" />
-            <el-table-column prop="goodsName" label="商品" min-width="150">
+          <AppTable :data="drawer.detail.items" size="small" border>
+            <AppTableColumn type="index" label="#" width="44" align="center" />
+            <AppTableColumn prop="goodsName" label="商品" min-width="150">
               <template #default="{ row }">
                 {{ row.goodsName }}<span v-if="row.barcode" class="muted">（{{ row.barcode }}）</span>
               </template>
-            </el-table-column>
-            <el-table-column label="退货单价" width="95" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="退货单价" width="95" align="right">
               <template #default="{ row }">￥{{ money(row.refundPrice) }}</template>
-            </el-table-column>
-            <el-table-column prop="returnQty" label="退货数量" width="90" align="right" />
-            <el-table-column label="退款金额" width="100" align="right">
+            </AppTableColumn>
+            <AppTableColumn prop="returnQty" label="退货数量" width="90" align="right" />
+            <AppTableColumn label="退款金额" width="100" align="right">
               <template #default="{ row }">
                 <b class="refund">￥{{ money(row.refundAmount) }}</b>
               </template>
-            </el-table-column>
-            <el-table-column label="回冲成本" width="95" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="回冲成本" width="95" align="right">
               <template #default="{ row }">￥{{ money(row.costAmount) }}</template>
-            </el-table-column>
-            <el-table-column prop="remark" label="备注" min-width="90" show-overflow-tooltip>
+            </AppTableColumn>
+            <AppTableColumn prop="remark" label="备注" min-width="90" show-overflow-tooltip>
               <template #default="{ row }">{{ row.remark ?? '—' }}</template>
-            </el-table-column>
-          </el-table>
+            </AppTableColumn>
+          </AppTable>
         </template>
       </div>
       <template #footer>
-        <el-button v-if="drawer.detail" @click="printReturnVoucher(drawer.detail)">打印退货凭证</el-button>
+        <UButton
+          v-if="drawer.detail"
+          color="neutral"
+          variant="outline"
+          label="打印退货凭证"
+          @click="printReturnVoucher(drawer.detail)"
+        />
       </template>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 
@@ -691,7 +710,7 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
   .search-card {
     margin-bottom: 12px;
 
-    :deep(.el-card__body) {
+    :deep([data-slot='body']) {
       padding-bottom: 2px;
     }
   }
@@ -708,11 +727,11 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
   }
 
   .muted {
-    color: #909399;
+    color: var(--el-text-color-secondary);
   }
 
   .refund {
-    color: #f56c6c;
+    color: var(--el-color-danger);
   }
 
   .dialog-alert {
@@ -738,10 +757,10 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
 
     .refund-summary {
       padding: 8px 12px;
-      background: #fef0f0;
+      background: var(--el-color-danger-light-9);
       border-radius: 6px;
       font-size: 14px;
-      color: #303133;
+      color: var(--el-text-color-primary);
       margin-bottom: 12px;
 
       b {
@@ -755,19 +774,19 @@ v-if="expired" type="warning" :closable="false" show-icon class="dialog-alert"
 
     .auth-tip {
       font-size: 12px;
-      color: #c45656;
+      color: var(--el-color-danger-dark-2);
     }
   }
 
   .section-title {
     margin: 18px 0 8px;
     font-size: 14px;
-    color: #303133;
+    color: var(--el-text-color-primary);
   }
 
   .form-tip {
     font-size: 12px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     line-height: 1.4;
   }
 }

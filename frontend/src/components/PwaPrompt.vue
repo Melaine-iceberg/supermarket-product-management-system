@@ -106,16 +106,16 @@ onBeforeUnmount(() => {
   <div class="pwa-prompt">
     <div v-if="needRefresh" class="card" role="status">
       <span class="text">发现新版本，刷新后生效</span>
-      <el-button type="primary" size="small" @click="reload">立即刷新</el-button>
+      <UButton size="sm" label="立即刷新" @click="reload" />
     </div>
     <div v-else-if="canInstall" class="card" role="status">
       <span class="text">安装到桌面，像应用一样使用</span>
-      <el-button type="primary" size="small" @click="install">安装</el-button>
-      <el-button text size="small" @click="dismissInstall">以后再说</el-button>
+      <UButton size="sm" label="安装" @click="install" />
+      <UButton size="sm" color="neutral" variant="ghost" label="以后再说" @click="dismissInstall" />
     </div>
     <div v-else-if="offlineReady" class="card" role="status">
       <span class="text">已缓存应用外壳，断网也能打开</span>
-      <el-button text size="small" @click="dismissOfflineReady">知道了</el-button>
+      <UButton size="sm" color="neutral" variant="ghost" label="知道了" @click="dismissOfflineReady" />
     </div>
   </div>
 </template>
@@ -123,8 +123,8 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .pwa-prompt {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 3000;
   display: flex;
   flex-direction: column;
@@ -136,15 +136,31 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #fff;
-  border: 1px solid #e4e7ed;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
-  box-shadow: 0 6px 16px rgb(0 0 0 / 12%);
+  box-shadow: var(--el-box-shadow);
   font-size: 13px;
-  color: #303133;
+  color: var(--ui-text);
 
   .text {
     white-space: nowrap;
+    text-wrap: pretty;
+  }
+}
+
+@media (max-width: 480px) {
+  .pwa-prompt {
+    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
+  }
+
+  .card {
+    flex-wrap: wrap;
+
+    .text {
+      white-space: normal;
+    }
   }
 }
 </style>

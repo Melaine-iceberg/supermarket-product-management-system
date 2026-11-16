@@ -1,23 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { notify } from '@/utils/notify'
 import { useAuthStore } from '@/stores/auth'
 import { fetchDashboardTodos, type DashboardTodo } from '@/api/report'
+import { useColorScheme } from '@/composables/useColorScheme'
+import NavMenu from './NavMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const collapsed = ref(false)
 
+const { resolved: colorScheme, toggle: toggleColorScheme } = useColorScheme()
+
 const storeName = '超市商品管理系统'
 const user = computed(() => auth.user)
 
 /** 面包屑：系统管理 / 用户管理 */
-const breadcrumbs = computed(() => {
-  const matched = route.matched.filter((r) => r.meta?.title)
-  return matched.map((r) => ({ title: r.meta.title as string, path: r.path }))
-})
+const breadcrumbs = computed(() =>
+  route.matched
+    .filter((r) => r.meta?.title)
+    .map((r) => ({ label: r.meta.title as string, to: r.path })),
+)
 
 // ---------- 顶部导航：全屏切换（IR-UI-02/GAP-P2-25） ----------
 const fullscreen = ref(false)
@@ -34,7 +39,7 @@ async function toggleFullscreen() {
       await document.documentElement.requestFullscreen()
     }
   } catch {
-    ElMessage.warning('当前浏览器不支持全屏切换或请求被拒绝')
+    notify.warning('当前浏览器不支持全屏切换或请求被拒绝')
   }
 }
 
@@ -54,273 +59,240 @@ function openTodo(t: DashboardTodo) {
   router.push(t.route)
 }
 
+// ---------- 响应式侧边栏：窄屏改为抽屉，避免挤压表格 ----------
+const narrowQuery = window.matchMedia('(max-width: 768px)')
+const isNarrow = ref(narrowQuery.matches)
+const mobileMenuOpen = ref(false)
+const sidebarExpanded = computed(() =>
+  isNarrow.value ? mobileMenuOpen.value : !collapsed.value,
+)
+
+function toggleSidebar() {
+  if (isNarrow.value) mobileMenuOpen.value = !mobileMenuOpen.value
+  else collapsed.value = !collapsed.value
+}
+
+function onNarrowChange(event: MediaQueryListEvent) {
+  isNarrow.value = event.matches
+  if (!event.matches) mobileMenuOpen.value = false
+}
+
+// 路由变化后自动关闭移动端抽屉
+watch(
+  () => route.path,
+  () => {
+    mobileMenuOpen.value = false
+  },
+)
+
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange)
+  narrowQuery.addEventListener('change', onNarrowChange)
   loadTodos()
 })
 
 onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
+  narrowQuery.removeEventListener('change', onNarrowChange)
 })
 
 async function handleLogout() {
   await auth.logout()
   router.push({ name: 'login' })
 }
+
+const userMenuItems = computed(() => [
+  [
+    {
+      label: '修改密码',
+      icon: 'i-lucide-lock',
+      onSelect: (): void => {
+        router.push({ name: 'change-password' })
+      },
+    },
+    {
+      label: colorScheme.value === 'dark' ? '切换到浅色模式' : '切换到深色模式',
+      icon: colorScheme.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon',
+      onSelect: (): void => {
+        toggleColorScheme()
+      },
+    },
+  ],
+  [
+    {
+      label: '退出登录',
+      icon: 'i-lucide-log-out',
+      color: 'error' as const,
+      onSelect: (): void => {
+        void handleLogout()
+      },
+    },
+  ],
+])
 </script>
 
 <template>
-  <el-container class="layout">
-    <el-aside :width="collapsed ? '64px' : '220px'" class="aside">
-      <div class="logo" @click="router.push('/home')">
-        <el-icon :size="26" color="#409eff"><ShoppingCart /></el-icon>
-        <span v-show="!collapsed" class="logo-title">{{ storeName }}</span>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+
+  <div class="flex h-dvh overflow-hidden bg-default">
+    <aside
+      v-if="!isNarrow"
+      id="app-sidebar"
+      class="flex shrink-0 flex-col overflow-hidden border-r border-default bg-default transition-[width] duration-200"
+      :class="collapsed ? 'w-16' : 'w-56'"
+    >
+      <router-link
+        to="/home"
+        class="flex h-14 shrink-0 items-center justify-center gap-2 border-b border-default text-default no-underline"
+        aria-label="返回首页"
+      >
+        <UIcon name="i-lucide-shopping-cart" class="size-6 shrink-0 text-primary" />
+        <span v-show="!collapsed" class="truncate text-sm font-bold">{{ storeName }}</span>
+      </router-link>
+      <div class="flex-1 overflow-y-auto py-2">
+        <NavMenu :collapsed="collapsed" :active-path="route.path" />
       </div>
-      <el-scrollbar>
-        <!-- 动态菜单（FR-SYS-05：按角色权限渲染） -->
-        <el-menu
-          :default-active="route.path"
-          :collapse="collapsed"
-          :collapse-transition="false"
-          router
-          class="menu"
-        >
-          <template v-for="dir in auth.menus" :key="dir.id">
-            <!-- 目录 -->
-            <el-sub-menu v-if="dir.children?.length" :index="dir.routePath || String(dir.id)">
-              <template #title>
-                <el-icon v-if="dir.icon"><component :is="dir.icon" /></el-icon>
-                <span>{{ dir.name }}</span>
-              </template>
-              <el-menu-item
-                v-for="menu in dir.children"
-                :key="menu.id"
-                :index="menu.routePath || String(menu.id)"
-              >
-                <el-icon v-if="menu.icon"><component :is="menu.icon" /></el-icon>
-                <template #title>{{ menu.name }}</template>
-              </el-menu-item>
-            </el-sub-menu>
-            <!-- 顶层菜单 -->
-            <el-menu-item v-else :index="dir.routePath || String(dir.id)">
-              <el-icon v-if="dir.icon"><component :is="dir.icon" /></el-icon>
-              <template #title>{{ dir.name }}</template>
-            </el-menu-item>
-          </template>
-        </el-menu>
-      </el-scrollbar>
-    </el-aside>
+    </aside>
 
-    <el-container>
-      <el-header class="header">
-        <div class="header-left">
-          <el-icon class="collapse-btn" :size="20" @click="collapsed = !collapsed">
-            <Fold v-if="!collapsed" />
-            <Expand v-else />
-          </el-icon>
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item
-              v-for="crumb in breadcrumbs"
-              :key="crumb.path"
-              :to="crumb.path"
-            >
-              {{ crumb.title }}
-            </el-breadcrumb-item>
-          </el-breadcrumb>
+    <!-- 窄屏：同一套菜单放入抽屉 -->
+    <AppDrawer
+      v-else
+      id="app-mobile-nav"
+      v-model="mobileMenuOpen"
+      :with-header="false"
+      direction="ltr"
+      size="240px"
+    >
+      <router-link
+        to="/home"
+        class="flex h-14 shrink-0 items-center justify-center gap-2 border-b border-default text-default no-underline"
+        aria-label="返回首页"
+        @click="mobileMenuOpen = false"
+      >
+        <UIcon name="i-lucide-shopping-cart" class="size-6 text-primary" />
+        <span class="truncate text-sm font-bold">{{ storeName }}</span>
+      </router-link>
+      <div class="py-2">
+        <NavMenu
+          :collapsed="false"
+          :active-path="route.path"
+          @select="mobileMenuOpen = false"
+        />
+      </div>
+    </AppDrawer>
+
+    <div class="flex min-w-0 flex-1 flex-col">
+      <header
+        class="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-default bg-default px-3"
+      >
+        <div class="flex min-w-0 items-center gap-3">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            square
+            :icon="!isNarrow && !collapsed ? 'i-lucide-panel-left-close' : 'i-lucide-panel-left-open'"
+            :aria-label="sidebarExpanded ? '收起侧边栏' : '展开侧边栏'"
+            :aria-expanded="sidebarExpanded"
+            :aria-controls="isNarrow ? 'app-mobile-nav' : 'app-sidebar'"
+            @click="toggleSidebar"
+          />
+          <UBreadcrumb :items="breadcrumbs" class="app-breadcrumb min-w-0" />
         </div>
-        <div class="header-actions">
+
+        <div class="header-actions flex shrink-0 items-center gap-1">
           <!-- 待办消息（IR-UI-02）：按登录用户权限返回待办数量，点击条目跳转处理页 -->
-          <el-popover placement="bottom-end" :width="300" trigger="click" :teleported="false" @show="loadTodos">
-            <template #reference>
-              <span class="todo-trigger">
-                <el-badge :value="todoTotal" :max="99" :hidden="todoTotal === 0">
-                  <el-icon :size="20" class="header-icon"><Bell /></el-icon>
-                </el-badge>
-              </span>
-            </template>
-            <div class="todo-list">
-              <div v-if="todos.length === 0" class="todo-empty">暂无待办事项</div>
-              <div
-                v-for="t in todos"
-                :key="t.type"
-                class="todo-item"
-                @click="openTodo(t)"
-              >
-                <span>{{ t.title }}</span>
-                <el-tag :type="t.count > 0 ? 'danger' : 'info'" size="small">{{ t.count }}</el-tag>
+          <UPopover :content="{ align: 'end' }" @update:open="(open) => open && loadTodos()">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              square
+              icon="i-lucide-bell"
+              class="todo-trigger relative"
+              aria-label="待办事项"
+            >
+              <UBadge
+                v-if="todoTotal > 0"
+                :label="todoTotal > 99 ? '99+' : String(todoTotal)"
+                color="error"
+                size="sm"
+                class="absolute -top-1 -right-1"
+              />
+            </UButton>
+
+            <template #content>
+              <div class="todo-list w-72 p-2">
+                <div v-if="todos.length === 0" class="py-4 text-center text-sm text-muted">
+                  暂无待办事项
+                </div>
+                <button
+                  v-for="t in todos"
+                  :key="t.type"
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-elevated"
+                  @click="openTodo(t)"
+                >
+                  <span>{{ t.title }}</span>
+                  <UBadge
+                    :color="t.count > 0 ? 'error' : 'neutral'"
+                    variant="soft"
+                    size="sm"
+                  >
+                    {{ t.count }}
+                  </UBadge>
+                </button>
               </div>
-            </div>
-          </el-popover>
-          <!-- 全屏切换（IR-UI-02） -->
-          <el-tooltip :content="fullscreen ? '退出全屏' : '全屏切换'" placement="bottom">
-            <el-icon :size="20" class="header-icon" @click="toggleFullscreen">
-              <FullScreen />
-            </el-icon>
-          </el-tooltip>
-
-          <el-dropdown
-            @command="(cmd: string) => cmd === 'logout' ? handleLogout() : router.push({ name: cmd })"
-          >
-            <span class="user-info">
-              <el-avatar :size="30" class="avatar">{{ user?.realName?.charAt(0) }}</el-avatar>
-              <span class="user-name">{{ user?.realName }}</span>
-              <el-tag size="small" effect="plain" class="role-tag">
-                {{ user?.roleNames?.[0] || '未分配角色' }}
-              </el-tag>
-              <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="change-password">
-                  <el-icon><Lock /></el-icon>修改密码
-                </el-dropdown-item>
-                <el-dropdown-item divided command="logout">
-                  <el-icon><SwitchButton /></el-icon>退出登录
-                </el-dropdown-item>
-              </el-dropdown-menu>
             </template>
-          </el-dropdown>
-        </div>
-      </el-header>
+          </UPopover>
 
-      <el-main class="main">
+          <!-- 全屏切换（IR-UI-02） -->
+          <UTooltip :text="fullscreen ? '退出全屏' : '全屏切换'">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              square
+              icon="i-lucide-maximize"
+              class="header-icon"
+              :aria-label="fullscreen ? '退出全屏' : '进入全屏'"
+              @click="toggleFullscreen"
+            />
+          </UTooltip>
+
+          <UDropdownMenu :items="userMenuItems" :content="{ align: 'end' }">
+            <UButton color="neutral" variant="ghost" class="user-info gap-2">
+              <UAvatar :text="user?.realName?.charAt(0)" size="sm" />
+              <span class="user-name hidden text-sm sm:inline">{{ user?.realName }}</span>
+              <UBadge variant="outline" size="sm" class="role-tag hidden md:inline-flex">
+                {{ user?.roleNames?.[0] || '未分配角色' }}
+              </UBadge>
+              <UIcon name="i-lucide-chevron-down" class="size-4 text-dimmed" />
+            </UButton>
+          </UDropdownMenu>
+        </div>
+      </header>
+
+      <main id="main-content" class="flex-1 overflow-y-auto bg-muted p-4" tabindex="-1">
         <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+      </main>
+    </div>
+  </div>
 </template>
 
-<script lang="ts">
-export default { name: 'MainLayout' }
-</script>
-
 <style scoped lang="scss">
-.layout {
-  height: 100vh;
-}
+.skip-link {
+  position: absolute;
+  top: -48px;
+  left: 8px;
+  z-index: 4000;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--ui-bg);
+  color: var(--ui-primary);
+  box-shadow: var(--el-box-shadow-light);
+  text-decoration: none;
+  transition: top 0.2s;
 
-.aside {
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
-  transition: width 0.2s;
-  overflow: hidden;
-
-  .logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    height: 56px;
-    cursor: pointer;
-    border-bottom: 1px solid #f0f0f0;
-
-    .logo-title {
-      font-size: 15px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-  }
-
-  .menu {
-    border-right: none;
-    width: 100%;
-  }
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  height: 56px;
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-
-    .collapse-btn {
-      cursor: pointer;
-      color: #606266;
-
-      &:hover {
-        color: #409eff;
-      }
-    }
-  }
-
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-
-    .header-icon {
-      cursor: pointer;
-      color: #606266;
-
-      &:hover {
-        color: #409eff;
-      }
-    }
-
-    .todo-trigger {
-      display: inline-flex;
-      align-items: center;
-      cursor: pointer;
-    }
-  }
-
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    outline: none;
-
-    .avatar {
-      background: #409eff;
-      color: #fff;
-      font-size: 14px;
-    }
-
-    .user-name {
-      font-size: 14px;
-    }
-  }
-}
-
-.main {
-  background: #f5f7fa;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.todo-list {
-  .todo-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 4px;
-    font-size: 13px;
-    cursor: pointer;
-
-    &:hover {
-      color: #409eff;
-    }
-
-    & + .todo-item {
-      border-top: 1px solid #f0f0f0;
-    }
-  }
-
-  .todo-empty {
-    padding: 8px 0;
-    text-align: center;
-    font-size: 13px;
-    color: #909399;
+  &:focus {
+    top: 8px;
   }
 }
 </style>

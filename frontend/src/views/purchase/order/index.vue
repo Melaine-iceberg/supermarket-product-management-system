@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
+import { confirm, prompt } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -48,6 +49,15 @@ function money(v: number | null | undefined) {
 
 function statusTag(status: string) {
   return PURCHASE_STATUS_MAP[status] ?? { label: status, type: 'info' as const }
+}
+
+/** Element 标签类型 → Nuxt UI 徽标颜色 */
+function tagColor(type?: 'success' | 'warning' | 'danger' | 'info' | 'primary') {
+  if (type === 'success') return 'success' as const
+  if (type === 'warning') return 'warning' as const
+  if (type === 'danger') return 'error' as const
+  if (type === 'primary') return 'primary' as const
+  return 'neutral' as const
 }
 
 /** 可发起退货的采购单状态（状态—操作约束矩阵） */
@@ -308,7 +318,7 @@ async function searchGoods() {
 
 function pickGoods(goods: PickerGoodsRow) {
   if (editDialog.items.some((i) => i.goodsId === goods.id)) {
-    ElMessage.warning('该商品已在明细中（同商品仅一行，BR-PUR-03）')
+    notify.warning('该商品已在明细中（同商品仅一行，BR-PUR-03）')
     return
   }
   editDialog.items.push({
@@ -332,15 +342,15 @@ function removeItem(index: number) {
 
 async function saveOrder() {
   if (editDialog.supplierId == null) {
-    ElMessage.warning('请选择供应商')
+    notify.warning('请选择供应商')
     return
   }
   if (editDialog.items.length === 0) {
-    ElMessage.warning('请至少添加一条采购明细（BR-PUR-03）')
+    notify.warning('请至少添加一条采购明细（BR-PUR-03）')
     return
   }
   if (editDialog.items.some((i) => !i.quantity || i.quantity <= 0 || i.price == null || i.price < 0)) {
-    ElMessage.warning('明细数量必须大于 0、单价不能为负（BR-PUR-03）')
+    notify.warning('明细数量必须大于 0、单价不能为负（BR-PUR-03）')
     return
   }
   editDialog.saving = true
@@ -360,10 +370,10 @@ async function saveOrder() {
     }
     if (editDialog.editing) {
       await updatePurchaseOrder(editDialog.id, payload)
-      ElMessage.success('采购单已保存')
+      notify.success('采购单已保存')
     } else {
       await createPurchaseOrder(payload)
-      ElMessage.success('采购单草稿已创建')
+      notify.success('采购单草稿已创建')
     }
     editDialog.visible = false
     load()
@@ -374,16 +384,16 @@ async function saveOrder() {
 
 // ==================== 提交 / 撤回 / 审核（FR-PUR-04） ====================
 async function submitOrder(row: PurchaseOrderVO) {
-  await ElMessageBox.confirm(`确认提交采购单 ${row.orderNo} 审核？提交后由店长审核`, '提交审核', { type: 'info' })
+  await confirm(`确认提交采购单 ${row.orderNo} 审核？提交后由店长审核`, '提交审核', { type: 'info' })
   await submitPurchaseOrder(row.id)
-  ElMessage.success('已提交审核')
+  notify.success('已提交审核')
   load()
 }
 
 async function withdrawOrder(row: PurchaseOrderVO) {
-  await ElMessageBox.confirm(`确认撤回采购单 ${row.orderNo}？撤回后回到草稿可继续编辑`, '撤回', { type: 'warning' })
+  await confirm(`确认撤回采购单 ${row.orderNo}？撤回后回到草稿可继续编辑`, '撤回', { type: 'warning' })
   await withdrawPurchaseOrder(row.id)
-  ElMessage.success('已撤回')
+  notify.success('已撤回')
   load()
 }
 
@@ -409,18 +419,18 @@ function openAudit(row: PurchaseOrderVO) {
 
 async function saveAudit() {
   if (!auditDialog.approved && !auditDialog.remark.trim()) {
-    ElMessage.warning('驳回时必须填写审核意见（FR-PUR-04）')
+    notify.warning('驳回时必须填写审核意见（FR-PUR-04）')
     return
   }
   if (!auditDialog.password) {
-    ElMessage.warning('请输入当前账号密码以确认操作')
+    notify.warning('请输入当前账号密码以确认操作')
     return
   }
   auditDialog.saving = true
   try {
     await auditPurchaseOrder(auditDialog.id, auditDialog.approved,
       auditDialog.remark.trim() || undefined, auditDialog.password)
-    ElMessage.success(auditDialog.approved ? '审核通过' : '已驳回退回草稿')
+    notify.success(auditDialog.approved ? '审核通过' : '已驳回退回草稿')
     auditDialog.visible = false
     auditDialog.password = ''
     load()
@@ -431,39 +441,39 @@ async function saveAudit() {
 
 // ==================== 作废 / 终止 / 关闭（FR-PUR-05） ====================
 async function cancelOrder(row: PurchaseOrderVO) {
-  const { value } = await ElMessageBox.prompt('作废后单据保留可查但不可再流转，请填写作废原因', `作废 ${row.orderNo}`, {
+  const { value } = await prompt('作废后单据保留可查但不可再流转，请填写作废原因', `作废 ${row.orderNo}`, {
     inputPlaceholder: '作废原因（必填）',
     inputValidator: (v: string) => (v && v.trim() ? true : '原因不能为空'),
   })
   await cancelPurchaseOrder(row.id, value.trim())
-  ElMessage.success('已作废')
+  notify.success('已作废')
   load()
 }
 
 async function terminateOrder(row: PurchaseOrderVO) {
-  const { value } = await ElMessageBox.prompt('终止已审核未入库的采购单，在途量将同步扣除，请填写终止原因', `终止 ${row.orderNo}`, {
+  const { value } = await prompt('终止已审核未入库的采购单，在途量将同步扣除，请填写终止原因', `终止 ${row.orderNo}`, {
     inputPlaceholder: '终止原因（必填）',
     inputValidator: (v: string) => (v && v.trim() ? true : '原因不能为空'),
   })
   await terminatePurchaseOrder(row.id, value.trim())
-  ElMessage.success('已终止')
+  notify.success('已终止')
   load()
 }
 
 async function closeOrder(row: PurchaseOrderVO) {
-  const { value } = await ElMessageBox.prompt('关闭后剩余数量不再入库，单据转已完成，请填写短少原因', `关闭短少 ${row.orderNo}`, {
+  const { value } = await prompt('关闭后剩余数量不再入库，单据转已完成，请填写短少原因', `关闭短少 ${row.orderNo}`, {
     inputPlaceholder: '短少原因（必填）',
     inputValidator: (v: string) => (v && v.trim() ? true : '原因不能为空'),
   })
   await closePurchaseOrder(row.id, value.trim())
-  ElMessage.success('已关闭剩余数量')
+  notify.success('已关闭剩余数量')
   load()
 }
 
 async function removeOrder(row: PurchaseOrderVO) {
-  await ElMessageBox.confirm(`确认删除草稿 ${row.orderNo}？删除后不可恢复`, '删除草稿', { type: 'warning' })
+  await confirm(`确认删除草稿 ${row.orderNo}？删除后不可恢复`, '删除草稿', { type: 'warning' })
   await deletePurchaseOrder(row.id)
-  ElMessage.success('已删除')
+  notify.success('已删除')
   load()
 }
 
@@ -524,11 +534,11 @@ function openSettle(row: PurchaseOrderVO) {
 
 async function saveSettle() {
   if (settleDialog.form.settleStatus !== 'UNSETTLED' && settleDialog.form.settleAmount == null) {
-    ElMessage.warning('请填写结算金额')
+    notify.warning('请填写结算金额')
     return
   }
   if (settleDialog.form.settleStatus !== 'UNSETTLED' && !settleDialog.form.settleMethod) {
-    ElMessage.warning('请选择结算方式（数据字典 settle_type）')
+    notify.warning('请选择结算方式（数据字典 settle_type）')
     return
   }
   settleDialog.saving = true
@@ -539,7 +549,7 @@ async function saveSettle() {
       settleMethod: settleDialog.form.settleStatus === 'UNSETTLED' ? undefined : settleDialog.form.settleMethod,
       settleDate: settleDialog.form.settleStatus === 'UNSETTLED' ? undefined : settleDialog.form.settleDate || undefined,
     })
-    ElMessage.success('结算登记完成')
+    notify.success('结算登记完成')
     settleDialog.visible = false
     load()
   } finally {
@@ -633,7 +643,7 @@ async function openReturn(row: PurchaseOrderVO) {
       returnedPrice: Number(i.price),
     }))
   if (returnDialog.items.length === 0) {
-    ElMessage.warning('该采购单没有可退商品（可退 = 已入库 − 已退）')
+    notify.warning('该采购单没有可退商品（可退 = 已入库 − 已退）')
     return
   }
   returnDialog.visible = true
@@ -642,15 +652,15 @@ async function openReturn(row: PurchaseOrderVO) {
 async function saveReturn() {
   const selected = returnDialog.items.filter((i) => i.returnQty != null && i.returnQty > 0)
   if (selected.length === 0) {
-    ElMessage.warning('请填写退货数量')
+    notify.warning('请填写退货数量')
     return
   }
   if (selected.some((i) => i.returnQty! > i.returnable)) {
-    ElMessage.warning('退货数量不能超过可退数量（已入库 − 已退）')
+    notify.warning('退货数量不能超过可退数量（已入库 − 已退）')
     return
   }
   if (!returnDialog.returnReason.trim()) {
-    ElMessage.warning('请填写退货原因')
+    notify.warning('请填写退货原因')
     return
   }
   returnDialog.saving = true
@@ -661,7 +671,7 @@ async function saveReturn() {
       remark: returnDialog.remark || undefined,
       items: selected.map((i) => ({ purchaseItemId: i.purchaseItemId, returnQty: Number(i.returnQty) })),
     })
-    ElMessage.success('退货单已创建，待店长审核')
+    notify.success('退货单已创建，待店长审核')
     returnDialog.visible = false
     load()
   } finally {
@@ -671,7 +681,7 @@ async function saveReturn() {
 
 /** 退货审核：通过执行退货 / 驳回须意见；密码二次确认（BR-SYS-06） */
 async function auditReturn(row: PurchaseReturnVO) {
-  const { value } = await ElMessageBox.prompt(
+  const { value } = await prompt(
     `审核退货单 ${row.orderNo}：输入"通过"执行退货（生成负数流水并冲减结存），或填写意见驳回`,
     '退货审核',
     {
@@ -682,10 +692,10 @@ async function auditReturn(row: PurchaseReturnVO) {
   )
   const approved = value.trim() === '通过'
   if (!approved && value.trim().length < 2) {
-    ElMessage.warning('驳回时必须填写审核意见')
+    notify.warning('驳回时必须填写审核意见')
     return
   }
-  const { value: password } = await ElMessageBox.prompt(
+  const { value: password } = await prompt(
     '该操作将按退货单执行库存冲减，请输入当前账号密码确认：',
     '敏感操作二次确认',
     {
@@ -695,7 +705,7 @@ async function auditReturn(row: PurchaseReturnVO) {
     },
   )
   await auditPurchaseReturn(row.id, approved, approved ? undefined : value.trim(), password)
-  ElMessage.success(approved ? '退货已执行' : '已驳回')
+  notify.success(approved ? '退货已执行' : '已驳回')
   loadReturns()
 }
 
@@ -722,29 +732,29 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <el-tabs v-model="activeTab" @tab-change="onTabChange">
+    <AppTabs v-model="activeTab" @tab-change="onTabChange">
       <!-- ==================== 采购单列表（FR-PUR-03） ==================== -->
-      <el-tab-pane label="采购单" name="orders">
-        <el-card shadow="never">
-          <el-form inline @submit.prevent="search">
-            <el-form-item label="单号">
-              <el-input v-model="query.orderNo" placeholder="PO 单号" clearable style="width: 160px" @keyup.enter="search" />
-            </el-form-item>
-            <el-form-item label="供应商">
-              <el-select v-model="query.supplierId" placeholder="全部" clearable filterable style="width: 160px">
-                <el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="状态">
-              <el-select v-model="query.status" placeholder="全部" clearable style="width: 140px">
-                <el-option v-for="(v, k) in PURCHASE_STATUS_MAP" :key="k" :label="v.label" :value="k" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="创建人">
-              <el-input v-model="query.createBy" placeholder="创建人" clearable style="width: 110px" @keyup.enter="search" />
-            </el-form-item>
-            <el-form-item label="创建日期">
-              <el-date-picker
+      <AppTabPane label="采购单" name="orders">
+        <UCard>
+          <AppForm inline @submit.prevent="search">
+            <AppFormItem label="单号">
+              <AppInput v-model="query.orderNo" placeholder="PO 单号" clearable style="width: 160px" @keyup.enter="search" />
+            </AppFormItem>
+            <AppFormItem label="供应商">
+              <AppSelect v-model="query.supplierId" placeholder="全部" clearable filterable style="width: 160px">
+                <AppOption v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
+              </AppSelect>
+            </AppFormItem>
+            <AppFormItem label="状态">
+              <AppSelect v-model="query.status" placeholder="全部" clearable style="width: 140px">
+                <AppOption v-for="(v, k) in PURCHASE_STATUS_MAP" :key="k" :label="v.label" :value="k" />
+              </AppSelect>
+            </AppFormItem>
+            <AppFormItem label="创建人">
+              <AppInput v-model="query.createBy" placeholder="创建人" clearable style="width: 110px" @keyup.enter="search" />
+            </AppFormItem>
+            <AppFormItem label="创建日期">
+              <AppDatePicker
                 v-model="createDateRange"
                 type="daterange"
                 value-format="YYYY-MM-DD"
@@ -752,73 +762,94 @@ onMounted(() => {
                 end-placeholder="结束"
                 style="width: 240px"
               />
-            </el-form-item>
-            <el-form-item label="商品">
-              <el-input v-model="query.goodsKeyword" placeholder="商品名称/编码" clearable style="width: 150px" @keyup.enter="search" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="search">查询</el-button>
-              <el-button @click="resetQuery">重置</el-button>
-              <el-button v-if="auth.hasPerm('sys:pur:create')" type="success" @click="openCreate">新建采购单</el-button>
-            </el-form-item>
-          </el-form>
-
-          <el-table v-loading="loading" border :data="list" stripe>
-            <el-table-column prop="orderNo" label="单号" width="155" fixed="left" />
-            <el-table-column prop="supplierName" label="供应商" min-width="130" show-overflow-tooltip />
-            <el-table-column label="状态" width="110" align="center">
-              <template #default="{ row }">
-                <el-tag :type="statusTag(row.status).type" size="small">{{ statusTag(row.status).label }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="创建" width="150">
-              <template #default="{ row }">{{ row.createBy }}<br /><span class="sub">{{ fmtTime(row.createTime) }}</span></template>
-            </el-table-column>
-            <el-table-column prop="expectDate" label="预计到货" width="105" />
-            <el-table-column label="总额" width="100" align="right">
-              <template #default="{ row }">￥{{ money(row.totalAmount) }}</template>
-            </el-table-column>
-            <el-table-column label="入库进度" width="130">
-              <template #default="{ row }">
-                <el-progress
-                  :percentage="Math.min(row.receiveProgress ?? 0, 100)"
-                  :stroke-width="14"
-                  :text-inside="true"
-                  :status="(row.receiveProgress ?? 0) >= 100 ? 'success' : undefined"
+            </AppFormItem>
+            <AppFormItem label="商品">
+              <AppInput v-model="query.goodsKeyword" placeholder="商品名称/编码" clearable style="width: 150px" @keyup.enter="search" />
+            </AppFormItem>
+            <AppFormItem>
+              <div class="flex flex-wrap gap-2">
+                <UButton label="查询" @click="search" />
+                <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+                <UButton
+                  v-if="auth.hasPerm('sys:pur:create')"
+                  color="success"
+                  label="新建采购单"
+                  @click="openCreate"
                 />
-              </template>
-            </el-table-column>
-            <el-table-column label="结算" width="90" align="center">
+              </div>
+            </AppFormItem>
+          </AppForm>
+
+          <AppTable :loading="loading" border :data="list" stripe>
+            <AppTableColumn prop="orderNo" label="单号" width="155" fixed="left" />
+            <AppTableColumn prop="supplierName" label="供应商" min-width="130" show-overflow-tooltip />
+            <AppTableColumn label="状态" width="110" align="center">
               <template #default="{ row }">
-                <el-tag :type="row.settleStatus === 'SETTLED' ? 'success' : row.settleStatus === 'PARTIAL' ? 'warning' : 'info'" size="small">
+                <UBadge :color="tagColor(statusTag(row.status).type)" variant="soft" size="sm">
+                  {{ statusTag(row.status).label }}
+                </UBadge>
+              </template>
+            </AppTableColumn>
+            <AppTableColumn label="创建" width="150">
+              <template #default="{ row }">{{ row.createBy }}<br /><span class="sub">{{ fmtTime(row.createTime) }}</span></template>
+            </AppTableColumn>
+            <AppTableColumn prop="expectDate" label="预计到货" width="105" />
+            <AppTableColumn label="总额" width="100" align="right">
+              <template #default="{ row }">￥{{ money(row.totalAmount) }}</template>
+            </AppTableColumn>
+            <AppTableColumn label="入库进度" width="130">
+              <template #default="{ row }">
+                <div class="progress-cell">
+                  <div class="progress-bar">
+                    <UProgress
+                      :model-value="Math.min(row.receiveProgress ?? 0, 100)"
+                      :max="100"
+                      :color="(row.receiveProgress ?? 0) >= 100 ? 'success' : 'primary'"
+                    />
+                  </div>
+                  <span class="progress-text">{{ Math.min(row.receiveProgress ?? 0, 100) }}%</span>
+                </div>
+              </template>
+            </AppTableColumn>
+            <AppTableColumn label="结算" width="90" align="center">
+              <template #default="{ row }">
+                <UBadge
+                  :color="row.settleStatus === 'SETTLED' ? 'success' : row.settleStatus === 'PARTIAL' ? 'warning' : 'neutral'"
+                  variant="soft"
+                  size="sm"
+                >
                   {{ SETTLE_STATUS_MAP[row.settleStatus] ?? row.settleStatus }}
-                </el-tag>
+                </UBadge>
               </template>
-            </el-table-column>
-            <el-table-column label="操作" width="270" fixed="right" align="center">
+            </AppTableColumn>
+            <AppTableColumn label="操作" width="270" fixed="right" align="center">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openDetail(row as PurchaseOrderVO)">详情</el-button>
-                <el-button v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:update')" link type="primary" @click="openEdit(row as PurchaseOrderVO)">编辑</el-button>
-                <el-button v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:submit')" link type="success" @click="submitOrder(row as PurchaseOrderVO)">提交</el-button>
-                <el-button
-                  v-if="row.status === 'SUBMITTED' && row.createBy === auth.user?.realName && auth.hasPerm('sys:pur:submit')"
-                  link
-                  type="warning"
-                  @click="withdrawOrder(row as PurchaseOrderVO)"
-                >撤回</el-button>
-                <el-button v-if="row.status === 'SUBMITTED' && auth.hasPerm('sys:pur:audit')" link type="primary" @click="openAudit(row as PurchaseOrderVO)">审核</el-button>
-                <el-button v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:terminate')" link type="danger" @click="cancelOrder(row as PurchaseOrderVO)">作废</el-button>
-                <el-button v-if="row.status === 'APPROVED' && auth.hasPerm('sys:pur:terminate')" link type="danger" @click="terminateOrder(row as PurchaseOrderVO)">终止</el-button>
-                <el-button v-if="row.status === 'PARTIAL' && auth.hasPerm('sys:pur:terminate')" link type="warning" @click="closeOrder(row as PurchaseOrderVO)">关闭短少</el-button>
-                <el-button v-if="returnable(row as PurchaseOrderVO) && auth.hasPerm('sys:pur:return')" link type="danger" @click="openReturn(row as PurchaseOrderVO)">退货</el-button>
-                <el-button v-if="settlable(row as PurchaseOrderVO) && auth.hasPerm('sys:pur:settle')" link type="success" @click="openSettle(row as PurchaseOrderVO)">结算</el-button>
-                <el-button v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:delete')" link type="danger" @click="removeOrder(row as PurchaseOrderVO)">删除</el-button>
+                <div class="flex flex-wrap items-center justify-center gap-x-1">
+                  <UButton variant="link" size="sm" label="详情" @click="openDetail(row as PurchaseOrderVO)" />
+                  <UButton v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:update')" variant="link" size="sm" label="编辑" @click="openEdit(row as PurchaseOrderVO)" />
+                  <UButton v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:submit')" variant="link" size="sm" color="success" label="提交" @click="submitOrder(row as PurchaseOrderVO)" />
+                  <UButton
+                    v-if="row.status === 'SUBMITTED' && row.createBy === auth.user?.realName && auth.hasPerm('sys:pur:submit')"
+                    variant="link"
+                    size="sm"
+                    color="warning"
+                    label="撤回"
+                    @click="withdrawOrder(row as PurchaseOrderVO)"
+                  />
+                  <UButton v-if="row.status === 'SUBMITTED' && auth.hasPerm('sys:pur:audit')" variant="link" size="sm" label="审核" @click="openAudit(row as PurchaseOrderVO)" />
+                  <UButton v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:terminate')" variant="link" size="sm" color="error" label="作废" @click="cancelOrder(row as PurchaseOrderVO)" />
+                  <UButton v-if="row.status === 'APPROVED' && auth.hasPerm('sys:pur:terminate')" variant="link" size="sm" color="error" label="终止" @click="terminateOrder(row as PurchaseOrderVO)" />
+                  <UButton v-if="row.status === 'PARTIAL' && auth.hasPerm('sys:pur:terminate')" variant="link" size="sm" color="warning" label="关闭短少" @click="closeOrder(row as PurchaseOrderVO)" />
+                  <UButton v-if="returnable(row as PurchaseOrderVO) && auth.hasPerm('sys:pur:return')" variant="link" size="sm" color="error" label="退货" @click="openReturn(row as PurchaseOrderVO)" />
+                  <UButton v-if="settlable(row as PurchaseOrderVO) && auth.hasPerm('sys:pur:settle')" variant="link" size="sm" color="success" label="结算" @click="openSettle(row as PurchaseOrderVO)" />
+                  <UButton v-if="row.status === 'DRAFT' && auth.hasPerm('sys:pur:delete')" variant="link" size="sm" color="error" label="删除" @click="removeOrder(row as PurchaseOrderVO)" />
+                </div>
               </template>
-            </el-table-column>
-          </el-table>
+            </AppTableColumn>
+          </AppTable>
 
           <div class="pagination-row">
-            <el-pagination
+            <AppPagination
               v-model:current-page="query.page"
               v-model:page-size="query.size"
               :total="total"
@@ -828,26 +859,26 @@ onMounted(() => {
               @size-change="search"
             />
           </div>
-        </el-card>
-      </el-tab-pane>
+        </UCard>
+      </AppTabPane>
 
       <!-- ==================== 采购退货单（FR-PUR-08） ==================== -->
-      <el-tab-pane label="采购退货" name="returns">
-        <el-card shadow="never">
-          <el-form inline @submit.prevent="searchReturns">
-            <el-form-item label="退货单号">
-              <el-input v-model="returnQuery.orderNo" placeholder="PT 单号" clearable style="width: 160px" @keyup.enter="searchReturns" />
-            </el-form-item>
-            <el-form-item label="采购单号">
-              <el-input v-model="returnQuery.purchaseOrderNo" placeholder="PO 单号" clearable style="width: 160px" @keyup.enter="searchReturns" />
-            </el-form-item>
-            <el-form-item label="状态">
-              <el-select v-model="returnQuery.status" placeholder="全部" clearable style="width: 130px">
-                <el-option v-for="(v, k) in RETURN_STATUS_MAP" :key="k" :label="v.label" :value="k" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="日期">
-              <el-date-picker
+      <AppTabPane label="采购退货" name="returns">
+        <UCard>
+          <AppForm inline @submit.prevent="searchReturns">
+            <AppFormItem label="退货单号">
+              <AppInput v-model="returnQuery.orderNo" placeholder="PT 单号" clearable style="width: 160px" @keyup.enter="searchReturns" />
+            </AppFormItem>
+            <AppFormItem label="采购单号">
+              <AppInput v-model="returnQuery.purchaseOrderNo" placeholder="PO 单号" clearable style="width: 160px" @keyup.enter="searchReturns" />
+            </AppFormItem>
+            <AppFormItem label="状态">
+              <AppSelect v-model="returnQuery.status" placeholder="全部" clearable style="width: 130px">
+                <AppOption v-for="(v, k) in RETURN_STATUS_MAP" :key="k" :label="v.label" :value="k" />
+              </AppSelect>
+            </AppFormItem>
+            <AppFormItem label="日期">
+              <AppDatePicker
                 v-model="returnDateRange"
                 type="daterange"
                 value-format="YYYY-MM-DD"
@@ -855,49 +886,53 @@ onMounted(() => {
                 end-placeholder="结束"
                 style="width: 240px"
               />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="searchReturns">查询</el-button>
-            </el-form-item>
-          </el-form>
+            </AppFormItem>
+            <AppFormItem>
+              <UButton label="查询" @click="searchReturns" />
+            </AppFormItem>
+          </AppForm>
 
-          <el-table v-loading="returnTabLoading" :data="returnList" stripe>
-            <el-table-column prop="orderNo" label="退货单号" width="155" fixed="left" />
-            <el-table-column prop="purchaseOrderNo" label="原采购单" width="155" />
-            <el-table-column prop="supplierName" label="供应商" min-width="130" show-overflow-tooltip />
-            <el-table-column label="状态" width="95" align="center">
+          <AppTable :loading="returnTabLoading" :data="returnList" stripe>
+            <AppTableColumn prop="orderNo" label="退货单号" width="155" fixed="left" />
+            <AppTableColumn prop="purchaseOrderNo" label="原采购单" width="155" />
+            <AppTableColumn prop="supplierName" label="供应商" min-width="130" show-overflow-tooltip />
+            <AppTableColumn label="状态" width="95" align="center">
               <template #default="{ row }">
-                <el-tag :type="RETURN_STATUS_MAP[row.status]?.type ?? 'info'" size="small">
+                <UBadge :color="tagColor(RETURN_STATUS_MAP[row.status]?.type ?? 'info')" variant="soft" size="sm">
                   {{ RETURN_STATUS_MAP[row.status]?.label ?? row.status }}
-                </el-tag>
+                </UBadge>
               </template>
-            </el-table-column>
-            <el-table-column label="退货金额" width="110" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="退货金额" width="110" align="right">
               <template #default="{ row }">￥{{ money(row.totalAmount) }}</template>
-            </el-table-column>
-            <el-table-column prop="returnReason" label="退货原因" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="createBy" label="创建人" width="90" />
-            <el-table-column label="创建时间" width="150">
+            </AppTableColumn>
+            <AppTableColumn prop="returnReason" label="退货原因" min-width="140" show-overflow-tooltip />
+            <AppTableColumn prop="createBy" label="创建人" width="90" />
+            <AppTableColumn label="创建时间" width="150">
               <template #default="{ row }">{{ fmtTime(row.createTime) }}</template>
-            </el-table-column>
-            <el-table-column label="审核" width="130">
+            </AppTableColumn>
+            <AppTableColumn label="审核" width="130">
               <template #default="{ row }">{{ row.auditBy ?? '—' }}<br /><span class="sub">{{ fmtTime(row.auditTime) }}</span></template>
-            </el-table-column>
-            <el-table-column label="操作" width="140" fixed="right" align="center">
+            </AppTableColumn>
+            <AppTableColumn label="操作" width="140" fixed="right" align="center">
               <template #default="{ row }">
-                <el-button link type="primary" @click="openReturnDetail(row as PurchaseReturnVO)">详情</el-button>
-                <el-button
-                  v-if="row.status === 'SUBMITTED' && auth.hasPerm('sys:pur:return-audit')"
-                  link
-                  type="warning"
-                  @click="auditReturn(row as PurchaseReturnVO)"
-                >审核</el-button>
+                <div class="flex flex-wrap items-center justify-center gap-x-1">
+                  <UButton variant="link" size="sm" label="详情" @click="openReturnDetail(row as PurchaseReturnVO)" />
+                  <UButton
+                    v-if="row.status === 'SUBMITTED' && auth.hasPerm('sys:pur:return-audit')"
+                    variant="link"
+                    size="sm"
+                    color="warning"
+                    label="审核"
+                    @click="auditReturn(row as PurchaseReturnVO)"
+                  />
+                </div>
               </template>
-            </el-table-column>
-          </el-table>
+            </AppTableColumn>
+          </AppTable>
 
           <div class="pagination-row">
-            <el-pagination
+            <AppPagination
               v-model:current-page="returnQuery.page"
               v-model:page-size="returnQuery.size"
               :total="returnTotal"
@@ -907,321 +942,322 @@ onMounted(() => {
               @size-change="searchReturns"
             />
           </div>
-        </el-card>
-      </el-tab-pane>
-    </el-tabs>
+        </UCard>
+      </AppTabPane>
+    </AppTabs>
 
     <!-- ==================== 采购单详情 ==================== -->
-    <el-drawer v-model="detailDrawer.visible" title="采购单详情" size="720px">
+    <AppDrawer v-model="detailDrawer.visible" title="采购单详情" size="720px">
       <div v-loading="detailDrawer.loading">
         <template v-if="detailDrawer.data">
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="单号">{{ detailDrawer.data.orderNo }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="statusTag(detailDrawer.data.status).type" size="small">{{ statusTag(detailDrawer.data.status).label }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="供应商">{{ detailDrawer.data.supplierName }}</el-descriptions-item>
-            <el-descriptions-item label="预计到货">{{ detailDrawer.data.expectDate ?? '—' }}</el-descriptions-item>
-            <el-descriptions-item label="创建">{{ detailDrawer.data.createBy }} / {{ fmtTime(detailDrawer.data.createTime) }}</el-descriptions-item>
-            <el-descriptions-item label="提交">{{ fmtTime(detailDrawer.data.submitTime) }}</el-descriptions-item>
-            <el-descriptions-item label="审核">{{ detailDrawer.data.auditBy ?? '—' }} / {{ fmtTime(detailDrawer.data.auditTime) }}</el-descriptions-item>
-            <el-descriptions-item label="审核意见">{{ detailDrawer.data.auditRemark ?? '—' }}</el-descriptions-item>
-            <el-descriptions-item label="订购总额">￥{{ money(detailDrawer.data.totalAmount) }}</el-descriptions-item>
-            <el-descriptions-item label="实收金额">￥{{ money(detailDrawer.data.receivedAmount) }}</el-descriptions-item>
-            <el-descriptions-item label="退货金额">￥{{ money(detailDrawer.data.returnAmount) }}</el-descriptions-item>
-            <el-descriptions-item label="结算">
+          <AppDescriptions :column="2" border size="small">
+            <AppDescriptionsItem label="单号">{{ detailDrawer.data.orderNo }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="状态">
+              <UBadge :color="tagColor(statusTag(detailDrawer.data.status).type)" variant="soft" size="sm">
+                {{ statusTag(detailDrawer.data.status).label }}
+              </UBadge>
+            </AppDescriptionsItem>
+            <AppDescriptionsItem label="供应商">{{ detailDrawer.data.supplierName }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="预计到货">{{ detailDrawer.data.expectDate ?? '—' }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="创建">{{ detailDrawer.data.createBy }} / {{ fmtTime(detailDrawer.data.createTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="提交">{{ fmtTime(detailDrawer.data.submitTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="审核">{{ detailDrawer.data.auditBy ?? '—' }} / {{ fmtTime(detailDrawer.data.auditTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="审核意见">{{ detailDrawer.data.auditRemark ?? '—' }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="订购总额">￥{{ money(detailDrawer.data.totalAmount) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="实收金额">￥{{ money(detailDrawer.data.receivedAmount) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="退货金额">￥{{ money(detailDrawer.data.returnAmount) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="结算">
               {{ SETTLE_STATUS_MAP[detailDrawer.data.settleStatus] ?? detailDrawer.data.settleStatus }}
               <template v-if="detailDrawer.data.settleStatus !== 'UNSETTLED'">
                 （￥{{ money(detailDrawer.data.settleAmount) }} {{ settleLabel(detailDrawer.data.settleMethod) }} {{ detailDrawer.data.settleDate ?? '' }} 经办：{{ detailDrawer.data.settleBy ?? '—' }}）
               </template>
-            </el-descriptions-item>
-            <el-descriptions-item v-if="detailDrawer.data.terminateReason" label="终止/作废原因" :span="2">
+            </AppDescriptionsItem>
+            <AppDescriptionsItem v-if="detailDrawer.data.terminateReason" label="终止/作废原因" :span="2">
               {{ detailDrawer.data.terminateReason }}
-            </el-descriptions-item>
-            <el-descriptions-item v-if="detailDrawer.data.remark" label="备注" :span="2">{{ detailDrawer.data.remark }}</el-descriptions-item>
-          </el-descriptions>
+            </AppDescriptionsItem>
+            <AppDescriptionsItem v-if="detailDrawer.data.remark" label="备注" :span="2">{{ detailDrawer.data.remark }}</AppDescriptionsItem>
+          </AppDescriptions>
 
-          <el-table :data="detailDrawer.data.items" stripe size="small" style="margin-top: 12px">
-            <el-table-column prop="goodsCode" label="编码" width="100" />
-            <el-table-column prop="goodsName" label="商品" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="unitName" label="单位" width="60" />
-            <el-table-column label="订购" width="80" align="right" prop="quantity" />
-            <el-table-column label="单价" width="80" align="right">
+          <AppTable :data="detailDrawer.data.items" stripe size="small" style="margin-top: 12px">
+            <AppTableColumn prop="goodsCode" label="编码" width="100" />
+            <AppTableColumn prop="goodsName" label="商品" min-width="140" show-overflow-tooltip />
+            <AppTableColumn prop="unitName" label="单位" width="60" />
+            <AppTableColumn label="订购" width="80" align="right" prop="quantity" />
+            <AppTableColumn label="单价" width="80" align="right">
               <template #default="{ row }">{{ money(row.price) }}</template>
-            </el-table-column>
-            <el-table-column label="建议量" width="70" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="建议量" width="70" align="right">
               <template #default="{ row }">{{ row.suggestedQty ?? '—' }}</template>
-            </el-table-column>
-            <el-table-column label="建议价" width="80" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="建议价" width="80" align="right">
               <template #default="{ row }">{{ row.suggestedPrice != null ? money(row.suggestedPrice) : '—' }}</template>
-            </el-table-column>
-            <el-table-column label="金额" width="90" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="金额" width="90" align="right">
               <template #default="{ row }">{{ money(row.amount) }}</template>
-            </el-table-column>
-            <el-table-column label="已入" width="70" align="right" prop="receivedQty" />
-            <el-table-column label="已退" width="70" align="right" prop="returnedQty" />
-            <el-table-column label="待入库" width="70" align="right" prop="pendingQty" />
-          </el-table>
+            </AppTableColumn>
+            <AppTableColumn label="已入" width="70" align="right" prop="receivedQty" />
+            <AppTableColumn label="已退" width="70" align="right" prop="returnedQty" />
+            <AppTableColumn label="待入库" width="70" align="right" prop="pendingQty" />
+          </AppTable>
         </template>
       </div>
       <template #footer>
-        <el-button v-if="detailDrawer.data" @click="printOrder">打印（A4）</el-button>
+        <UButton v-if="detailDrawer.data" color="neutral" variant="outline" label="打印（A4）" @click="printOrder" />
       </template>
-    </el-drawer>
+    </AppDrawer>
 
     <!-- ==================== 新建 / 编辑采购单（FR-PUR-01） ==================== -->
-    <el-dialog
+    <AppModal
       v-model="editDialog.visible"
       :title="editDialog.editing ? '编辑采购单（草稿）' : '新建采购单'"
       width="860px"
       :close-on-click-modal="false"
     >
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
+      <UAlert
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="明细金额与总额自动计算（BR-PUR-03）；保存为草稿后可反复编辑，提交后由店长审核"
         class="dialog-alert"
       />
-      <el-form label-width="90px" @submit.prevent>
-        <el-row :gutter="12">
-          <el-col :span="8">
-            <el-form-item label="供应商" required>
-              <el-select v-model="editDialog.supplierId" placeholder="选择供应商" filterable style="width: 100%">
-                <el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="预计到货">
-              <el-date-picker v-model="editDialog.expectDate" type="date" value-format="YYYY-MM-DD" placeholder="选填" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="备注">
-              <el-input v-model="editDialog.remark" maxlength="200" placeholder="选填" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </el-form>
+      <AppForm label-width="90px" @submit.prevent>
+        <AppRow :gutter="12">
+          <AppCol :span="8">
+            <AppFormItem label="供应商" required>
+              <AppSelect v-model="editDialog.supplierId" placeholder="选择供应商" filterable style="width: 100%">
+                <AppOption v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
+              </AppSelect>
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="预计到货">
+              <AppDatePicker v-model="editDialog.expectDate" type="date" value-format="YYYY-MM-DD" placeholder="选填" style="width: 100%" />
+            </AppFormItem>
+          </AppCol>
+          <AppCol :span="8">
+            <AppFormItem label="备注">
+              <AppInput v-model="editDialog.remark" maxlength="200" placeholder="选填" />
+            </AppFormItem>
+          </AppCol>
+        </AppRow>
+      </AppForm>
 
-      <el-table :data="editDialog.items" size="small" stripe>
-        <el-table-column prop="goodsCode" label="编码" width="95" />
-        <el-table-column prop="goodsName" label="商品" min-width="130" show-overflow-tooltip />
-        <el-table-column prop="unitName" label="单位" width="55" />
-        <el-table-column label="数量" width="130">
+      <AppTable :data="editDialog.items" size="small" stripe>
+        <AppTableColumn prop="goodsCode" label="编码" width="95" />
+        <AppTableColumn prop="goodsName" label="商品" min-width="130" show-overflow-tooltip />
+        <AppTableColumn prop="unitName" label="单位" width="55" />
+        <AppTableColumn label="数量" width="130">
           <template #default="{ row }">
-            <el-input-number v-model="row.quantity" :min="0.001" :precision="3" :controls="false" style="width: 110px" />
+            <AppInputNumber v-model="row.quantity" :min="0.001" :precision="3" :controls="false" style="width: 110px" />
           </template>
-        </el-table-column>
-        <el-table-column label="单价" width="130">
+        </AppTableColumn>
+        <AppTableColumn label="单价" width="130">
           <template #default="{ row }">
-            <el-input-number v-model="row.price" :min="0" :precision="2" :controls="false" style="width: 110px" />
+            <AppInputNumber v-model="row.price" :min="0" :precision="2" :controls="false" style="width: 110px" />
           </template>
-        </el-table-column>
-        <el-table-column label="建议量 / 建议价" width="120" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="建议量 / 建议价" width="120" align="center">
           <template #default="{ row }">
             <span v-if="row.suggestedQty != null || row.suggestedPrice != null" class="suggested-cell">
               {{ row.suggestedQty ?? '—' }} / {{ row.suggestedPrice != null ? money(row.suggestedPrice) : '—' }}
             </span>
             <span v-else>—</span>
           </template>
-        </el-table-column>
-        <el-table-column label="金额" width="90" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="金额" width="90" align="right">
           <template #default="{ row }">￥{{ money(lineAmount(row as EditItem)) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="70" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="70" align="center">
           <template #default="{ $index }">
-            <el-button link type="danger" @click="removeItem($index)">移除</el-button>
+            <UButton variant="link" size="sm" color="error" label="移除" @click="removeItem($index)" />
           </template>
-        </el-table-column>
-      </el-table>
+        </AppTableColumn>
+      </AppTable>
       <div class="items-footer">
-        <el-button type="primary" plain @click="openGoodsPicker">+ 添加商品</el-button>
+        <UButton variant="outline" label="+ 添加商品" @click="openGoodsPicker" />
         <span>合计：￥{{ money(totalAmount) }}</span>
       </div>
 
       <template #footer>
-        <el-button @click="editDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="editDialog.saving" @click="saveOrder">保存草稿</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="editDialog.visible = false" />
+        <UButton :loading="editDialog.saving" label="保存草稿" @click="saveOrder" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- 商品选择（FR-PUR-01：可按供应商供货商品过滤，亦可切换全量商品） -->
-    <el-dialog v-model="goodsPicker.visible" title="选择商品（仅启用商品可采购）" width="680px">
-      <el-form inline @submit.prevent="searchGoods">
-        <el-form-item>
-          <el-input v-model="goodsPicker.keyword" placeholder="商品名称/编码" clearable style="width: 220px" @keyup.enter="searchGoods" />
-        </el-form-item>
-        <el-form-item label="来源">
-          <el-switch
+    <AppModal v-model="goodsPicker.visible" title="选择商品（仅启用商品可采购）" width="680px">
+      <AppForm inline @submit.prevent="searchGoods">
+        <AppFormItem>
+          <AppInput v-model="goodsPicker.keyword" placeholder="商品名称/编码" clearable style="width: 220px" @keyup.enter="searchGoods" />
+        </AppFormItem>
+        <AppFormItem label="来源">
+          <USwitch
             v-model="goodsPicker.onlySupplier"
             :disabled="editDialog.supplierId == null"
-            active-text="仅该供应商供货商品"
-            inactive-text="全量商品"
             @change="searchGoods"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="searchGoods">搜索</el-button>
-        </el-form-item>
-      </el-form>
-      <el-alert
+          <span class="switch-text">{{ goodsPicker.onlySupplier ? '仅该供应商供货商品' : '全量商品' }}</span>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="搜索" @click="searchGoods" />
+        </AppFormItem>
+      </AppForm>
+      <UAlert
         v-if="goodsPicker.onlySupplier && editDialog.supplierId != null"
-        type="info"
-        :closable="false"
-        show-icon
+        color="info"
+        variant="soft"
+        icon="i-lucide-info"
         title="按供应商-商品关联带出供货价与最近供货价（FR-SUP-04）；选择商品后单价默认取最近供货价"
         class="picker-alert"
       />
-      <el-table v-loading="goodsPicker.loading" :data="goodsPicker.list" size="small" stripe max-height="360">
-        <el-table-column prop="goodsCode" label="编码" width="100" />
-        <el-table-column prop="name" label="商品" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="spec" label="规格" width="90" show-overflow-tooltip />
-        <el-table-column prop="unitName" label="单位" width="60" />
-        <el-table-column v-if="goodsPicker.onlySupplier" label="最近供货价" width="100" align="right">
+      <AppTable :loading="goodsPicker.loading" :data="goodsPicker.list" size="small" stripe max-height="360">
+        <AppTableColumn prop="goodsCode" label="编码" width="100" />
+        <AppTableColumn prop="name" label="商品" min-width="150" show-overflow-tooltip />
+        <AppTableColumn prop="spec" label="规格" width="90" show-overflow-tooltip />
+        <AppTableColumn prop="unitName" label="单位" width="60" />
+        <AppTableColumn v-if="goodsPicker.onlySupplier" label="最近供货价" width="100" align="right">
           <template #default="{ row }">{{ money(row.lastSupplyPrice) }}</template>
-        </el-table-column>
-        <el-table-column v-if="goodsPicker.onlySupplier" label="协议供货价" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn v-if="goodsPicker.onlySupplier" label="协议供货价" width="100" align="right">
           <template #default="{ row }">{{ money(row.supplyPrice) }}</template>
-        </el-table-column>
-        <el-table-column label="进货参考价" width="100" align="right">
+        </AppTableColumn>
+        <AppTableColumn label="进货参考价" width="100" align="right">
           <template #default="{ row }">{{ money(row.purchasePrice) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="70" align="center">
+        </AppTableColumn>
+        <AppTableColumn label="操作" width="70" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="pickGoods(row as PickerGoodsRow)">选择</el-button>
+            <UButton variant="link" size="sm" label="选择" @click="pickGoods(row as PickerGoodsRow)" />
           </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
+        </AppTableColumn>
+      </AppTable>
+    </AppModal>
 
     <!-- ==================== 审核（FR-PUR-04） ==================== -->
-    <el-dialog v-model="auditDialog.visible" :title="`审核 ${auditDialog.orderNo}`" width="440px">
-      <el-form label-width="80px" @submit.prevent>
-        <el-form-item label="审核结论">
-          <el-radio-group v-model="auditDialog.approved">
-            <el-radio :value="true">通过（转已审核待入库）</el-radio>
-            <el-radio :value="false">驳回（退回草稿）</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item :label="auditDialog.approved ? '意见' : '驳回意见'" :required="!auditDialog.approved">
-          <el-input
+    <AppModal v-model="auditDialog.visible" :title="`审核 ${auditDialog.orderNo}`" width="440px">
+      <AppForm label-width="80px" @submit.prevent>
+        <AppFormItem label="审核结论">
+          <AppRadioGroup v-model="auditDialog.approved">
+            <AppRadio :value="true">通过（转已审核待入库）</AppRadio>
+            <AppRadio :value="false">驳回（退回草稿）</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem :label="auditDialog.approved ? '意见' : '驳回意见'" :required="!auditDialog.approved">
+          <AppInput
             v-model="auditDialog.remark"
             type="textarea"
             :rows="3"
             maxlength="200"
             :placeholder="auditDialog.approved ? '选填' : '驳回时必填（FR-PUR-04）'"
           />
-        </el-form-item>
-        <el-form-item label="确认密码" required>
-          <el-input
+        </AppFormItem>
+        <AppFormItem label="确认密码" required>
+          <AppInput
             v-model="auditDialog.password"
             type="password"
             show-password
             maxlength="50"
             placeholder="当前账号密码（敏感操作二次确认）"
           />
-        </el-form-item>
-      </el-form>
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="auditDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="auditDialog.saving" @click="saveAudit">提交</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="auditDialog.visible = false" />
+        <UButton :loading="auditDialog.saving" label="提交" @click="saveAudit" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- ==================== 结算登记（FR-PUR-09） ==================== -->
-    <el-dialog v-model="settleDialog.visible" :title="`结算登记 ${settleDialog.orderNo}`" width="460px">
-      <el-alert type="info" :closable="false" show-icon :title="`订购 ￥${money(settleDialog.totalAmount)}，实收 ￥${money(settleDialog.receivedAmount)}，退货 ￥${money(settleDialog.returnAmount)}；结算登记仅做标记，不做财务核销`" class="dialog-alert" />
-      <el-form label-width="90px" @submit.prevent>
-        <el-form-item label="结算状态" required>
-          <el-radio-group v-model="settleDialog.form.settleStatus">
-            <el-radio value="SETTLED">已结算</el-radio>
-            <el-radio value="PARTIAL">部分结算</el-radio>
-            <el-radio value="UNSETTLED">未结算</el-radio>
-          </el-radio-group>
-        </el-form-item>
+    <AppModal v-model="settleDialog.visible" :title="`结算登记 ${settleDialog.orderNo}`" width="460px">
+      <UAlert color="info" variant="soft" icon="i-lucide-info" :title="`订购 ￥${money(settleDialog.totalAmount)}，实收 ￥${money(settleDialog.receivedAmount)}，退货 ￥${money(settleDialog.returnAmount)}；结算登记仅做标记，不做财务核销`" class="dialog-alert" />
+      <AppForm label-width="90px" @submit.prevent>
+        <AppFormItem label="结算状态" required>
+          <AppRadioGroup v-model="settleDialog.form.settleStatus">
+            <AppRadio value="SETTLED">已结算</AppRadio>
+            <AppRadio value="PARTIAL">部分结算</AppRadio>
+            <AppRadio value="UNSETTLED">未结算</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
         <template v-if="settleDialog.form.settleStatus !== 'UNSETTLED'">
-          <el-form-item label="结算金额" required>
-            <el-input-number v-model="settleDialog.form.settleAmount" :min="0" :precision="2" :controls="false" style="width: 180px" />
-          </el-form-item>
-          <el-form-item label="结算方式" required>
-            <el-select v-model="settleDialog.form.settleMethod" style="width: 180px">
-              <el-option v-for="m in settleTypeOptions" :key="m.value" :label="m.label" :value="m.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="结算日期">
-            <el-date-picker v-model="settleDialog.form.settleDate" type="date" value-format="YYYY-MM-DD" style="width: 180px" />
-          </el-form-item>
+          <AppFormItem label="结算金额" required>
+            <AppInputNumber v-model="settleDialog.form.settleAmount" :min="0" :precision="2" :controls="false" style="width: 180px" />
+          </AppFormItem>
+          <AppFormItem label="结算方式" required>
+            <AppSelect v-model="settleDialog.form.settleMethod" style="width: 180px">
+              <AppOption v-for="m in settleTypeOptions" :key="m.value" :label="m.label" :value="m.value" />
+            </AppSelect>
+          </AppFormItem>
+          <AppFormItem label="结算日期">
+            <AppDatePicker v-model="settleDialog.form.settleDate" type="date" value-format="YYYY-MM-DD" style="width: 180px" />
+          </AppFormItem>
         </template>
-      </el-form>
+      </AppForm>
       <template #footer>
-        <el-button @click="settleDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="settleDialog.saving" @click="saveSettle">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="settleDialog.visible = false" />
+        <UButton :loading="settleDialog.saving" label="保存" @click="saveSettle" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- ==================== 创建退货（FR-PUR-08） ==================== -->
-    <el-dialog v-model="returnDialog.visible" :title="`采购退货 ${returnDialog.purchaseOrderNo}`" width="720px">
-      <el-alert type="warning" :closable="false" show-icon title="退货数量不可超过可退数量（已入库 − 已退）；退货单价按入库时成本单价计；创建后须店长审核通过才执行退货" class="dialog-alert" />
-      <el-form label-width="80px" @submit.prevent>
-        <el-form-item label="退货原因" required>
-          <el-input v-model="returnDialog.returnReason" maxlength="200" placeholder="如：临期质量问题、包装破损" />
-        </el-form-item>
-        <el-table :data="returnDialog.items" size="small" stripe>
-          <el-table-column prop="goodsName" label="商品" min-width="170" show-overflow-tooltip />
-          <el-table-column prop="unitName" label="单位" width="55" />
-          <el-table-column label="可退数量" width="90" align="right" prop="returnable" />
-          <el-table-column label="退货数量" width="140">
+    <AppModal v-model="returnDialog.visible" :title="`采购退货 ${returnDialog.purchaseOrderNo}`" width="720px">
+      <UAlert color="warning" variant="soft" icon="i-lucide-triangle-alert" title="退货数量不可超过可退数量（已入库 − 已退）；退货单价按入库时成本单价计；创建后须店长审核通过才执行退货" class="dialog-alert" />
+      <AppForm label-width="80px" @submit.prevent>
+        <AppFormItem label="退货原因" required>
+          <AppInput v-model="returnDialog.returnReason" maxlength="200" placeholder="如：临期质量问题、包装破损" />
+        </AppFormItem>
+        <AppTable :data="returnDialog.items" size="small" stripe>
+          <AppTableColumn prop="goodsName" label="商品" min-width="170" show-overflow-tooltip />
+          <AppTableColumn prop="unitName" label="单位" width="55" />
+          <AppTableColumn label="可退数量" width="90" align="right" prop="returnable" />
+          <AppTableColumn label="退货数量" width="140">
             <template #default="{ row }">
-              <el-input-number v-model="row.returnQty" :min="0" :max="row.returnable" :precision="3" :controls="false" style="width: 120px" />
+              <AppInputNumber v-model="row.returnQty" :min="0" :max="row.returnable" :precision="3" :controls="false" style="width: 120px" />
             </template>
-          </el-table-column>
-        </el-table>
-        <el-form-item label="备注" style="margin-top: 10px">
-          <el-input v-model="returnDialog.remark" maxlength="200" placeholder="选填" />
-        </el-form-item>
-      </el-form>
+          </AppTableColumn>
+        </AppTable>
+        <AppFormItem label="备注" style="margin-top: 10px">
+          <AppInput v-model="returnDialog.remark" maxlength="200" placeholder="选填" />
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="returnDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="returnDialog.saving" @click="saveReturn">提交退货单</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="returnDialog.visible = false" />
+        <UButton :loading="returnDialog.saving" label="提交退货单" @click="saveReturn" />
       </template>
-    </el-dialog>
+    </AppModal>
 
     <!-- ==================== 退货单详情 ==================== -->
-    <el-drawer v-model="returnDrawer.visible" title="退货单详情" size="640px">
+    <AppDrawer v-model="returnDrawer.visible" title="退货单详情" size="640px">
       <div v-loading="returnDrawer.loading">
         <template v-if="returnDrawer.data">
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="退货单号">{{ returnDrawer.data.orderNo }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="RETURN_STATUS_MAP[returnDrawer.data.status]?.type ?? 'info'" size="small">
+          <AppDescriptions :column="2" border size="small">
+            <AppDescriptionsItem label="退货单号">{{ returnDrawer.data.orderNo }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="状态">
+              <UBadge :color="tagColor(RETURN_STATUS_MAP[returnDrawer.data.status]?.type ?? 'info')" variant="soft" size="sm">
                 {{ RETURN_STATUS_MAP[returnDrawer.data.status]?.label ?? returnDrawer.data.status }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="原采购单">{{ returnDrawer.data.purchaseOrderNo }}</el-descriptions-item>
-            <el-descriptions-item label="供应商">{{ returnDrawer.data.supplierName }}</el-descriptions-item>
-            <el-descriptions-item label="退货金额">￥{{ money(returnDrawer.data.totalAmount) }}</el-descriptions-item>
-            <el-descriptions-item label="创建">{{ returnDrawer.data.createBy }} / {{ fmtTime(returnDrawer.data.createTime) }}</el-descriptions-item>
-            <el-descriptions-item label="审核">{{ returnDrawer.data.auditBy ?? '—' }} / {{ fmtTime(returnDrawer.data.auditTime) }}</el-descriptions-item>
-            <el-descriptions-item label="退货原因" :span="2">{{ returnDrawer.data.returnReason }}</el-descriptions-item>
-            <el-descriptions-item v-if="returnDrawer.data.auditRemark" label="审核意见" :span="2">{{ returnDrawer.data.auditRemark }}</el-descriptions-item>
-          </el-descriptions>
-          <el-table :data="returnDrawer.data.items" stripe size="small" style="margin-top: 12px">
-            <el-table-column prop="goodsCode" label="编码" width="100" />
-            <el-table-column prop="goodsName" label="商品" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="unitName" label="单位" width="60" />
-            <el-table-column label="退货数量" width="90" align="right" prop="returnQty" />
-            <el-table-column label="退货单价" width="90" align="right">
+              </UBadge>
+            </AppDescriptionsItem>
+            <AppDescriptionsItem label="原采购单">{{ returnDrawer.data.purchaseOrderNo }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="供应商">{{ returnDrawer.data.supplierName }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="退货金额">￥{{ money(returnDrawer.data.totalAmount) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="创建">{{ returnDrawer.data.createBy }} / {{ fmtTime(returnDrawer.data.createTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="审核">{{ returnDrawer.data.auditBy ?? '—' }} / {{ fmtTime(returnDrawer.data.auditTime) }}</AppDescriptionsItem>
+            <AppDescriptionsItem label="退货原因" :span="2">{{ returnDrawer.data.returnReason }}</AppDescriptionsItem>
+            <AppDescriptionsItem v-if="returnDrawer.data.auditRemark" label="审核意见" :span="2">{{ returnDrawer.data.auditRemark }}</AppDescriptionsItem>
+          </AppDescriptions>
+          <AppTable :data="returnDrawer.data.items" stripe size="small" style="margin-top: 12px">
+            <AppTableColumn prop="goodsCode" label="编码" width="100" />
+            <AppTableColumn prop="goodsName" label="商品" min-width="140" show-overflow-tooltip />
+            <AppTableColumn prop="unitName" label="单位" width="60" />
+            <AppTableColumn label="退货数量" width="90" align="right" prop="returnQty" />
+            <AppTableColumn label="退货单价" width="90" align="right">
               <template #default="{ row }">{{ money(row.returnPrice) }}</template>
-            </el-table-column>
-            <el-table-column label="金额" width="90" align="right">
+            </AppTableColumn>
+            <AppTableColumn label="金额" width="90" align="right">
               <template #default="{ row }">{{ money(row.amount) }}</template>
-            </el-table-column>
-          </el-table>
+            </AppTableColumn>
+          </AppTable>
         </template>
       </div>
-    </el-drawer>
+    </AppDrawer>
   </div>
 </template>
 
@@ -1233,8 +1269,31 @@ onMounted(() => {
 }
 
 .sub {
-  color: var(--el-text-color-secondary);
+  color: var(--ui-text-muted);
   font-size: 12px;
+}
+
+.progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.progress-text {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--ui-text-muted);
+}
+
+.switch-text {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--ui-text-muted);
 }
 
 .pagination-row {
@@ -1253,7 +1312,7 @@ onMounted(() => {
 
 .suggested-cell {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--ui-text-muted);
 }
 
 .items-footer {

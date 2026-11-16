@@ -10,6 +10,11 @@ node_modules/
 dist/
 *.local
 
+#### Nuxt UI 自动生成类型声明 ####
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+frontend/node_modules/.nuxt-ui/
+
 #### 浏览器 E2E（Playwright）####
 frontend/playwright-report/
 frontend/test-results/

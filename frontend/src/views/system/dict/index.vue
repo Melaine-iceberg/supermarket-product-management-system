@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { notify } from '@/utils/notify'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { listDicts, addDictItem, updateDictItem, type DictVO } from '@/api/system'
@@ -60,7 +61,11 @@ function openEdit(itemId: number) {
 }
 
 async function save() {
-  await formRef.value.validate()
+  try {
+    await formRef.value?.validate()
+  } catch {
+    return
+  }
   saving.value = true
   const payload = {
     label: form.label,
@@ -72,10 +77,10 @@ async function save() {
   try {
     if (editingId.value) {
       await updateDictItem(editingId.value, payload)
-      ElMessage.success('字典项已更新')
+      notify.success('字典项已更新')
     } else {
       await addDictItem(activeType.value, payload)
-      ElMessage.success('字典项已新增')
+      notify.success('字典项已新增')
     }
     dialogVisible.value = false
     load()
@@ -91,111 +96,110 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <el-card class="dict-card">
-      <el-row :gutter="16">
+    <UCard class="dict-card">
+      <AppRow :gutter="16">
         <!-- 左：字典类型 -->
-        <el-col :span="6">
-          <el-menu :default-active="activeType" @select="(key: string) => (activeType = key)">
-            <el-menu-item v-for="dict in dicts" :key="dict.dictType" :index="dict.dictType">
+        <AppCol :span="6">
+          <nav class="flex flex-col gap-1">
+            <button
+              v-for="dict in dicts"
+              :key="dict.dictType"
+              type="button"
+              class="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-elevated"
+              :class="activeType === dict.dictType ? 'bg-elevated font-medium text-primary' : 'text-default'"
+              @click="activeType = dict.dictType"
+            >
               <span>{{ dict.dictName }}</span>
-              <el-tag size="small" effect="plain" class="dict-type-tag">{{ dict.dictType }}</el-tag>
-            </el-menu-item>
-          </el-menu>
-        </el-col>
+              <UBadge size="sm" variant="outline" class="dict-type-tag">{{ dict.dictType }}</UBadge>
+            </button>
+          </nav>
+        </AppCol>
 
         <!-- 右：字典项 -->
-        <el-col :span="18">
+        <AppCol :span="18">
           <div class="item-head">
             <div>
               <b>{{ activeDict?.dictName }}</b>
               <span class="hint">停用项不可被新单据选择，历史数据仍能正确显示</span>
             </div>
-            <el-button
+            <UButton
               v-if="auth.hasPerm('sys:dict:update')"
-              type="primary"
+              icon="i-lucide-plus"
+              label="新增字典项"
               @click="openCreate"
-            >
-              <el-icon><Plus /></el-icon>新增字典项
-            </el-button>
+            />
           </div>
-          <el-table v-loading="loading" border :data="activeDict?.items || []" stripe>
-            <el-table-column prop="label" label="标签" width="160" />
-            <el-table-column label="存储值" width="160">
+          <AppTable :data="activeDict?.items || []" :loading="loading" border stripe>
+            <AppTableColumn prop="label" label="标签" width="160" />
+            <AppTableColumn label="存储值" width="160">
               <template #default="{ row }">
-                <el-tag effect="plain" size="small">{{ row.value }}</el-tag>
+                <UBadge variant="outline" size="sm">{{ row.value }}</UBadge>
               </template>
-            </el-table-column>
-            <el-table-column prop="sortNo" label="排序" width="80" />
-            <el-table-column label="状态" width="90">
+            </AppTableColumn>
+            <AppTableColumn prop="sortNo" label="排序" width="80" />
+            <AppTableColumn label="状态" width="90">
               <template #default="{ row }">
-                <el-tag :type="row.status === 1 ? 'success' : 'info'">
+                <UBadge :color="row.status === 1 ? 'success' : 'neutral'" variant="soft">
                   {{ row.status === 1 ? '启用' : '停用' }}
-                </el-tag>
+                </UBadge>
               </template>
-            </el-table-column>
-            <el-table-column label="备注" min-width="160">
+            </AppTableColumn>
+            <AppTableColumn label="备注" min-width="160">
               <template #default="{ row }">{{ row.remark || '—' }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="90" fixed="right">
+            </AppTableColumn>
+            <AppTableColumn label="操作" width="90" fixed="right">
               <template #default="{ row }">
-                <el-button
+                <UButton
                   v-if="auth.hasPerm('sys:dict:update')"
-                  link
-                  type="primary"
+                  variant="link"
+                  size="sm"
+                  label="编辑"
                   @click="openEdit(row.id)"
-                >编辑</el-button>
+                />
               </template>
-            </el-table-column>
-          </el-table>
-        </el-col>
-      </el-row>
-    </el-card>
+            </AppTableColumn>
+          </AppTable>
+        </AppCol>
+      </AppRow>
+    </UCard>
 
-    <el-dialog
+    <AppModal
       v-model="dialogVisible"
       :title="editingId ? '编辑字典项' : `新增字典项：${activeDict?.dictName || ''}`"
       width="440px"
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="70px">
-        <el-form-item label="标签" prop="label">
-          <el-input v-model="form.label" maxlength="30" placeholder="显示名称，如 现金" />
-        </el-form-item>
-        <el-form-item label="存储值" prop="value">
-          <el-input v-model="form.value" maxlength="30" placeholder="代码，如 CASH" />
-        </el-form-item>
-        <el-form-item label="排序号">
-          <el-input-number v-model="form.sortNo" :min="0" :max="9999" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio :value="1">启用</el-radio>
-            <el-radio :value="0">停用</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" maxlength="200" />
-        </el-form-item>
-      </el-form>
+      <AppForm ref="formRef" :model="form" :rules="rules" label-width="70px">
+        <AppFormItem label="标签" prop="label">
+          <AppInput v-model="form.label" maxlength="30" placeholder="显示名称，如 现金" />
+        </AppFormItem>
+        <AppFormItem label="存储值" prop="value">
+          <AppInput v-model="form.value" maxlength="30" placeholder="代码，如 CASH" />
+        </AppFormItem>
+        <AppFormItem label="排序号">
+          <AppInputNumber v-model="form.sortNo" :min="0" :max="9999" />
+        </AppFormItem>
+        <AppFormItem label="状态">
+          <AppRadioGroup v-model="form.status">
+            <AppRadio :value="1">启用</AppRadio>
+            <AppRadio :value="0">停用</AppRadio>
+          </AppRadioGroup>
+        </AppFormItem>
+        <AppFormItem label="备注">
+          <AppInput v-model="form.remark" type="textarea" maxlength="200" />
+        </AppFormItem>
+      </AppForm>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        <UButton color="neutral" variant="outline" label="取消" @click="dialogVisible = false" />
+        <UButton :loading="saving" label="保存" @click="save" />
       </template>
-    </el-dialog>
+    </AppModal>
   </div>
 </template>
 
 <style scoped lang="scss">
 .page {
-  .dict-card {
-    :deep(.el-menu-item) {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-
-      .dict-type-tag {
-        font-family: monospace;
-      }
-    }
+  .dict-type-tag {
+    font-family: monospace;
   }
 
   .item-head {
@@ -206,7 +210,7 @@ onMounted(load)
 
     .hint {
       margin-left: 10px;
-      color: #909399;
+      color: var(--el-text-color-secondary);
       font-size: 12px;
       font-weight: normal;
     }

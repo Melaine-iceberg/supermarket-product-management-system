@@ -42,55 +42,55 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <el-card class="search-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="用户名">
-          <el-input v-model="query.username" placeholder="登录账号" clearable />
-        </el-form-item>
-        <el-form-item label="结果">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 110px">
-            <el-option label="成功" :value="1" />
-            <el-option label="失败" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="时间">
-          <el-date-picker
+    <UCard class="search-card" :ui="{ body: 'pb-2' }">
+      <AppForm inline @submit.prevent>
+        <AppFormItem label="用户名">
+          <AppInput v-model="query.username" placeholder="登录账号" clearable />
+        </AppFormItem>
+        <AppFormItem label="结果">
+          <AppSelect v-model="query.status" clearable placeholder="全部" style="width: 110px">
+            <AppOption label="成功" :value="1" />
+            <AppOption label="失败" :value="0" />
+          </AppSelect>
+        </AppFormItem>
+        <AppFormItem label="时间">
+          <AppDatePicker
             v-model="query.range"
             type="daterange"
             value-format="YYYY-MM-DD"
             start-placeholder="开始"
             end-placeholder="结束"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="query.page = 1; load()">查询</el-button>
-          <el-button @click="resetQuery">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </AppFormItem>
+        <AppFormItem>
+          <UButton label="查询" @click="query.page = 1; load()" />
+          <UButton color="neutral" variant="outline" label="重置" @click="resetQuery" />
+        </AppFormItem>
+      </AppForm>
+    </UCard>
 
-    <el-card>
+    <UCard>
       <template #header>登录日志（记录成功/失败、IP、浏览器、操作系统）</template>
-      <el-table v-loading="loading" border :data="list" stripe>
-        <el-table-column prop="loginTime" label="登录时间" width="170" />
-        <el-table-column prop="username" label="用户名" width="120" />
-        <el-table-column prop="ip" label="IP 地址" width="140">
+      <AppTable :data="list" :loading="loading" border stripe>
+        <AppTableColumn prop="loginTime" label="登录时间" width="170" />
+        <AppTableColumn prop="username" label="用户名" width="120" />
+        <AppTableColumn prop="ip" label="IP 地址" width="140">
           <template #default="{ row }">{{ row.ip || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="browser" label="浏览器" width="110" />
-        <el-table-column prop="os" label="操作系统" width="110" />
-        <el-table-column label="结果" width="90">
+        </AppTableColumn>
+        <AppTableColumn prop="browser" label="浏览器" width="110" />
+        <AppTableColumn prop="os" label="操作系统" width="110" />
+        <AppTableColumn label="结果" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+            <UBadge :color="row.status === 1 ? 'success' : 'error'" size="sm" variant="soft">
               {{ row.status === 1 ? '成功' : '失败' }}
-            </el-tag>
+            </UBadge>
           </template>
-        </el-table-column>
-        <el-table-column prop="message" label="说明" min-width="180">
+        </AppTableColumn>
+        <AppTableColumn prop="message" label="说明" min-width="180">
           <template #default="{ row }">{{ row.message || '—' }}</template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
+        </AppTableColumn>
+      </AppTable>
+      <AppPagination
         v-model:current-page="query.page"
         v-model:page-size="query.size"
         :total="total"
@@ -99,7 +99,7 @@ onMounted(load)
         class="pager"
         @change="load"
       />
-    </el-card>
+    </UCard>
   </div>
 </template>
 
@@ -107,10 +107,6 @@ onMounted(load)
 .page {
   .search-card {
     margin-bottom: 12px;
-
-    :deep(.el-card__body) {
-      padding-bottom: 2px;
-    }
   }
 
   .pager {

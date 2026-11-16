@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { AxiosRequestConfig } from 'axios'
 import router from '@/router'
+import { notify } from '@/utils/notify'
 
 /** 统一响应结构（与后端 IR-SW-01 约定一致） */
 export interface ApiResponse<T = unknown> {
@@ -62,7 +63,7 @@ instance.interceptors.response.use(
       redirectChangePassword(body.message)
       return Promise.reject(bizError(body.message, body.code))
     }
-    ElMessage.error(body.message || '请求失败')
+    notify.error(body.message || '请求失败')
     return Promise.reject(bizError(body.message, body.code))
   },
   (error) => {
@@ -85,7 +86,7 @@ instance.interceptors.response.use(
       error.code === 'ECONNABORTED'
         ? '请求超时，请重试'
         : error.response?.data?.message || '网络异常，请检查与服务器的连接'
-    ElMessage.error(msg)
+    notify.error(msg)
     return Promise.reject(error)
   },
 )
@@ -107,7 +108,7 @@ const MUST_CHANGE_PWD_CODE = 1114
 /** 1114：跳转强制改密页（保留登录态，不清 Token） */
 function redirectChangePassword(message?: string) {
   if (router.currentRoute.value.name !== 'change-password') {
-    ElMessage.warning(message || '请先修改初始密码（BR-SYS-02）')
+    notify.warning(message || '请先修改初始密码（BR-SYS-02）')
     router.push({ name: 'change-password' })
   }
 }

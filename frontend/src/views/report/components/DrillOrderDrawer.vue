@@ -47,6 +47,11 @@ function close() {
   emit('update:modelValue', false)
 }
 
+/** 仅在关闭时回写，避免开关事件双向触发 */
+function onVisibleChange(value: boolean) {
+  if (!value) close()
+}
+
 /** 打开单据详情：销售单页支持 ?orderNo= 深链并自动弹出详情 */
 function openOrder(row: DrillOrderRow) {
   const { href } = router.resolve({ path: '/sale/order', query: { orderNo: row.orderNo } })
@@ -63,36 +68,36 @@ function fmtTime(v: string | null | undefined) {
 </script>
 
 <template>
-  <el-drawer :model-value="modelValue" :title="title" size="70%" @update:model-value="close">
-    <el-table v-loading="loading" border :data="rows" stripe size="small">
-      <el-table-column prop="orderNo" label="销售单号" width="170" />
-      <el-table-column prop="cashierName" label="收银员" width="90" />
-      <el-table-column label="台号" width="60" align="center">
+  <AppDrawer :model-value="modelValue" :title="title" size="70%" @update:model-value="onVisibleChange">
+    <AppTable :loading="loading" border :data="rows" stripe size="small">
+      <AppTableColumn prop="orderNo" label="销售单号" width="170" />
+      <AppTableColumn prop="cashierName" label="收银员" width="90" />
+      <AppTableColumn label="台号" width="60" align="center">
         <template #default="{ row }">{{ String(row.counterNo).padStart(2, '0') }}</template>
-      </el-table-column>
-      <el-table-column label="会员" width="100">
+      </AppTableColumn>
+      <AppTableColumn label="会员" width="100">
         <template #default="{ row }">{{ row.memberName ?? '散客' }}</template>
-      </el-table-column>
-      <el-table-column label="销售时间" width="160">
+      </AppTableColumn>
+      <AppTableColumn label="销售时间" width="160">
         <template #default="{ row }">{{ fmtTime(row.saleTime) }}</template>
-      </el-table-column>
-      <el-table-column label="件数" prop="itemCount" width="60" align="right" />
-      <el-table-column label="应收" width="90" align="right">
+      </AppTableColumn>
+      <AppTableColumn label="件数" prop="itemCount" width="60" align="right" />
+      <AppTableColumn label="应收" width="90" align="right">
         <template #default="{ row }">{{ money(row.payableAmount) }}</template>
-      </el-table-column>
-      <el-table-column label="实收" width="90" align="right">
+      </AppTableColumn>
+      <AppTableColumn label="实收" width="90" align="right">
         <template #default="{ row }">{{ money(row.paidAmount) }}</template>
-      </el-table-column>
-      <el-table-column label="毛利额" width="90" align="right">
+      </AppTableColumn>
+      <AppTableColumn label="毛利额" width="90" align="right">
         <template #default="{ row }">{{ money(row.profitAmount) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="70" fixed="right">
+      </AppTableColumn>
+      <AppTableColumn label="操作" width="70" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openOrder(row as DrillOrderRow)">查看</el-button>
+          <UButton variant="link" @click="openOrder(row as DrillOrderRow)">查看</UButton>
         </template>
-      </el-table-column>
-    </el-table>
-    <el-pagination
+      </AppTableColumn>
+    </AppTable>
+    <AppPagination
       v-model:current-page="page"
       :total="total"
       :page-size="SIZE"
@@ -100,7 +105,7 @@ function fmtTime(v: string | null | undefined) {
       class="pager"
       @current-change="load"
     />
-  </el-drawer>
+  </AppDrawer>
 </template>
 
 <style scoped lang="scss">

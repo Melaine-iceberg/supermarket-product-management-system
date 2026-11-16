@@ -6,10 +6,10 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 
-RUN npm install -g pnpm@11
+RUN npm install -g pnpm@12
 
 # 先复制依赖清单安装，源码变更不影响依赖层缓存
-# --ignore-scripts：pnpm 11 默认拦截依赖构建脚本（如 @parcel/watcher 仅监听用途），
+# --ignore-scripts：pnpm 12 默认拦截依赖构建脚本（如 @parcel/watcher 仅监听用途），
 # esbuild/rolldown 平台二进制经 optionalDependencies 直接安装，不影响 vite 构建
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --ignore-scripts

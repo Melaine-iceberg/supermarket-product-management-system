@@ -28,11 +28,11 @@ test.describe('体验规范（批次五）', () => {
   test('销售单：收银台与会员单筛选控件', async ({ page }) => {
     const collector = observeFailures(page)
     await page.goto('/sale/order')
-    await expect(page.locator('.el-breadcrumb')).toContainText('销售单')
+    await expect(page.locator('.app-breadcrumb')).toContainText('销售单')
 
     await expect(page.locator('.search-card').getByText('收银台', { exact: true })).toBeVisible()
     await expect(page.locator('.search-card').getByText('会员单', { exact: true })).toBeVisible()
-    await expect(page.locator('.el-table').first()).toBeVisible()
+    await expect(page.locator('.app-table').first()).toBeVisible()
 
     // 打开一笔单据详情：操作日志区可见（无单据不打开，仅验证列表无异常）
     expect(await settleFailures(page, collector)).toEqual([])

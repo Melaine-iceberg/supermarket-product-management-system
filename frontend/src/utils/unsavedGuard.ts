@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { confirm } from '@/utils/confirm'
 
 /**
  * 表单未保存离开提醒（IR-UI-07/GAP-P2-25）：
@@ -15,7 +15,7 @@ export function useUnsavedGuard(
   onBeforeRouteLeave(async () => {
     if (!isDirty()) return true
     try {
-      await ElMessageBox.confirm(message, '未保存提示', {
+      await confirm(message, '未保存提示', {
         type: 'warning',
         confirmButtonText: '离开',
         cancelButtonText: '留在本页',

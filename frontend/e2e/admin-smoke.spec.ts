@@ -23,12 +23,12 @@ test.describe('管理端关键页面冒烟', () => {
     const collector = observeFailures(page)
 
     await page.goto('/goods/list')
-    await expect(page.locator('.el-breadcrumb')).toContainText('商品档案')
-    await expect(page.locator('.el-table').first()).toBeVisible()
+    await expect(page.locator('.app-breadcrumb')).toContainText('商品档案')
+    await expect(page.locator('.app-table').first()).toBeVisible()
 
     await page.goto('/inventory/list')
-    await expect(page.locator('.el-breadcrumb')).toContainText('库存查询')
-    await expect(page.locator('.el-table').first()).toBeVisible()
+    await expect(page.locator('.app-breadcrumb')).toContainText('库存查询')
+    await expect(page.locator('.app-table').first()).toBeVisible()
 
     expect(await settleFailures(page, collector)).toEqual([])
   })
@@ -37,11 +37,11 @@ test.describe('管理端关键页面冒烟', () => {
     const collector = observeFailures(page)
 
     await page.goto('/purchase/order')
-    await expect(page.locator('.el-breadcrumb')).toContainText('采购单')
-    await expect(page.locator('.el-table').first()).toBeVisible()
+    await expect(page.locator('.app-breadcrumb')).toContainText('采购单')
+    await expect(page.locator('.app-table').first()).toBeVisible()
 
     await page.goto('/purchase/suggest')
-    await expect(page.locator('.el-breadcrumb')).toContainText('建议采购')
+    await expect(page.locator('.app-breadcrumb')).toContainText('建议采购')
 
     expect(await settleFailures(page, collector)).toEqual([])
   })
@@ -50,12 +50,12 @@ test.describe('管理端关键页面冒烟', () => {
     const collector = observeFailures(page)
 
     await page.goto('/report/dashboard')
-    await expect(page.locator('.el-breadcrumb')).toContainText('经营看板')
+    await expect(page.locator('.app-breadcrumb')).toContainText('经营看板')
     await expect(page.locator('canvas').first()).toBeVisible()
 
     await page.goto('/report/sales')
-    await expect(page.locator('.el-breadcrumb')).toContainText('销售报表')
-    await expect(page.locator('canvas, .el-table').first()).toBeVisible()
+    await expect(page.locator('.app-breadcrumb')).toContainText('销售报表')
+    await expect(page.locator('canvas, .app-table').first()).toBeVisible()
 
     expect(await settleFailures(page, collector)).toEqual([])
   })
@@ -64,10 +64,10 @@ test.describe('管理端关键页面冒烟', () => {
     const collector = observeFailures(page)
 
     await page.goto('/system/user')
-    await expect(page.locator('.el-table').first()).toContainText('系统管理员')
+    await expect(page.locator('.app-table').first()).toContainText('系统管理员')
 
     await page.goto('/system/oplog')
-    await expect(page.locator('.el-breadcrumb')).toContainText('操作日志')
+    await expect(page.locator('.app-breadcrumb')).toContainText('操作日志')
     await expect(page.getByRole('columnheader', { name: '真实姓名' })).toBeVisible()
 
     expect(await settleFailures(page, collector)).toEqual([])
