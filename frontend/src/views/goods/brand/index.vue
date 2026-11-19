@@ -168,7 +168,7 @@ onMounted(load)
         <AppFormItem label="标识图片路径">
           <AppInput v-model="form.logo" maxlength="255" placeholder="图片相对路径，选填" />
         </AppFormItem>
-        <AppFormItem label="状态">
+        <AppFormItem label="状态" label-as="span">
           <AppRadioGroup v-model="form.status">
             <AppRadio :value="1">启用</AppRadio>
             <AppRadio :value="0">停用</AppRadio>

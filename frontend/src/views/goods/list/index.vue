@@ -1240,7 +1240,7 @@ async function handleDisablePromotion(promo: PromotionVO) {
       <AppForm ref="formRef" v-loading="detailLoading" :model="form" :rules="rules" label-width="96px">
         <AppRow :gutter="12">
           <AppCol :span="24">
-            <AppFormItem label="商品图片">
+            <AppFormItem label="商品图片" label-as="span">
               <div v-loading="imageUploading" class="image-uploader">
                 <img v-if="imagePreview" :src="imagePreview" alt="商品图片" class="image-preview" />
                 <div v-else class="image-placeholder">暂无图片</div>
@@ -1284,6 +1284,7 @@ async function handleDisablePromotion(promo: PromotionVO) {
                 :data="categoryOptions"
                 :props="{ label: 'name', children: 'children', disabled: 'disabled' }"
                 node-key="id"
+                expand-all
                 :clearable="false"
                 placeholder="仅启用的叶子分类可选"
                 style="width: 100%"
@@ -1315,7 +1316,7 @@ async function handleDisablePromotion(promo: PromotionVO) {
             </AppFormItem>
           </AppCol>
           <AppCol :span="8">
-            <AppFormItem label="称重商品">
+            <AppFormItem label="称重商品" label-as="span">
               <AppRadioGroup v-model="form.isWeighed">
                 <AppRadio :value="1">是</AppRadio>
                 <AppRadio :value="0">否</AppRadio>
@@ -1453,7 +1454,7 @@ async function handleDisablePromotion(promo: PromotionVO) {
             </AppFormItem>
           </AppCol>
           <AppCol :span="8">
-            <AppFormItem label="允许退货">
+            <AppFormItem label="允许退货" label-as="span">
               <AppRadioGroup v-model="form.allowReturn">
                 <AppRadio :value="1">允许</AppRadio>
                 <AppRadio :value="0">不允许</AppRadio>

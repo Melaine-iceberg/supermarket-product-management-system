@@ -440,7 +440,7 @@ async function saveAudit() {
         :rules="rules"
         label-width="90px"
       >
-        <AppFormItem label="业务类型" prop="bizType">
+        <AppFormItem label="业务类型" prop="bizType" label-as="span">
           <AppRadioGroup v-model="form.bizType" @change="onBizTypeChange">
             <AppRadio value="LOSS">报损（出库）</AppRadio>
             <AppRadio value="OVERFLOW">报溢（入库）</AppRadio>

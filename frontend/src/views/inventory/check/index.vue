@@ -743,7 +743,7 @@ async function onImportFile(e: Event) {
         class="dialog-alert"
       />
       <AppForm ref="formRef" :model="form" :rules="rules" label-width="90px">
-        <AppFormItem label="盘点范围" prop="scopeType">
+        <AppFormItem label="盘点范围" prop="scopeType" label-as="span">
           <AppRadioGroup v-model="form.scopeType">
             <AppRadio value="ALL">全店</AppRadio>
             <AppRadio value="CATEGORY">分类</AppRadio>

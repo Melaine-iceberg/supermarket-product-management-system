@@ -265,7 +265,7 @@ onMounted(async () => {
     <!-- 筛选区 -->
     <UCard class="search-card">
       <AppForm inline @submit.prevent>
-        <AppFormItem label="维度">
+        <AppFormItem label="维度" label-as="span">
           <AppRadioGroup v-model="view" @change="search">
             <AppRadioButton v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
               {{ label }}

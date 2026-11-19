@@ -6,6 +6,7 @@ import {
   type AppFormContext,
   type AppFormFieldRegistration,
 } from './form-context'
+import { sanitizeRules } from './form-rules'
 
 const props = withDefaults(
   defineProps<{
@@ -40,7 +41,7 @@ function pickRules(propList: string[]): Record<string, unknown[]> {
   const picked: Record<string, unknown[]> = {}
   for (const prop of propList) {
     const rule = props.rules[prop]
-    if (rule?.length) picked[prop] = rule
+    if (rule?.length) picked[prop] = sanitizeRules(rule)
   }
   return picked
 }

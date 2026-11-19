@@ -1135,7 +1135,7 @@ onMounted(() => {
     <!-- ==================== 审核（FR-PUR-04） ==================== -->
     <AppModal v-model="auditDialog.visible" :title="`审核 ${auditDialog.orderNo}`" width="440px">
       <AppForm label-width="80px" @submit.prevent>
-        <AppFormItem label="审核结论">
+        <AppFormItem label="审核结论" label-as="span">
           <AppRadioGroup v-model="auditDialog.approved">
             <AppRadio :value="true">通过（转已审核待入库）</AppRadio>
             <AppRadio :value="false">驳回（退回草稿）</AppRadio>
@@ -1170,7 +1170,7 @@ onMounted(() => {
     <AppModal v-model="settleDialog.visible" :title="`结算登记 ${settleDialog.orderNo}`" width="460px">
       <UAlert color="info" variant="soft" icon="i-lucide-info" :title="`订购 ￥${money(settleDialog.totalAmount)}，实收 ￥${money(settleDialog.receivedAmount)}，退货 ￥${money(settleDialog.returnAmount)}；结算登记仅做标记，不做财务核销`" class="dialog-alert" />
       <AppForm label-width="90px" @submit.prevent>
-        <AppFormItem label="结算状态" required>
+        <AppFormItem label="结算状态" required label-as="span">
           <AppRadioGroup v-model="settleDialog.form.settleStatus">
             <AppRadio value="SETTLED">已结算</AppRadio>
             <AppRadio value="PARTIAL">部分结算</AppRadio>

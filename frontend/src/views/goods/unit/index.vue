@@ -158,7 +158,7 @@ onMounted(load)
         <AppFormItem label="单位符号" prop="symbol">
           <AppInput v-model="form.symbol" maxlength="10" placeholder="选填，如 kg" />
         </AppFormItem>
-        <AppFormItem label="重量单位">
+        <AppFormItem label="重量单位" label-as="span">
           <AppRadioGroup v-model="form.isWeight">
             <AppRadio :value="1">是</AppRadio>
             <AppRadio :value="0">否</AppRadio>
@@ -167,7 +167,7 @@ onMounted(load)
             被商品引用后不可变更，否则保存将被拒绝
           </div>
         </AppFormItem>
-        <AppFormItem label="状态">
+        <AppFormItem label="状态" label-as="span">
           <AppRadioGroup v-model="form.status">
             <AppRadio :value="1">启用</AppRadio>
             <AppRadio :value="0">停用</AppRadio>

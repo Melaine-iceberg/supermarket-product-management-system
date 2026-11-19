@@ -501,7 +501,7 @@ async function saveGoods() {
         <AppFormItem label="邮箱">
           <AppInput v-model="editDialog.form.email" maxlength="50" placeholder="选填" />
         </AppFormItem>
-        <AppFormItem label="结算方式" required>
+        <AppFormItem label="结算方式" required label-as="span">
           <AppRadioGroup v-model="editDialog.form.settleType">
             <AppRadio v-for="t in settleTypeOptions" :key="t.value" :value="t.value">{{ t.label }}</AppRadio>
           </AppRadioGroup>

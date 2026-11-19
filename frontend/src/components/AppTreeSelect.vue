@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { computed, ref } from 'vue'
+import { useFormField } from '@nuxt/ui/composables/useFormField'
 
 defineOptions({ inheritAttrs: false })
 
@@ -23,6 +24,12 @@ const props = withDefaults(
     placeholder?: string
     disabled?: boolean
     size?: 'large' | 'default' | 'small'
+    /**
+     * 默认展开所有含子节点的分类。
+     * 商品表单会把非叶子分类置为 disabled（不可选），而 UTree 的 disabled 会连展开箭头一起禁用；
+     * 开启后叶子节点直接可见，避免“分类树只能看到一级、无法选择”的问题。
+     */
+    expandAll?: boolean
   }>(),
   {
     modelValue: null,
@@ -35,6 +42,7 @@ const props = withDefaults(
     placeholder: '请选择',
     disabled: false,
     size: 'default',
+    expandAll: false,
   },
 )
 
@@ -43,6 +51,12 @@ const emit = defineEmits<{
   change: [value: string | number | Array<string | number> | null]
   'visible-change': [visible: boolean]
 }>()
+
+/**
+ * 树选择不是单一原生输入，必须主动消费 UFormField 注入的 id，
+ * 否则 <label for="..."> 会指向不存在的元素（可访问性告警，屏幕阅读器也无法朗读字段名）。
+ */
+const { id: controlId, labelId, ariaAttrs } = useFormField()
 
 const open = ref(false)
 const search = ref('')
@@ -137,6 +151,22 @@ function clear() {
 }
 
 const getKey = (node: TreeNode) => String(node.value)
+
+/** 展开所有含子节点的节点，保证被 disabled 的父分类不会挡住叶子选择 */
+function collectExpandableKeys(nodes: TreeNode[]): string[] {
+  const keys: string[] = []
+  for (const node of nodes) {
+    if (node.children?.length) {
+      keys.push(getKey(node))
+      keys.push(...collectExpandableKeys(node.children))
+    }
+  }
+  return keys
+}
+
+const defaultExpandedKeys = computed(() =>
+  props.expandAll ? collectExpandableKeys(tree.value) : undefined,
+)
 </script>
 
 <template>
@@ -148,6 +178,9 @@ const getKey = (node: TreeNode) => String(node.value)
       @update:open="emit('visible-change', $event)"
     >
       <UButton
+        :id="controlId"
+        :aria-labelledby="labelId ? `${labelId} ${controlId}` : undefined"
+        v-bind="ariaAttrs"
         color="neutral"
         variant="outline"
         :disabled="disabled"
@@ -178,6 +211,7 @@ const getKey = (node: TreeNode) => String(node.value)
               :get-key="getKey"
               :model-value="selectedNodes"
               :multiple="multiple"
+              :default-expanded="defaultExpandedKeys"
               @update:model-value="onTreeUpdate"
             />
             <p v-else class="py-6 text-center text-sm text-muted">暂无匹配项</p>

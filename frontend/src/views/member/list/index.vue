@@ -635,7 +635,7 @@ async function doDownloadTemplate() {
             手机号已按角色权限脱敏展示（BR-MEM-08），如需修改请联系店长
           </div>
         </AppFormItem>
-        <AppFormItem label="性别">
+        <AppFormItem label="性别" label-as="span">
           <AppRadioGroup v-model="editDialog.form.gender">
             <AppRadio :value="1">男</AppRadio>
             <AppRadio :value="2">女</AppRadio>
@@ -687,7 +687,7 @@ async function doDownloadTemplate() {
             style="width: 100%"
           />
         </AppFormItem>
-        <AppFormItem label="收款方式" required>
+        <AppFormItem label="收款方式" required label-as="span">
           <AppRadioGroup v-model="rechargeDialog.form.payType">
             <AppRadio v-for="(label, type) in RECHARGE_PAY_MAP" :key="type" :value="type">{{ label }}</AppRadio>
           </AppRadioGroup>

@@ -58,6 +58,14 @@
   color-scheme: dark;
 }
 
+/*
+ * 暗色模式下 text-dimmed 的对比度仅约 3.74:1，低于 WCAG AA 4.5:1；
+ * 主要用于输入框占位与下拉未选值，提升到 muted 令牌保证可读性。
+ */
+.dark {
+  --ui-text-dimmed: var(--ui-text-muted);
+}
+
 /* 不支持 light-dark() 的浏览器回退到系统偏好 */
 @supports not (color: light-dark(#fff, #000)) {
   :root {

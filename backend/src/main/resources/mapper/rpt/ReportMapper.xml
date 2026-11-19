@@ -153,23 +153,36 @@
 
     <!-- ==================== 销售报表（FR-RPT-02） ==================== -->
 
-    <!-- 按收款方式汇总（netSalesAmount 承载收款金额） -->
+    <!-- 按收款方式汇总：
+         一单可有多笔收款，先把订单金额按各笔收款占该单实收合计的比例分摊，
+         再按收款方式汇总。这样既能避免整单金额在多种方式间重复计算，
+         也能正确处理现金多收找零（收款金额 > 应收）的场景。
+         净销售额按应收金额分摊，不把找零计入销售额。 -->
     <select id="selectByPayMethod" resultType="com.smms.rpt.dto.SalesGroupRow">
-        SELECT pr.pay_type AS groupKey,
+        SELECT t.pay_type AS groupKey,
                NULL AS bizDate,
-               COUNT(DISTINCT pr.order_id) AS orderCount,
+               COUNT(DISTINCT t.order_id) AS orderCount,
                NULL AS itemCount,
-               NULL AS salesAmount,
-               NULL AS discountAmount,
-               COALESCE(SUM(pr.amount), 0) AS netSalesAmount,
-               NULL AS costAmount,
+               COALESCE(SUM(t.goods_amount * t.pay_share), 0) AS salesAmount,
+               COALESCE(SUM(t.discount_amount * t.pay_share), 0) AS discountAmount,
+               COALESCE(SUM(t.payable_amount * t.pay_share), 0) AS netSalesAmount,
+               COALESCE(SUM(t.cost_amount * t.pay_share), 0) AS costAmount,
                NULL AS refundAmount,
                NULL AS returnCostAmount,
                NULL AS returnCount
-        FROM payment_record pr
-        JOIN sales_order so ON so.id = pr.order_id
-        WHERE so.business_date BETWEEN #{begin} AND #{end}
-        GROUP BY pr.pay_type
+        FROM (
+            SELECT pr.pay_type,
+                   pr.order_id,
+                   pr.amount / SUM(pr.amount) OVER (PARTITION BY pr.order_id) AS pay_share,
+                   so.goods_amount,
+                   so.discount_amount,
+                   so.payable_amount,
+                   so.cost_amount
+            FROM payment_record pr
+            JOIN sales_order so ON so.id = pr.order_id
+            WHERE so.business_date BETWEEN #{begin} AND #{end}
+        ) t
+        GROUP BY t.pay_type
         ORDER BY netSalesAmount DESC
     </select>
 
@@ -225,7 +238,7 @@
                COALESCE(SUM(so.goods_amount), 0)   AS salesAmount,
                COALESCE(SUM(so.discount_amount), 0) AS discountAmount,
                COALESCE(SUM(so.payable_amount), 0)  AS netSalesAmount,
-               NULL AS costAmount,
+               COALESCE(SUM(so.cost_amount), 0)     AS costAmount,
                NULL AS refundAmount,
                NULL AS returnCostAmount,
                NULL AS returnCount

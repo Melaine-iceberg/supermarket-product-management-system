@@ -3,6 +3,7 @@ import ui from '@nuxt/ui/vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
+import { DYNAMIC_ICON_NAMES } from './src/utils/icons.ts'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -20,7 +21,7 @@ export default defineConfig({
       },
       icon: {
         // 构建期扫描源码中的 i-lucide-* 并打包，离线/PWA 下图标仍可用
-        clientBundle: { scan: true },
+        clientBundle: { scan: true, icons: DYNAMIC_ICON_NAMES },
       },
     }),
     // PWA：预缓存构建产物（应用外壳），接口请求始终走网络

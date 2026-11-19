@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { resolveNumberStep } from './number-step'
 
 defineOptions({ inheritAttrs: false })
 
@@ -19,7 +20,8 @@ const props = withDefaults(
     modelValue: null,
     min: undefined,
     max: undefined,
-    step: 1,
+    // 未显式指定 step 时按 precision 推导，避免金额/重量等小数被吸附到整数步长
+    step: undefined,
     precision: undefined,
     disabled: false,
     placeholder: '',
@@ -47,6 +49,8 @@ const mappedSize = computed(() => {
   return 'md'
 })
 
+const resolvedStep = computed(() => resolveNumberStep(props.step, props.precision))
+
 const formatOptions = computed(() => {
   if (props.precision == null) return undefined
   return {
@@ -62,7 +66,7 @@ const formatOptions = computed(() => {
     v-bind="$attrs"
     :min="min"
     :max="max"
-    :step="step"
+    :step="resolvedStep"
     :format-options="formatOptions"
     :disabled="disabled"
     :placeholder="placeholder"

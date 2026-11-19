@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, useId } from 'vue'
 import { appFormContextKey } from './form-context'
 
 const props = withDefaults(
@@ -10,6 +10,12 @@ const props = withDefaults(
     labelWidth?: string
     error?: string
     showMessage?: boolean
+    /**
+     * 标签渲染方式：
+     * - label（默认）：使用 UFormField 的 <label for>，适合单个原生/Nuxt UI 输入控件；
+     * - span：用于单选组、图片上传等“非单一表单控件”，避免生成指向不存在 id 的 <label>。
+     */
+    labelAs?: 'label' | 'span'
   }>(),
   {
     label: '',
@@ -18,8 +24,11 @@ const props = withDefaults(
     labelWidth: '',
     error: '',
     showMessage: true,
+    labelAs: 'label',
   },
 )
+
+const customLabelId = useId()
 
 const form = inject(appFormContextKey, null)
 
@@ -92,6 +101,25 @@ function onInput() {
   <div class="app-form-item mb-4" @focusout="onFocusout" @input="onInput" @change="onInput">
     <div v-if="!label && !prop" class="app-form-plain">
       <slot />
+    </div>
+    <div v-else-if="labelAs === 'span'" :class="horizontal ? 'flex items-start gap-3' : ''">
+      <span
+        v-if="label"
+        :id="customLabelId"
+        class="block shrink-0 pt-0.5 font-medium text-default"
+        :class="horizontal ? '' : 'mb-1'"
+        :style="{ width: horizontal ? resolvedLabelWidth || undefined : undefined }"
+      >
+        {{ label }}<span v-if="isRequired" class="ms-0.5 text-error">*</span>
+      </span>
+      <div :class="horizontal ? 'min-w-0 flex-1' : ''">
+        <div role="group" :aria-labelledby="label ? customLabelId : undefined">
+          <slot />
+        </div>
+        <div v-if="showMessage && fieldError" class="mt-1 text-xs text-error">
+          {{ fieldError }}
+        </div>
+      </div>
     </div>
     <UFormField
       v-else

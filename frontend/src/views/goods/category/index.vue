@@ -413,7 +413,7 @@ onMounted(load)
         <AppFormItem label="排序号">
           <AppInputNumber v-model="form.sortNo" :min="0" :max="9999" />
         </AppFormItem>
-        <AppFormItem label="状态">
+        <AppFormItem label="状态" label-as="span">
           <AppRadioGroup v-model="form.status">
             <AppRadio :value="1">启用</AppRadio>
             <AppRadio :value="0">停用</AppRadio>

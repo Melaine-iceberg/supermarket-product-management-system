@@ -347,7 +347,7 @@ onMounted(load)
     <!-- 筛选区 -->
     <UCard class="search-card">
       <AppForm inline @submit.prevent>
-        <AppFormItem label="视图">
+        <AppFormItem label="视图" label-as="span">
           <AppRadioGroup v-model="view" @change="search">
             <AppRadioButton v-for="(label, key) in VIEW_LABELS" :key="key" :value="key">
               {{ label }}
@@ -360,7 +360,7 @@ onMounted(load)
         <AppFormItem v-if="view === 'sleeping'" label="沉睡天数">
           <AppInputNumber v-model="sleepingDays" :min="30" :max="365" :step="30" style="width: 110px" @change="load" />
         </AppFormItem>
-        <AppFormItem v-if="view === 'birthday'" label="范围">
+        <AppFormItem v-if="view === 'birthday'" label="范围" label-as="span">
           <AppRadioGroup v-model="birthdayScope" @change="load">
             <AppRadioButton value="week">未来7天</AppRadioButton>
             <AppRadioButton value="month">当月</AppRadioButton>

@@ -268,7 +268,7 @@ async function toggleStatus(row: MemberLevelVO) {
           />
           <div class="form-tip">按门槛升序展示，建议与门槛保持一致</div>
         </AppFormItem>
-        <AppFormItem label="状态">
+        <AppFormItem label="状态" label-as="span">
           <AppRadioGroup v-model="editDialog.form.status" :disabled="editDialog.editing">
             <AppRadio :value="1">启用</AppRadio>
             <AppRadio :value="0">停用</AppRadio>

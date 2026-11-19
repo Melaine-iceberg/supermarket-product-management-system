@@ -5,7 +5,8 @@
  * 2) 通过 useRegisterSW 检测新版本，提示用户刷新以更新应用外壳。
  * 离线能力仅覆盖应用外壳（静态资源），接口请求始终联网，故此处不缓存业务数据。
  */
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 
 /** Chromium 特有的安装提示事件（lib.dom 尚未内置该类型） */
@@ -19,6 +20,12 @@ const INSTALL_DISMISS_MS = 7 * 24 * 60 * 60 * 1000
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
 const canInstall = ref(false)
+const route = useRoute()
+
+/** 安装提示只放在首页/登录页，避免在列表页遮挡右下角分页与底部操作按钮 */
+const showInstallPrompt = computed(
+  () => canInstall.value && ['home', 'login'].includes(String(route.name ?? '')),
+)
 
 let installEvent: BeforeInstallPromptEvent | null = null
 let updateTimer: number | undefined
@@ -108,7 +115,7 @@ onBeforeUnmount(() => {
       <span class="text">发现新版本，刷新后生效</span>
       <UButton size="sm" label="立即刷新" @click="reload" />
     </div>
-    <div v-else-if="canInstall" class="card" role="status">
+    <div v-else-if="showInstallPrompt" class="card" role="status">
       <span class="text">安装到桌面，像应用一样使用</span>
       <UButton size="sm" label="安装" @click="install" />
       <UButton size="sm" color="neutral" variant="ghost" label="以后再说" @click="dismissInstall" />
@@ -123,8 +130,9 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .pwa-prompt {
   position: fixed;
-  right: max(16px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom));
+  left: max(16px, env(safe-area-inset-left));
+  right: auto;
+  bottom: max(24px, env(safe-area-inset-bottom));
   z-index: 3000;
   display: flex;
   flex-direction: column;
