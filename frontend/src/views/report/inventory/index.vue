@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -39,9 +39,26 @@ import {
 } from '@/api/report'
 import type { DrillColumn } from '../components/drill'
 import DrillTableDrawer from '../components/DrillTableDrawer.vue'
+import type { EChartsOption } from 'echarts'
+import {
+  axisCommon,
+  chartBase,
+  chartTokens,
+  compactNumber,
+  legendCommon,
+  tooltipCommon,
+} from '../components/chartOptions'
+import { useReportChart } from '../components/useReportChart'
 import { RANGE_PRESETS, presetRange, type RangePreset } from '../components/rangePresets'
 
-type ViewKey = 'summary-goods' | 'summary-category' | 'warnings' | 'changes' | 'turnover-goods' | 'turnover-category' | 'loss'
+type ViewKey =
+  | 'summary-goods'
+  | 'summary-category'
+  | 'warnings'
+  | 'changes'
+  | 'turnover-goods'
+  | 'turnover-category'
+  | 'loss'
 
 const VIEW_LABELS: Record<ViewKey, string> = {
   'summary-goods': '库存汇总(商品)',
@@ -75,6 +92,9 @@ const changeRows = ref<InvChangeRow[]>([])
 const turnoverRows = ref<TurnoverRow[]>([])
 const turnoverTotal = ref(0)
 const lossData = ref<LossReportVO | null>(null)
+const warningCounts = ref({ OUT: 0, WARNING: 0, OVERSTOCK: 0 })
+const chartRef = ref<HTMLDivElement>()
+const { render: renderChart, dispose: disposeChart } = useReportChart(chartRef)
 
 const page = ref(1)
 const size = ref(20)
@@ -125,9 +145,16 @@ async function load() {
       summaryRows.value = await fetchInvSummaryByCategory()
       summaryTotal.value = summaryRows.value.length
     } else if (view.value === 'warnings') {
-      const data = await fetchInvWarnings(alertType.value, page.value, size.value)
+      // 列表按类型筛选分页展示；图表需要全量构成，因此额外取三类 total
+      const [data, out, warning, overstock] = await Promise.all([
+        fetchInvWarnings(alertType.value, page.value, size.value),
+        fetchInvWarnings('OUT', 1, 1),
+        fetchInvWarnings('WARNING', 1, 1),
+        fetchInvWarnings('OVERSTOCK', 1, 1),
+      ])
       warningRows.value = data.list
       warningTotal.value = data.total
+      warningCounts.value = { OUT: out.total, WARNING: warning.total, OVERSTOCK: overstock.total }
     } else if (view.value === 'changes') {
       changeRows.value = await fetchInvChanges(range)
     } else if (view.value === 'turnover-goods') {
@@ -140,8 +167,202 @@ async function load() {
     } else {
       lossData.value = await fetchLossReport(range)
     }
+    await renderInventoryChart()
   } finally {
     loading.value = false
+  }
+}
+
+// ---------- 统计图（分类构成 / 预警构成 / 变动与周转） ----------
+const CHART_TITLES: Partial<Record<ViewKey, string>> = {
+  'summary-category': '分类库存金额 TOP10',
+  warnings: '库存预警构成（全量）',
+  changes: '库存变动构成',
+  'turnover-category': '分类周转率 TOP10',
+  loss: '损耗金额 TOP10 商品',
+}
+
+const chartReady = computed(() => {
+  if (view.value === 'summary-category') return summaryRows.value.length > 0
+  if (view.value === 'warnings') {
+    const counts = warningCounts.value
+    return counts.OUT + counts.WARNING + counts.OVERSTOCK > 0
+  }
+  if (view.value === 'changes') return changeRows.value.length > 0
+  if (view.value === 'turnover-category') return turnoverRows.value.length > 0
+  if (view.value === 'loss') return (lossData.value?.rows.length ?? 0) > 0
+  return false
+})
+
+function renderInventoryChart() {
+  if (!chartReady.value) {
+    disposeChart()
+    return Promise.resolve()
+  }
+  return renderChart(buildInventoryOption)
+}
+
+function buildInventoryOption(): EChartsOption {
+  if (view.value === 'summary-category') return buildCategoryStockOption()
+  if (view.value === 'warnings') return buildWarningOption()
+  if (view.value === 'changes') return buildChangeOption()
+  if (view.value === 'turnover-category') return buildTurnoverCategoryOption()
+  if (view.value === 'loss') return buildLossOption()
+  return chartBase()
+}
+
+function buildCategoryStockOption(): EChartsOption {
+  const t = chartTokens()
+  const useCost = summaryRows.value.some((row) => row.costAmount != null)
+  const amountOf = (row: InvSummaryRow) => compactNumber(useCost ? row.costAmount : row.retailValue)
+  const data = [...summaryRows.value].sort((a, b) => amountOf(b) - amountOf(a)).slice(0, 10)
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    grid: { left: 12, right: 16, top: 24, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.map((row) => row.categoryName ?? '未分类'),
+      ...axisCommon(),
+      axisLabel: { ...axisCommon().axisLabel, rotate: 25, interval: 0 },
+      splitLine: { show: false },
+    },
+    yAxis: { type: 'value', name: useCost ? '库存成本(元)' : '零售价值(元)', ...axisCommon() },
+    series: [
+      {
+        name: useCost ? '库存成本' : '零售价值',
+        type: 'bar',
+        barMaxWidth: 26,
+        data: data.map(amountOf),
+        itemStyle: { color: t.primary, borderRadius: [4, 4, 0, 0] },
+      },
+    ],
+  }
+}
+
+function buildWarningOption(): EChartsOption {
+  const t = chartTokens()
+  const data = [
+    { name: '缺货', value: warningCounts.value.OUT, itemStyle: { color: t.error } },
+    { name: '预警', value: warningCounts.value.WARNING, itemStyle: { color: t.warning } },
+    { name: '积压', value: warningCounts.value.OVERSTOCK, itemStyle: { color: t.muted } },
+  ].filter((item) => item.value > 0)
+  return {
+    ...chartBase(),
+    tooltip: { ...tooltipCommon('item'), formatter: '{b}: {c} 个 ({d}%)' },
+    legend: { ...legendCommon(), bottom: 0 },
+    series: [
+      {
+        name: '预警商品数',
+        type: 'pie',
+        radius: ['42%', '68%'],
+        center: ['50%', '45%'],
+        itemStyle: { borderColor: t.bg, borderWidth: 2, borderRadius: 4 },
+        label: { color: t.muted, formatter: '{b}\n{c} 个' },
+        data,
+      },
+    ],
+  }
+}
+
+function buildChangeOption(): EChartsOption {
+  const t = chartTokens()
+  const data = changeRows.value
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    legend: { ...legendCommon(), top: 0 },
+    grid: { left: 12, right: 16, top: 40, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.map((row) => CHANGE_TYPE_MAP[row.recordType] ?? row.recordType),
+      ...axisCommon(),
+      axisLabel: { ...axisCommon().axisLabel, rotate: 20, interval: 0 },
+      splitLine: { show: false },
+    },
+    yAxis: [
+      { type: 'value', name: '单据数', ...axisCommon() },
+      { type: 'value', name: '变动数量', ...axisCommon(), splitLine: { show: false } },
+    ],
+    series: [
+      {
+        name: '单据数',
+        type: 'bar',
+        barMaxWidth: 24,
+        data: data.map((row) => row.recordCount),
+        itemStyle: { color: t.primary, borderRadius: [4, 4, 0, 0] },
+      },
+      {
+        name: '变动数量',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        data: data.map((row) => compactNumber(row.changeQty)),
+        itemStyle: { color: t.warning },
+      },
+    ],
+  }
+}
+
+function buildTurnoverCategoryOption(): EChartsOption {
+  const t = chartTokens()
+  const data = turnoverRows.value
+    .filter((row) => row.turnoverRate != null)
+    .sort((a, b) => Number(b.turnoverRate) - Number(a.turnoverRate))
+    .slice(0, 10)
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    grid: { left: 12, right: 44, top: 16, bottom: 8, containLabel: true },
+    xAxis: { type: 'value', name: '次', ...axisCommon() },
+    yAxis: {
+      type: 'category',
+      inverse: true,
+      data: data.map((row) => row.categoryName ?? '未分类'),
+      ...axisCommon(),
+      splitLine: { show: false },
+    },
+    series: [
+      {
+        name: '周转率',
+        type: 'bar',
+        barMaxWidth: 18,
+        data: data.map((row) => Number(row.turnoverRate)),
+        itemStyle: { color: t.primary, borderRadius: [0, 4, 4, 0] },
+        label: { show: true, position: 'right', color: t.muted, fontSize: 11 },
+      },
+    ],
+  }
+}
+
+function buildLossOption(): EChartsOption {
+  const t = chartTokens()
+  const data = (lossData.value?.rows ?? [])
+    .filter((row) => Number(row.totalAmount ?? 0) > 0)
+    .sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount))
+    .slice(0, 10)
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    grid: { left: 12, right: 44, top: 16, bottom: 8, containLabel: true },
+    xAxis: { type: 'value', name: '金额(元)', ...axisCommon() },
+    yAxis: {
+      type: 'category',
+      inverse: true,
+      data: data.map((row) => row.goodsName),
+      ...axisCommon(),
+      splitLine: { show: false },
+    },
+    series: [
+      {
+        name: '损耗合计',
+        type: 'bar',
+        barMaxWidth: 18,
+        data: data.map((row) => compactNumber(row.totalAmount)),
+        itemStyle: { color: t.error, borderRadius: [0, 4, 4, 0] },
+        label: { show: true, position: 'right', color: t.muted, fontSize: 11 },
+      },
+    ],
   }
 }
 
@@ -185,7 +406,11 @@ const SUMMARY_COLUMNS: PrintColumn<InvSummaryRow>[] = [
   { label: '成本单价', value: (r) => pMoney(r.costPrice), align: 'right' },
   { label: '库存成本金额', value: (r) => pMoney(r.costAmount), align: 'right' },
   { label: '零售价值', value: (r) => pMoney(r.retailValue), align: 'right' },
-  { label: '库存状态', value: (r) => STOCK_STATUS_MAP[r.stockStatus ?? '']?.label ?? r.stockStatus, align: 'center' },
+  {
+    label: '库存状态',
+    value: (r) => STOCK_STATUS_MAP[r.stockStatus ?? '']?.label ?? r.stockStatus,
+    align: 'center',
+  },
 ]
 
 const WARNING_COLUMNS: PrintColumn<WarningRptRow>[] = [
@@ -219,7 +444,8 @@ async function handlePrint() {
   syncRange()
   const title = `库存报表 · ${VIEW_LABELS[view.value]}`
   // 汇总与预警是时点快照，只有变动/周转/损耗按区间统计
-  const ranged = view.value === 'changes' || view.value.startsWith('turnover') || view.value === 'loss'
+  const ranged =
+    view.value === 'changes' || view.value.startsWith('turnover') || view.value === 'loss'
   const meta = [
     ranged ? `统计区间：${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}` : null,
     `操作员：${auth.user?.realName ?? '—'}`,
@@ -303,9 +529,7 @@ function openDrillRecords(
 ) {
   drillRecordFilter = filter
   drillRecordAllDates = allDates
-  const windowText = allDates
-    ? '全部流水'
-    : `${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}`
+  const windowText = allDates ? '全部流水' : `${range.beginDate ?? '—'} ~ ${range.endDate ?? '—'}`
   drillRecordTitle.value = `下钻：${label}（${windowText}）`
   drillRecordVisible.value = true
 }
@@ -346,7 +570,12 @@ function fetchDrillLossPage(p: number, size: number) {
 
 const drillLossColumns: DrillColumn<DrillLossRow>[] = [
   { label: '单据号', width: 160, value: (r) => r.orderNo },
-  { label: '类型', width: 80, align: 'center', value: (r) => (r.kind === 'LOSS' ? '报损' : '盘亏') },
+  {
+    label: '类型',
+    width: 80,
+    align: 'center',
+    value: (r) => (r.kind === 'LOSS' ? '报损' : '盘亏'),
+  },
   { label: '商品名称', minWidth: 140, value: (r) => r.goodsName },
   { label: '数量', width: 90, align: 'right', value: (r) => qty(r.qty) },
   { label: '成本单价', width: 90, align: 'right', value: (r) => money(r.costPrice) },
@@ -376,7 +605,13 @@ onMounted(async () => {
           </AppRadioGroup>
         </AppFormItem>
         <AppFormItem v-if="view === 'warnings'" label="预警类型">
-          <AppSelect v-model="alertType" clearable placeholder="全部" style="width: 110px" @change="load">
+          <AppSelect
+            v-model="alertType"
+            clearable
+            placeholder="全部"
+            style="width: 110px"
+            @change="load"
+          >
             <AppOption label="缺货" value="OUT" />
             <AppOption label="预警" value="WARNING" />
             <AppOption label="积压" value="OVERSTOCK" />
@@ -393,7 +628,10 @@ onMounted(async () => {
             style="width: 180px"
           />
         </AppFormItem>
-        <AppFormItem v-if="view === 'changes' || view.includes('turnover') || view === 'loss'" label="日期区间">
+        <AppFormItem
+          v-if="view === 'changes' || view.includes('turnover') || view === 'loss'"
+          label="日期区间"
+        >
           <AppDatePicker
             v-model="dateRange"
             type="daterange"
@@ -406,12 +644,17 @@ onMounted(async () => {
         <AppFormItem>
           <div class="flex items-center gap-2">
             <UButton @click="search">查询</UButton>
-            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport"
+              >导出</UButton
+            >
             <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
           </div>
         </AppFormItem>
       </AppForm>
-      <div v-if="view === 'changes' || view.includes('turnover') || view === 'loss'" class="presets">
+      <div
+        v-if="view === 'changes' || view.includes('turnover') || view === 'loss'"
+        class="presets"
+      >
         <UButton
           v-for="p in RANGE_PRESETS"
           :key="p.key"
@@ -423,6 +666,15 @@ onMounted(async () => {
           {{ p.label }}
         </UButton>
       </div>
+    </UCard>
+
+    <!-- 统计图：分类构成 / 预警构成 / 变动与周转 -->
+    <UCard v-if="CHART_TITLES[view] && chartReady" class="chart-card">
+      <template #header>
+        <span>{{ CHART_TITLES[view] }}</span>
+        <span v-if="view === 'warnings'" class="chart-note">全量口径，不受上方类型筛选影响</span>
+      </template>
+      <div ref="chartRef" class="report-chart" />
     </UCard>
 
     <!-- 库存汇总（商品维度） -->
@@ -447,7 +699,11 @@ onMounted(async () => {
         </AppTableColumn>
         <AppTableColumn label="状态" width="80" align="center">
           <template #default="{ row }">
-            <UBadge :color="tagColor(STOCK_STATUS_MAP[row.stockStatus]?.type)" variant="soft" size="sm">
+            <UBadge
+              :color="tagColor(STOCK_STATUS_MAP[row.stockStatus]?.type)"
+              variant="soft"
+              size="sm"
+            >
               {{ STOCK_STATUS_MAP[row.stockStatus]?.label ?? row.stockStatus }}
             </UBadge>
           </template>
@@ -457,7 +713,9 @@ onMounted(async () => {
             <UButton
               variant="link"
               size="sm"
-              @click="openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)"
+              @click="
+                openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)
+              "
             >
               流水
             </UButton>
@@ -505,7 +763,13 @@ onMounted(async () => {
         <AppTableColumn label="预警类型" width="90" align="center">
           <template #default="{ row }">
             <UBadge
-              :color="row.alertType === 'OUT' ? 'error' : row.alertType === 'WARNING' ? 'warning' : 'neutral'"
+              :color="
+                row.alertType === 'OUT'
+                  ? 'error'
+                  : row.alertType === 'WARNING'
+                    ? 'warning'
+                    : 'neutral'
+              "
               variant="soft"
               size="sm"
             >
@@ -536,7 +800,9 @@ onMounted(async () => {
             <UButton
               variant="link"
               size="sm"
-              @click="openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)"
+              @click="
+                openDrillRecords({ goodsId: row.goodsId }, `商品 ${row.goodsName} 库存流水`, true)
+              "
             >
               流水
             </UButton>
@@ -559,7 +825,9 @@ onMounted(async () => {
       <template #header><span>库存变动明细汇总</span></template>
       <AppTable :loading="loading" border :data="changeRows" stripe>
         <AppTableColumn label="变动类型" min-width="140">
-          <template #default="{ row }">{{ CHANGE_TYPE_MAP[row.recordType] ?? row.recordType }}</template>
+          <template #default="{ row }">{{
+            CHANGE_TYPE_MAP[row.recordType] ?? row.recordType
+          }}</template>
         </AppTableColumn>
         <AppTableColumn prop="recordCount" label="单据数" width="100" align="right" />
         <AppTableColumn label="变动数量" width="120" align="right">
@@ -570,7 +838,16 @@ onMounted(async () => {
         </AppTableColumn>
         <AppTableColumn label="操作" width="80" fixed="right">
           <template #default="{ row }">
-            <UButton variant="link" size="sm" @click="openDrillRecords({ recordType: row.recordType }, '变动类型 ' + (CHANGE_TYPE_MAP[row.recordType] ?? row.recordType))">
+            <UButton
+              variant="link"
+              size="sm"
+              @click="
+                openDrillRecords(
+                  { recordType: row.recordType },
+                  '变动类型 ' + (CHANGE_TYPE_MAP[row.recordType] ?? row.recordType),
+                )
+              "
+            >
               明细
             </UButton>
           </template>
@@ -613,7 +890,12 @@ onMounted(async () => {
               v-if="row.goodsId != null"
               variant="link"
               size="sm"
-              @click="openDrillRecords({ recordType: 'SALE_OUT', goodsId: row.goodsId }, '商品 ' + row.goodsName + ' 销售出库流水')"
+              @click="
+                openDrillRecords(
+                  { recordType: 'SALE_OUT', goodsId: row.goodsId },
+                  '商品 ' + row.goodsName + ' 销售出库流水',
+                )
+              "
             >
               销售流水
             </UButton>
@@ -680,9 +962,15 @@ onMounted(async () => {
       <template #header><span>损耗报表</span></template>
       <div v-if="lossData" class="loss-summary">
         <AppDescriptions :column="4" border size="small">
-          <AppDescriptionsItem label="损耗金额">￥{{ money(lossData.totalLossAmount) }}</AppDescriptionsItem>
-          <AppDescriptionsItem label="报溢金额">￥{{ money(lossData.totalOverflowAmount) }}</AppDescriptionsItem>
-          <AppDescriptionsItem label="期初库存金额">￥{{ money(lossData.beginInventoryAmount) }}</AppDescriptionsItem>
+          <AppDescriptionsItem label="损耗金额"
+            >￥{{ money(lossData.totalLossAmount) }}</AppDescriptionsItem
+          >
+          <AppDescriptionsItem label="报溢金额"
+            >￥{{ money(lossData.totalOverflowAmount) }}</AppDescriptionsItem
+          >
+          <AppDescriptionsItem label="期初库存金额"
+            >￥{{ money(lossData.beginInventoryAmount) }}</AppDescriptionsItem
+          >
           <AppDescriptionsItem label="损耗率">{{ percent(lossData.lossRate) }}</AppDescriptionsItem>
         </AppDescriptions>
       </div>
@@ -692,7 +980,12 @@ onMounted(async () => {
         <AppTableColumn prop="categoryName" label="分类" width="120" show-overflow-tooltip />
         <AppTableColumn label="报损数量" width="90" align="right">
           <template #default="{ row }">
-            <UButton v-if="row.lossQty > 0" variant="link" size="sm" @click="openDrillLoss(row as LossGoodsRow, 'loss')">
+            <UButton
+              v-if="row.lossQty > 0"
+              variant="link"
+              size="sm"
+              @click="openDrillLoss(row as LossGoodsRow, 'loss')"
+            >
               {{ qty(row.lossQty) }}
             </UButton>
             <span v-else>{{ qty(row.lossQty) }}</span>
@@ -703,7 +996,12 @@ onMounted(async () => {
         </AppTableColumn>
         <AppTableColumn label="盘亏数量" width="90" align="right">
           <template #default="{ row }">
-            <UButton v-if="row.checkQty > 0" variant="link" size="sm" @click="openDrillLoss(row as LossGoodsRow, 'check')">
+            <UButton
+              v-if="row.checkQty > 0"
+              variant="link"
+              size="sm"
+              @click="openDrillLoss(row as LossGoodsRow, 'check')"
+            >
               {{ qty(row.checkQty) }}
             </UButton>
             <span v-else>{{ qty(row.checkQty) }}</span>
@@ -740,6 +1038,22 @@ onMounted(async () => {
 .page {
   .search-card {
     margin-bottom: 16px;
+  }
+
+  .chart-card {
+    margin-bottom: 16px;
+  }
+
+  .report-chart {
+    width: 100%;
+    height: 320px;
+  }
+
+  .chart-note {
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ui-text-muted);
   }
 
   .presets {

@@ -20,7 +20,17 @@ import {
   type SalesReportVO,
 } from '@/api/report'
 import { getDictItems } from '@/api/system'
+import type { EChartsOption } from 'echarts'
 import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
+import {
+  axisCommon,
+  chartBase,
+  chartTokens,
+  legendCommon,
+  tooltipCommon,
+  compactNumber,
+} from '../components/chartOptions'
+import { useReportChart } from '../components/useReportChart'
 import { RANGE_PRESETS, presetRange, type RangePreset } from '../components/rangePresets'
 
 type ViewKey = 'daily' | 'pay-method' | 'hour' | 'cashier' | 'counter' | 'member-ratio'
@@ -45,6 +55,8 @@ const range = reactive<ReportRange>({ ...initRange })
 const dateRange = ref<string[]>([initRange.beginDate, initRange.endDate])
 const rows = ref<SalesReportRow[]>([])
 const total = ref<SalesReportRow | null>(null)
+const chartRef = ref<HTMLDivElement>()
+const { render: renderChart, dispose: disposeChart } = useReportChart(chartRef)
 
 function money(v: number | null | undefined) {
   return v == null ? '—' : moneyText(v, 2)
@@ -89,8 +101,156 @@ async function load() {
       rows.value = await fetchSalesMemberRatio(range)
       total.value = null
     }
+    await renderSalesChart()
   } finally {
     loading.value = false
+  }
+}
+
+// ---------- 统计图（趋势 / 构成 / 对比） ----------
+const CHART_TITLES: Record<ViewKey, string> = {
+  daily: '销售趋势（净销售 / 订单数）',
+  'pay-method': '收款方式构成（净销售）',
+  hour: '时段分布（净销售）',
+  cashier: '收银员业绩 TOP10（净销售）',
+  counter: '收银台业绩（净销售）',
+  'member-ratio': '会员 / 散客净销售占比',
+}
+
+function netAmountOf(row: SalesReportRow) {
+  return compactNumber(row.netAmount ?? row.salesAmount)
+}
+
+function renderSalesChart() {
+  if (!rows.value.length) {
+    disposeChart()
+    return Promise.resolve()
+  }
+  return renderChart(buildSalesOption)
+}
+
+function buildSalesOption(): EChartsOption {
+  if (view.value === 'daily') return buildDailyOption()
+  if (view.value === 'hour') return buildHourOption()
+  if (view.value === 'cashier' || view.value === 'counter') {
+    return buildRankBarOption(rows.value, '净销售')
+  }
+  const valueName = '净销售'
+  return buildPieOption(
+    rows.value.map((row) => ({ name: row.groupKey, value: netAmountOf(row) })),
+    valueName,
+  )
+}
+
+function buildDailyOption(): EChartsOption {
+  const t = chartTokens()
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    legend: { ...legendCommon(), top: 0, data: ['净销售', '订单数'] },
+    grid: { left: 12, right: 16, top: 44, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: rows.value.map((row) => (monthly.value ? row.groupKey : row.groupKey.slice(5))),
+      ...axisCommon(),
+      splitLine: { show: false },
+    },
+    yAxis: [
+      { type: 'value', name: '金额(元)', ...axisCommon() },
+      { type: 'value', name: '单数', ...axisCommon(), splitLine: { show: false } },
+    ],
+    series: [
+      {
+        name: '净销售',
+        type: 'line',
+        smooth: true,
+        symbolSize: 6,
+        data: rows.value.map(netAmountOf),
+        itemStyle: { color: t.primary },
+        areaStyle: { color: t.primary, opacity: 0.12 },
+      },
+      {
+        name: '订单数',
+        type: 'bar',
+        yAxisIndex: 1,
+        barMaxWidth: 18,
+        data: rows.value.map((row) => row.orderCount),
+        itemStyle: { color: t.success },
+      },
+    ],
+  }
+}
+
+function buildHourOption(): EChartsOption {
+  const t = chartTokens()
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    grid: { left: 12, right: 16, top: 24, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: rows.value.map((row) => `${row.groupKey.padStart(2, '0')}:00`),
+      ...axisCommon(),
+      splitLine: { show: false },
+    },
+    yAxis: { type: 'value', name: '金额(元)', ...axisCommon() },
+    series: [
+      {
+        name: '净销售',
+        type: 'bar',
+        barMaxWidth: 22,
+        data: rows.value.map(netAmountOf),
+        itemStyle: { color: t.primary, borderRadius: [4, 4, 0, 0] },
+      },
+    ],
+  }
+}
+
+function buildRankBarOption(source: SalesReportRow[], valueName: string): EChartsOption {
+  const t = chartTokens()
+  const sorted = [...source].sort((a, b) => netAmountOf(b) - netAmountOf(a)).slice(0, 10)
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    grid: { left: 12, right: 44, top: 16, bottom: 8, containLabel: true },
+    xAxis: { type: 'value', ...axisCommon() },
+    yAxis: {
+      type: 'category',
+      inverse: true,
+      data: sorted.map((row) => row.groupKey),
+      ...axisCommon(),
+      splitLine: { show: false },
+    },
+    series: [
+      {
+        name: valueName,
+        type: 'bar',
+        barMaxWidth: 18,
+        data: sorted.map(netAmountOf),
+        itemStyle: { color: t.primary, borderRadius: [0, 4, 4, 0] },
+        label: { show: true, position: 'right', color: t.muted, fontSize: 11 },
+      },
+    ],
+  }
+}
+
+function buildPieOption(data: { name: string; value: number }[], valueName: string): EChartsOption {
+  const t = chartTokens()
+  return {
+    ...chartBase(),
+    tooltip: { ...tooltipCommon('item'), formatter: '{b}: {c} ({d}%)' },
+    legend: { ...legendCommon(), bottom: 0 },
+    series: [
+      {
+        name: valueName,
+        type: 'pie',
+        radius: ['42%', '68%'],
+        center: ['50%', '45%'],
+        itemStyle: { borderColor: t.bg, borderWidth: 2, borderRadius: 4 },
+        label: { color: t.muted, formatter: '{b}\n{d}%' },
+        data,
+      },
+    ],
   }
 }
 
@@ -209,7 +369,10 @@ function drillRow(row: SalesReportRow) {
       const [y, m] = row.groupKey.split('-').map(Number)
       const last = new Date(y, m, 0).getDate()
       openDrill(
-        { beginDate: `${row.groupKey}-01`, endDate: `${row.groupKey}-${String(last).padStart(2, '0')}` },
+        {
+          beginDate: `${row.groupKey}-01`,
+          endDate: `${row.groupKey}-${String(last).padStart(2, '0')}`,
+        },
         `销售月报 ${row.groupKey}`,
       )
     } else {
@@ -275,7 +438,9 @@ onMounted(() => {
         <AppFormItem>
           <div class="flex items-center gap-2">
             <UButton @click="search">查询</UButton>
-            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport"
+              >导出</UButton
+            >
             <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
           </div>
         </AppFormItem>
@@ -292,6 +457,14 @@ onMounted(() => {
           {{ p.label }}
         </UButton>
       </div>
+    </UCard>
+
+    <!-- 统计图：趋势 / 构成 / 对比 -->
+    <UCard v-if="rows.length" class="chart-card">
+      <template #header
+        ><span>{{ CHART_TITLES[view] }}</span></template
+      >
+      <div ref="chartRef" class="report-chart" />
     </UCard>
 
     <!-- 数据表格 -->
@@ -336,7 +509,12 @@ onMounted(() => {
         </AppTableColumn>
         <AppTableColumn label="毛利额" width="100" align="right">
           <template #default="{ row }">
-            <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
+            <span
+              :class="{
+                profit: Number(row.profitAmount ?? 0) >= 0,
+                loss: Number(row.profitAmount ?? 0) < 0,
+              }"
+            >
               {{ money(row.profitAmount) }}
             </span>
           </template>
@@ -378,6 +556,15 @@ onMounted(() => {
 .page {
   .search-card {
     margin-bottom: 16px;
+  }
+
+  .chart-card {
+    margin-bottom: 16px;
+  }
+
+  .report-chart {
+    width: 100%;
+    height: 320px;
   }
 
   .presets {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { notify } from '@/utils/notify'
 import { moneyText } from '@/utils/format'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { getCategoryTree, type CategoryNode } from '@/api/goods'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -28,6 +28,16 @@ import {
   type SalesReportVO,
 } from '@/api/report'
 import DrillOrderDrawer from '../components/DrillOrderDrawer.vue'
+import type { EChartsOption } from 'echarts'
+import {
+  axisCommon,
+  chartBase,
+  chartTokens,
+  compactNumber,
+  legendCommon,
+  tooltipCommon,
+} from '../components/chartOptions'
+import { useReportChart } from '../components/useReportChart'
 import { RANGE_PRESETS, presetRange, type RangePreset } from '../components/rangePresets'
 
 type ViewKey = 'by-goods' | 'by-category' | 'by-day' | 'negative'
@@ -57,6 +67,8 @@ const goodsTotal = ref(0)
 const categoryRows = ref<GoodsRankRow[]>([])
 const dayData = ref<SalesReportVO | null>(null)
 const negativeRows = ref<NegativeProfitRow[]>([])
+const chartRef = ref<HTMLDivElement>()
+const { render: renderChart, dispose: disposeChart } = useReportChart(chartRef)
 
 const page = ref(1)
 const size = ref(20)
@@ -99,8 +111,147 @@ async function load() {
     } else {
       negativeRows.value = await fetchNegativeProfit(range)
     }
+    await renderProfitChart()
   } finally {
     loading.value = false
+  }
+}
+
+// ---------- 统计图（分类贡献 / 趋势 / 负毛利） ----------
+const CHART_TITLES: Partial<Record<ViewKey, string>> = {
+  'by-category': '分类毛利额与毛利率 TOP10',
+  'by-day': '毛利趋势（毛利额 / 毛利率）',
+  negative: '负毛利商品 TOP10',
+}
+
+const chartReady = computed(() => {
+  if (view.value === 'by-category') return categoryRows.value.length > 0
+  if (view.value === 'by-day') return (dayData.value?.rows.length ?? 0) > 0
+  if (view.value === 'negative') return negativeRows.value.length > 0
+  return false
+})
+
+function renderProfitChart() {
+  if (!chartReady.value) {
+    disposeChart()
+    return Promise.resolve()
+  }
+  return renderChart(buildProfitOption)
+}
+
+function buildProfitOption(): EChartsOption {
+  if (view.value === 'by-category') return buildProfitCategoryOption()
+  if (view.value === 'by-day') return buildProfitTrendOption()
+  if (view.value === 'negative') return buildNegativeProfitOption()
+  return chartBase()
+}
+
+function buildProfitCategoryOption(): EChartsOption {
+  const t = chartTokens()
+  const data = [...categoryRows.value]
+    .sort((a, b) => compactNumber(b.profitAmount) - compactNumber(a.profitAmount))
+    .slice(0, 10)
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    legend: { ...legendCommon(), top: 0 },
+    grid: { left: 12, right: 16, top: 40, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.map((row) => row.categoryName ?? '未分类'),
+      ...axisCommon(),
+      axisLabel: { ...axisCommon().axisLabel, rotate: 25, interval: 0 },
+      splitLine: { show: false },
+    },
+    yAxis: [
+      { type: 'value', name: '毛利额(元)', ...axisCommon() },
+      { type: 'value', name: '毛利率(%)', ...axisCommon(), splitLine: { show: false } },
+    ],
+    series: [
+      {
+        name: '毛利额',
+        type: 'bar',
+        barMaxWidth: 26,
+        data: data.map((row) => compactNumber(row.profitAmount)),
+        itemStyle: { color: t.primary, borderRadius: [4, 4, 0, 0] },
+      },
+      {
+        name: '毛利率',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        data: data.map((row) => compactNumber(row.profitRate)),
+        itemStyle: { color: t.warning },
+      },
+    ],
+  }
+}
+
+function buildProfitTrendOption(): EChartsOption {
+  const t = chartTokens()
+  const data = dayData.value?.rows ?? []
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    legend: { ...legendCommon(), top: 0 },
+    grid: { left: 12, right: 16, top: 40, bottom: 8, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.map((row) => row.bizDate?.slice(5) ?? row.groupKey),
+      ...axisCommon(),
+      splitLine: { show: false },
+    },
+    yAxis: [
+      { type: 'value', name: '毛利额(元)', ...axisCommon() },
+      { type: 'value', name: '毛利率(%)', ...axisCommon(), splitLine: { show: false } },
+    ],
+    series: [
+      {
+        name: '毛利额',
+        type: 'bar',
+        barMaxWidth: 24,
+        data: data.map((row) => compactNumber(row.profitAmount)),
+        itemStyle: { color: t.primary, borderRadius: [4, 4, 0, 0] },
+      },
+      {
+        name: '毛利率',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        data: data.map((row) => compactNumber(row.profitRate)),
+        itemStyle: { color: t.warning },
+      },
+    ],
+  }
+}
+
+function buildNegativeProfitOption(): EChartsOption {
+  const t = chartTokens()
+  const data = [...negativeRows.value]
+    .sort((a, b) => Number(a.profitAmount) - Number(b.profitAmount))
+    .slice(0, 10)
+  return {
+    ...chartBase(),
+    tooltip: tooltipCommon('axis'),
+    grid: { left: 12, right: 24, top: 16, bottom: 8, containLabel: true },
+    xAxis: { type: 'value', name: '毛利额(元)', ...axisCommon() },
+    yAxis: {
+      type: 'category',
+      inverse: true,
+      data: data.map((row) => row.goodsName),
+      ...axisCommon(),
+      splitLine: { show: false },
+    },
+    series: [
+      {
+        name: '毛利额',
+        type: 'bar',
+        barMaxWidth: 18,
+        data: data.map((row) => compactNumber(row.profitAmount)),
+        itemStyle: { color: t.error, borderRadius: [4, 0, 0, 4] },
+        label: { show: true, position: 'left', color: t.muted, fontSize: 11 },
+      },
+    ],
   }
 }
 
@@ -202,7 +353,9 @@ async function handlePrint() {
       meta,
       columns: PROFIT_DAY_COLUMNS,
       rows: dayData.value?.rows ?? [],
-      totals: t ? [`合计毛利额：￥${pMoney(t.profitAmount)}`, `综合毛利率：${pPercent(t.profitRate)}`] : [],
+      totals: t
+        ? [`合计毛利额：￥${pMoney(t.profitAmount)}`, `综合毛利率：${pPercent(t.profitRate)}`]
+        : [],
       orientation: 'landscape',
     })
   } else {
@@ -296,7 +449,9 @@ onMounted(async () => {
         <AppFormItem>
           <div class="flex items-center gap-2">
             <UButton @click="search">查询</UButton>
-            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport">导出</UButton>
+            <UButton :loading="exporting" color="neutral" variant="outline" @click="handleExport"
+              >导出</UButton
+            >
             <UButton color="neutral" variant="outline" @click="handlePrint">打印</UButton>
           </div>
         </AppFormItem>
@@ -313,6 +468,14 @@ onMounted(async () => {
           {{ p.label }}
         </UButton>
       </div>
+    </UCard>
+
+    <!-- 统计图：分类贡献 / 趋势 / 负毛利 -->
+    <UCard v-if="CHART_TITLES[view] && chartReady" class="chart-card">
+      <template #header
+        ><span>{{ CHART_TITLES[view] }}</span></template
+      >
+      <div ref="chartRef" class="report-chart" />
     </UCard>
 
     <!-- 按商品毛利 -->
@@ -336,7 +499,12 @@ onMounted(async () => {
         </AppTableColumn>
         <AppTableColumn label="毛利额" width="100" align="right">
           <template #default="{ row }">
-            <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
+            <span
+              :class="{
+                profit: Number(row.profitAmount ?? 0) >= 0,
+                loss: Number(row.profitAmount ?? 0) < 0,
+              }"
+            >
               {{ money(row.profitAmount) }}
             </span>
           </template>
@@ -385,7 +553,12 @@ onMounted(async () => {
         </AppTableColumn>
         <AppTableColumn label="毛利额" width="110" align="right">
           <template #default="{ row }">
-            <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
+            <span
+              :class="{
+                profit: Number(row.profitAmount ?? 0) >= 0,
+                loss: Number(row.profitAmount ?? 0) < 0,
+              }"
+            >
               {{ money(row.profitAmount) }}
             </span>
           </template>
@@ -432,7 +605,12 @@ onMounted(async () => {
         </AppTableColumn>
         <AppTableColumn label="毛利额" width="100" align="right">
           <template #default="{ row }">
-            <span :class="{ profit: Number(row.profitAmount ?? 0) >= 0, loss: Number(row.profitAmount ?? 0) < 0 }">
+            <span
+              :class="{
+                profit: Number(row.profitAmount ?? 0) >= 0,
+                loss: Number(row.profitAmount ?? 0) < 0,
+              }"
+            >
               {{ money(row.profitAmount) }}
             </span>
           </template>
@@ -513,6 +691,15 @@ onMounted(async () => {
 .page {
   .search-card {
     margin-bottom: 16px;
+  }
+
+  .chart-card {
+    margin-bottom: 16px;
+  }
+
+  .report-chart {
+    width: 100%;
+    height: 320px;
   }
 
   .presets {
