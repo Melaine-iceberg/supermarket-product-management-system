@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1010" viewBox="0 0 1500 1010">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5b6b80"/></marker></defs>
+<rect width="1500" height="1010" fill="#ffffff"/>
+<text x="750.0" y="42" text-anchor="middle" font-size="28" font-family="SimHei" font-weight="bold" fill="#17365d">报表统计查询、下钻与导出流程图</text>
+<rect x="55" y="80" width="280" height="82" rx="8" fill="#e8f0fb" stroke="#2f5597" stroke-width="1.8"/>
+<text x="195.0" y="110" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">选择报表与视图</text>
+<text x="195.0" y="132" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">看板 / 采购 / 销售 / 商品</text>
+<text x="195.0" y="154" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">库存 / 毛利 / 会员</text>
+<rect x="385" y="80" width="280" height="82" rx="8" fill="#e8f0fb" stroke="#2f5597" stroke-width="1.8"/>
+<text x="525.0" y="110" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">选择日期区间</text>
+<text x="525.0" y="132" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">默认今日，支持 7 个</text>
+<text x="525.0" y="154" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">统一快捷区间</text>
+<rect x="715" y="80" width="280" height="82" rx="8" fill="#e8f0fb" stroke="#2f5597" stroke-width="1.8"/>
+<text x="855.0" y="110" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">查询参数校验</text>
+<text x="855.0" y="132" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">日期归一、视图合法</text>
+<text x="855.0" y="154" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">价格波动须选商品</text>
+<rect x="1045" y="80" width="340" height="82" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1215.0" y="110" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">权限判定</text>
+<text x="1215.0" y="132" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">@RequirePerm 接口权限</text>
+<text x="1215.0" y="154" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">RptRoles 成本 / 毛利权限</text>
+<line x1="335" y1="121" x2="383" y2="121" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="665" y1="121" x2="713" y2="121" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="995" y1="121" x2="1043" y2="121" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="1045" y="225" width="340" height="82" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1215.0" y="255" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">数据聚合</text>
+<text x="1215.0" y="277" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">按 business_date 过滤</text>
+<text x="1215.0" y="299" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">仅正式单据；返回 DTO</text>
+<line x1="1215" y1="162" x2="1215" y2="223" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="715" y="225" width="280" height="82" rx="8" fill="#fce4d6" stroke="#c55a11" stroke-width="1.8"/>
+<text x="855.0" y="255" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">结果掩码</text>
+<text x="855.0" y="277" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">无权限时成本 / 毛利置空</text>
+<text x="855.0" y="299" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">不返回前端</text>
+<line x1="1045" y1="266" x2="997" y2="266" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="385" y="225" width="280" height="82" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="525.0" y="255" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">前端渲染</text>
+<text x="525.0" y="277" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">表格 / ECharts 图表</text>
+<text x="525.0" y="299" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">打印视图</text>
+<line x1="715" y1="266" x2="667" y2="266" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="55" y="225" width="280" height="82" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="195.0" y="255" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">用户查看与筛选</text>
+<text x="195.0" y="277" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">切换视图、修改区间</text>
+<text x="195.0" y="299" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">查看汇总明细</text>
+<line x1="385" y1="266" x2="337" y2="266" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="55" y="390" width="400" height="90" rx="8" fill="#e8e3f4" stroke="#6b4fa3" stroke-width="1.8"/>
+<text x="255.0" y="420" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">下钻：汇总行 -&gt; 构成单据</text>
+<text x="255.0" y="442" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购汇总 -&gt; 采购单；到货 -&gt; 入库单</text>
+<rect x="535" y="390" width="400" height="90" rx="8" fill="#e8e3f4" stroke="#6b4fa3" stroke-width="1.8"/>
+<text x="735.0" y="420" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">单据列表抽屉</text>
+<text x="735.0" y="442" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">单号 / 供应商 / 状态 / 金额 / 时间，分页</text>
+<rect x="1015" y="390" width="400" height="90" rx="8" fill="#e8e3f4" stroke="#6b4fa3" stroke-width="1.8"/>
+<text x="1215.0" y="420" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">单据详情 / 回跳业务页</text>
+<text x="1215.0" y="442" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">与汇总同口径、同权限，可继续查看原单</text>
+<line x1="455" y1="435" x2="533" y2="435" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="935" y1="435" x2="1013" y2="435" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="195" y1="307" x2="195" y2="388" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="55" y="560" width="330" height="95" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="220.0" y="590" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">导出请求</text>
+<text x="220.0" y="612" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">提交返回 taskNo</text>
+<text x="220.0" y="634" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">前端轮询任务进度</text>
+<rect x="445" y="560" width="330" height="95" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="610.0" y="590" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">后台异步生成</text>
+<text x="610.0" y="612" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">AsyncTaskService 线程池</text>
+<text x="610.0" y="634" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">SXSSF 流式写出</text>
+<rect x="835" y="560" width="330" height="95" rx="8" fill="#fce4d6" stroke="#c55a11" stroke-width="1.8"/>
+<text x="1000.0" y="590" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">校验与留痕</text>
+<text x="1000.0" y="612" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">export_max_rows 行数上限</text>
+<text x="1000.0" y="634" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">完成 / 失败 / 下载写日志</text>
+<rect x="1225" y="560" width="220" height="95" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="1335.0" y="590" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">自动下载</text>
+<text x="1335.0" y="612" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">xlsx 文件</text>
+<line x1="385" y1="607" x2="443" y2="607" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="775" y1="607" x2="833" y2="607" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1165" y1="607" x2="1223" y2="607" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="55" y="735" width="1390" height="190" rx="8" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.8"/>
+<text x="750.0" y="765" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">报表口径与安全约束</text>
+<line x1="67" y1="777" x2="1433" y2="777" stroke="#8ea9c8" stroke-width="1" opacity="0.55"/>
+<text x="750.0" y="801" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-01 净销售 = 销售额 - 优惠额 - 退货额；商品 / 品类 / 品牌 / 毛利分析同样扣退货</text>
+<text x="750.0" y="826" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-02 所有业务单据落库写入 business_date，报表按营业日聚合（不再用 create_time 运行时计算）</text>
+<text x="750.0" y="851" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-03 仅统计正式单据：排除草稿、作废、终止；采购在途 = 订购 - 已入库；退货按已审核退货单汇总</text>
+<text x="750.0" y="876" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-04 默认今日 + 七个统一快捷区间；BR-RPT-05 金额 / 百分比统一 2 位小数，除零显示 —</text>
+<text x="750.0" y="901" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-07 成本、毛利、采购金额按角色屏蔽；导出复用服务层，通道不绕过掩码</text>
+</svg>

@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000" viewBox="0 0 1500 1000">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5b6b80"/></marker></defs>
+<rect width="1500" height="1000" fill="#ffffff"/>
+<text x="750.0" y="42" text-anchor="middle" font-size="28" font-family="SimHei" font-weight="bold" fill="#17365d">采购管理与报表统计模块结构图</text>
+<rect x="500" y="68" width="500" height="56" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="750.0" y="98" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="normal" fill="#1f2d3d">本人负责：采购管理 + 报表统计</text>
+<line x1="340" y1="150" x2="1160" y2="150" stroke="#5b6b80" stroke-width="1.8"/>
+<line x1="340" y1="150" x2="340" y2="185" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1160" y1="150" x2="1160" y2="185" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="80" y="185" width="520" height="56" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="340.0" y="215" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购管理模块（purchase）</text>
+<rect x="900" y="185" width="520" height="56" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1160.0" y="215" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="normal" fill="#1f2d3d">报表统计模块（rpt）</text>
+<rect x="60" y="270" width="300" height="160" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="210.0" y="300" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">采购单管理</text>
+<line x1="72" y1="312" x2="348" y2="312" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="210.0" y="336" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">草稿 / 提交 / 审核 / 驳回</text>
+<text x="210.0" y="357" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">撤回 / 作废 / 终止 / 关闭短少</text>
+<text x="210.0" y="378" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">单号 PO+日期+流水，乐观锁</text>
+<rect x="395" y="270" width="300" height="160" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="545.0" y="300" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">建议采购</text>
+<line x1="407" y1="312" x2="683" y2="312" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="545.0" y="336" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">缺货 / 预警 / 积压清单</text>
+<text x="545.0" y="357" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">建议量 = ceil(安全库存×K +</text>
+<text x="545.0" y="378" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">日均销量×提前期 - 结存 - 在途)</text>
+<text x="545.0" y="399" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">按默认供应商分组生成草稿</text>
+<rect x="60" y="450" width="300" height="160" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="210.0" y="480" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">入库验收</text>
+<line x1="72" y1="492" x2="348" y2="492" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="210.0" y="516" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">预检：容差 / 价差 / 近 3 次均价</text>
+<text x="210.0" y="537" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">超收或价差超限须店长授权</text>
+<text x="210.0" y="558" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">验收人 不等于 采购单创建人</text>
+<text x="210.0" y="579" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">移动加权平均成本重算</text>
+<rect x="395" y="450" width="300" height="160" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="545.0" y="480" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">采购退货</text>
+<line x1="407" y1="492" x2="683" y2="492" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="545.0" y="516" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">从部分入库 / 已完成单据发起</text>
+<text x="545.0" y="537" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">可退量 = 已入库 - 已退</text>
+<text x="545.0" y="558" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">审核后负数流水、扣结存、冲成本</text>
+<text x="545.0" y="579" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">状态回写部分退货 / 全部退货</text>
+<rect x="60" y="630" width="300" height="160" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="210.0" y="660" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">结算登记</text>
+<line x1="72" y1="672" x2="348" y2="672" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="210.0" y="696" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">现结 / 月结 / 账期（字典）</text>
+<text x="210.0" y="717" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">未结算 / 部分结算 / 已结算</text>
+<text x="210.0" y="738" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">登记金额、日期、经办人</text>
+<rect x="395" y="630" width="300" height="160" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="545.0" y="660" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">供应商协同</text>
+<line x1="407" y1="672" x2="683" y2="672" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="545.0" y="696" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">默认供应商 / 供货价 / 提前期</text>
+<text x="545.0" y="717" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">入库回写最近供货时间与价格</text>
+<text x="545.0" y="738" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">累计采购额派生维护</text>
+<rect x="880" y="270" width="300" height="160" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1030.0" y="300" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">经营看板</text>
+<line x1="892" y1="312" x2="1168" y2="312" stroke="#bf9000" stroke-width="1" opacity="0.55"/>
+<text x="1030.0" y="336" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">今日 KPI：销售额 / 订单 / 毛利</text>
+<text x="1030.0" y="357" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">按权限过滤的待办事项</text>
+<text x="1030.0" y="378" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">近 7/30 日趋势、TOP10</text>
+<rect x="1215" y="270" width="300" height="160" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1365.0" y="300" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">采购报表</text>
+<line x1="1227" y1="312" x2="1503" y2="312" stroke="#bf9000" stroke-width="1" opacity="0.55"/>
+<text x="1365.0" y="336" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购汇总（供应商 / 商品）</text>
+<text x="1365.0" y="357" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">供应商排行与占比</text>
+<text x="1365.0" y="378" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购价格波动</text>
+<text x="1365.0" y="399" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">到货及时率</text>
+<rect x="880" y="450" width="300" height="160" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1030.0" y="480" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">销售 / 商品 / 库存</text>
+<line x1="892" y1="492" x2="1168" y2="492" stroke="#bf9000" stroke-width="1" opacity="0.55"/>
+<text x="1030.0" y="516" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">销售日报月报、支付方式 / 时段</text>
+<text x="1030.0" y="537" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">商品排行、品类结构、滞销</text>
+<text x="1030.0" y="558" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">库存汇总、预警、周转、损耗</text>
+<rect x="1215" y="450" width="300" height="160" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1365.0" y="480" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">毛利 / 会员</text>
+<line x1="1227" y1="492" x2="1503" y2="492" stroke="#bf9000" stroke-width="1" opacity="0.55"/>
+<text x="1365.0" y="516" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">毛利按商品 / 分类 / 时段</text>
+<text x="1365.0" y="537" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">负毛利清单</text>
+<text x="1365.0" y="558" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">会员增长、排行、等级、贡献</text>
+<rect x="880" y="630" width="300" height="160" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1030.0" y="660" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">下钻分析</text>
+<line x1="892" y1="672" x2="1168" y2="672" stroke="#bf9000" stroke-width="1" opacity="0.55"/>
+<text x="1030.0" y="696" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">汇总数字 -&gt; 构成单据列表</text>
+<text x="1030.0" y="717" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">单据详情 -&gt; 业务页面回跳</text>
+<text x="1030.0" y="738" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">与汇总同口径、同权限</text>
+<rect x="1215" y="630" width="300" height="160" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1365.0" y="660" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">导出与打印</text>
+<line x1="1227" y1="672" x2="1503" y2="672" stroke="#bf9000" stroke-width="1" opacity="0.55"/>
+<text x="1365.0" y="696" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">异步任务 + 轮询 + 自动下载</text>
+<text x="1365.0" y="717" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">SXSSF 流式写出，默认 5 万行</text>
+<text x="1365.0" y="738" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">复用服务层掩码，导出不越权</text>
+<rect x="60" y="825" width="1455" height="135" rx="8" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.8"/>
+<text x="787.5" y="855" text-anchor="middle" font-size="19" font-family="SimHei" font-weight="bold" fill="#1f2d3d">公共支撑</text>
+<line x1="72" y1="867" x2="1503" y2="867" stroke="#8ea9c8" stroke-width="1" opacity="0.55"/>
+<text x="787.5" y="891" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">RBAC 按钮级权限（@RequirePerm）｜操作日志（@OpLog）｜营业日（BusinessDayService）</text>
+<text x="787.5" y="915" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">事务与并发：@Transactional、库存原子条件扣减、采购单 version 乐观锁、request_token 防重</text>
+<text x="787.5" y="939" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">报表口径：净销售 = 销售额 - 优惠 - 退货；正式单据才纳入统计；成本 / 毛利按角色屏蔽</text>
+<line x1="210" y1="241" x2="210" y2="268" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="545" y1="241" x2="545" y2="268" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1030" y1="241" x2="1030" y2="268" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1365" y1="241" x2="1365" y2="268" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+</svg>

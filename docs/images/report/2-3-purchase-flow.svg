@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1040" viewBox="0 0 1500 1040">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5b6b80"/></marker></defs>
+<rect width="1500" height="1040" fill="#ffffff"/>
+<text x="750.0" y="42" text-anchor="middle" font-size="28" font-family="SimHei" font-weight="bold" fill="#17365d">采购管理业务流程图</text>
+<rect x="70" y="80" width="260" height="70" rx="8" fill="#e8f0fb" stroke="#2f5597" stroke-width="1.8"/>
+<text x="200.0" y="110" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">缺货 / 预警商品</text>
+<text x="200.0" y="133" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">建议采购清单</text>
+<rect x="400" y="80" width="260" height="70" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="530.0" y="110" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">创建采购单草稿</text>
+<text x="530.0" y="133" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">PO+日期+流水</text>
+<rect x="730" y="80" width="260" height="70" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="860.0" y="110" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">提交审核</text>
+<text x="860.0" y="133" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">DRAFT -&gt; SUBMITTED</text>
+<rect x="1060" y="80" width="300" height="70" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1210.0" y="110" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">店长审核</text>
+<text x="1210.0" y="133" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">通过 / 驳回</text>
+<line x1="330" y1="115" x2="398" y2="115" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="660" y1="115" x2="728" y2="115" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="990" y1="115" x2="1058" y2="115" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="1060" y="195" width="300" height="65" rx="8" fill="#fbe5e5" stroke="#c00000" stroke-width="1.8"/>
+<text x="1210.0" y="225" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">驳回：必须填写审核意见</text>
+<text x="1210.0" y="247" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">退回草稿，修改后重新提交</text>
+<line x1="1210" y1="150" x2="1210" y2="193" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1060" y1="227" x2="530" y2="227" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<line x1="530" y1="227" x2="530" y2="152" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<rect x="1060" y="320" width="300" height="70" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="1210.0" y="350" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">已审核待入库</text>
+<text x="1210.0" y="373" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">APPROVED</text>
+<line x1="1210" y1="260" x2="1210" y2="318" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="730" y="320" width="260" height="70" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="860.0" y="350" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">入库验收</text>
+<text x="860.0" y="373" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">预检 -&gt; 授权 -&gt; 入库</text>
+<line x1="1060" y1="355" x2="992" y2="355" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="400" y="320" width="260" height="70" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="530.0" y="350" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">部分入库 / 已完成</text>
+<text x="530.0" y="373" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">PARTIAL / COMPLETED</text>
+<line x1="730" y1="355" x2="662" y2="355" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="70" y="320" width="260" height="70" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="200.0" y="350" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">结算登记</text>
+<text x="200.0" y="373" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">现结 / 月结 / 账期</text>
+<line x1="400" y1="355" x2="332" y2="355" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="70" y="195" width="300" height="65" rx="8" fill="#fbe5e5" stroke="#c00000" stroke-width="1.8"/>
+<text x="220.0" y="225" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">撤回 / 作废 / 终止</text>
+<text x="220.0" y="247" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">须满足状态与原因约束</text>
+<rect x="70" y="445" width="300" height="65" rx="8" fill="#fbe5e5" stroke="#c00000" stroke-width="1.8"/>
+<text x="220.0" y="475" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">关闭短少</text>
+<text x="220.0" y="497" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">部分入库 -&gt; 已完成，须填原因</text>
+<line x1="200" y1="390" x2="200" y2="443" stroke="#a0a8b5" stroke-width="1.8" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<rect x="730" y="455" width="260" height="70" rx="8" fill="#fce4d6" stroke="#c55a11" stroke-width="1.8"/>
+<text x="860.0" y="485" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购退货</text>
+<text x="860.0" y="508" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">PT 单号，待店长审核</text>
+<line x1="530" y1="355" x2="730" y2="488" stroke="#a0a8b5" stroke-width="1.8" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<rect x="1060" y="455" width="300" height="70" rx="8" fill="#fce4d6" stroke="#c55a11" stroke-width="1.8"/>
+<text x="1210.0" y="485" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">审核通过</text>
+<text x="1210.0" y="507" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">负数流水 / 扣结存 / 冲成本</text>
+<line x1="990" y1="490" x2="1058" y2="490" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<rect x="55" y="590" width="660" height="220" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="385.0" y="620" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">入库验收事务边界（@Transactional）</text>
+<line x1="67" y1="632" x2="703" y2="632" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="385.0" y="656" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">① 校验单据状态与明细归属，校验实收数量 / 单价精度</text>
+<text x="385.0" y="677" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">② 超收容差与价差容差校验，超限须店长账号密码授权</text>
+<text x="385.0" y="698" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">③ 职责分离：验收人不能等于采购单创建人</text>
+<text x="385.0" y="719" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">④ 入库单 + 明细落库，回写采购明细已入库数量</text>
+<text x="385.0" y="740" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">⑤ 逐行 stockIn（按 goodsId 升序防死锁），重算成本</text>
+<text x="385.0" y="761" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">⑥ 回写采购单状态 / 金额（乐观锁）与供应商累计额</text>
+<rect x="735" y="590" width="710" height="220" rx="8" fill="#fce4d6" stroke="#c55a11" stroke-width="1.8"/>
+<text x="1090.0" y="620" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">状态与数量约束</text>
+<line x1="747" y1="632" x2="1433" y2="632" stroke="#c55a11" stroke-width="1" opacity="0.55"/>
+<text x="1090.0" y="656" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购单：草稿可编辑 / 删除；提交后创建人可撤回；审核前可驳回</text>
+<text x="1090.0" y="677" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">已审核未入库可终止；部分入库只能关闭剩余数量转已完成</text>
+<text x="1090.0" y="698" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">在途量 = 订购数量 - 已入库数量，终止后同步扣减</text>
+<text x="1090.0" y="719" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购退货：可退量 = 已入库 - 已退货；退货单价取入库成本价</text>
+<text x="1090.0" y="740" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">结算只允许已入库后的状态；结算方式取字典 settle_type</text>
+<text x="1090.0" y="761" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">所有关键动作均写操作日志，并记录操作人 / 时间 / 原因</text>
+<rect x="55" y="850" width="1390" height="145" rx="8" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.8"/>
+<text x="750.0" y="880" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">关键规则</text>
+<line x1="67" y1="892" x2="1433" y2="892" stroke="#8ea9c8" stroke-width="1" opacity="0.55"/>
+<text x="750.0" y="916" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-PUR-01 单号规则：PO / RK / PT + yyyyMMdd + 4 位流水；BR-PUR-02 状态机；BR-PUR-03 金额自动计算</text>
+<text x="750.0" y="941" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-PUR-04 超收容差默认 5%；BR-PUR-05 价差容差默认 ±5%；BR-PUR-06 乐观锁；BR-PUR-07 实收单价即存货成本</text>
+<text x="750.0" y="966" text-anchor="middle" font-size="13" font-family="SimHei" font-weight="normal" fill="#1f2d3d">所有状态迁移采用条件更新（WHERE status = 旧状态），避免并发下重复提交 / 重复入库；单号唯一键兜底冲突重试</text>
+</svg>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="960" viewBox="0 0 1500 960">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5b6b80"/></marker></defs>
+<rect width="1500" height="960" fill="#ffffff"/>
+<text x="750.0" y="44" text-anchor="middle" font-size="28" font-family="SimHei" font-weight="bold" fill="#17365d">系统总体架构与本人负责模块</text>
+<rect x="40" y="70" width="1420" height="120" rx="10" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.5"/>
+<text x="70" y="98" text-anchor="start" font-size="18" font-family="SimHei" font-weight="bold" fill="#17365d">客户端层</text>
+<rect x="100" y="112" width="380" height="62" rx="8" fill="#e8f0fb" stroke="#2f5597" stroke-width="1.8"/>
+<text x="290.0" y="142" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">浏览器 / 管理端</text>
+<text x="290.0" y="165" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">Vue 3 + TypeScript + Nuxt UI + ECharts</text>
+<rect x="560" y="112" width="380" height="62" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="750.0" y="142" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购作业界面</text>
+<text x="750.0" y="165" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购单 / 入库单 / 建议采购 / 采购退货</text>
+<rect x="1020" y="112" width="380" height="62" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1210.0" y="142" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">报表统计界面</text>
+<text x="1210.0" y="165" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">看板 / 7 类报表 / 下钻 / 导出打印</text>
+<rect x="40" y="215" width="1420" height="80" rx="10" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.5"/>
+<text x="70" y="243" text-anchor="start" font-size="18" font-family="SimHei" font-weight="bold" fill="#17365d">接入层</text>
+<rect x="360" y="233" width="780" height="44" rx="8" fill="#e8e3f4" stroke="#6b4fa3" stroke-width="1.8"/>
+<text x="750.0" y="263" text-anchor="middle" font-size="15" font-family="SimHei" font-weight="normal" fill="#1f2d3d">Nginx：静态资源托管 + /api 反向代理 + 安全响应头</text>
+<rect x="40" y="320" width="1420" height="450" rx="10" fill="#fafbfd" stroke="#8ea9c8" stroke-width="1.5"/>
+<text x="70" y="350" text-anchor="start" font-size="18" font-family="SimHei" font-weight="bold" fill="#17365d">应用层（Spring Boot 4 / Java 17）</text>
+<rect x="75" y="370" width="300" height="170" rx="8" fill="#e8f0fb" stroke="#2f5597" stroke-width="1.8"/>
+<text x="225.0" y="400" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">接口层 Controller</text>
+<line x1="87" y1="412" x2="363" y2="412" stroke="#2f5597" stroke-width="1" opacity="0.55"/>
+<text x="225.0" y="436" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">@RequirePerm 权限校验</text>
+<text x="225.0" y="458" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">@OpLog 操作留痕</text>
+<text x="225.0" y="480" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">统一 ApiResponse / 错误码</text>
+<text x="225.0" y="502" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">参数校验与登录用户注入</text>
+<rect x="405" y="370" width="455" height="170" rx="8" fill="#eaf4e7" stroke="#548235" stroke-width="1.8"/>
+<text x="632.5" y="400" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">业务层 Service（采购管理）</text>
+<line x1="417" y1="412" x2="848" y2="412" stroke="#548235" stroke-width="1" opacity="0.55"/>
+<text x="632.5" y="436" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">PurchaseOrderService：单据状态机 / 结算</text>
+<text x="632.5" y="458" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">ReceiptService：预检 / 容差授权 / 入库</text>
+<text x="632.5" y="480" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">SuggestPurchaseService：建议量 / 生成草稿</text>
+<text x="632.5" y="502" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">PurchaseReturnService：退货审核 / 冲减</text>
+<rect x="890" y="370" width="455" height="170" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="1117.5" y="400" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">业务层 Service（报表统计）</text>
+<line x1="902" y1="412" x2="1333" y2="412" stroke="#bf9000" stroke-width="1" opacity="0.55"/>
+<text x="1117.5" y="436" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">DashboardService：KPI / 待办 / 趋势 / TOP10</text>
+<text x="1117.5" y="458" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">PurchaseReportService：汇总 / 排行 / 价格</text>
+<text x="1117.5" y="480" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">DrillDownService：汇总数字到构成单据</text>
+<text x="1117.5" y="502" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">ReportExcelService + AsyncTaskService：导出</text>
+<rect x="75" y="560" width="300" height="145" rx="8" fill="#e8e3f4" stroke="#6b4fa3" stroke-width="1.8"/>
+<text x="225.0" y="590" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">持久层 Mapper</text>
+<line x1="87" y1="602" x2="363" y2="602" stroke="#6b4fa3" stroke-width="1" opacity="0.55"/>
+<text x="225.0" y="626" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">MyBatis-Plus CRUD</text>
+<text x="225.0" y="648" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">复杂聚合 SQL 放 XML</text>
+<text x="225.0" y="670" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">分页插件 / 条件构造器</text>
+<text x="225.0" y="692" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">乐观锁与唯一键兜底</text>
+<rect x="405" y="560" width="455" height="145" rx="8" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.8"/>
+<text x="632.5" y="590" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">横切能力</text>
+<line x1="417" y1="602" x2="848" y2="602" stroke="#8ea9c8" stroke-width="1" opacity="0.55"/>
+<text x="632.5" y="626" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">JWT 认证 + RBAC 按钮级权限</text>
+<text x="632.5" y="648" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">事务边界 / 原子扣减 / 请求令牌防重</text>
+<text x="632.5" y="670" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BusinessDayService 统一营业日</text>
+<text x="632.5" y="692" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">职责分离 / 店长现场授权</text>
+<rect x="890" y="560" width="455" height="145" rx="8" fill="#fce4d6" stroke="#c55a11" stroke-width="1.8"/>
+<text x="1117.5" y="590" text-anchor="middle" font-size="18" font-family="SimHei" font-weight="bold" fill="#1f2d3d">报表口径与安全</text>
+<line x1="902" y1="602" x2="1333" y2="602" stroke="#c55a11" stroke-width="1" opacity="0.55"/>
+<text x="1117.5" y="626" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-01 净销售 = 销售额 - 优惠 - 退货</text>
+<text x="1117.5" y="648" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-02 按 business_date 聚合</text>
+<text x="1117.5" y="670" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">BR-RPT-07 成本 / 毛利按角色掩码</text>
+<text x="1117.5" y="692" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">导出复用同一服务，不绕过掩码</text>
+<rect x="40" y="800" width="1420" height="125" rx="10" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.5"/>
+<text x="70" y="828" text-anchor="start" font-size="18" font-family="SimHei" font-weight="bold" fill="#17365d">数据层</text>
+<rect x="120" y="820" width="420" height="82" rx="8" fill="#e8f0fb" stroke="#2f5597" stroke-width="1.8"/>
+<text x="330.0" y="850" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">MySQL 8.4（utf8mb4）</text>
+<text x="330.0" y="872" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">采购单 / 入库单 / 退货单 / 库存流水</text>
+<rect x="570" y="820" width="360" height="82" rx="8" fill="#fff2cc" stroke="#bf9000" stroke-width="1.8"/>
+<text x="750.0" y="850" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">报表数据源</text>
+<text x="750.0" y="872" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">销售 / 退货 / 采购 / 入库 / 库存流水</text>
+<rect x="960" y="820" width="440" height="82" rx="8" fill="#f2f4f7" stroke="#8ea9c8" stroke-width="1.8"/>
+<text x="1180.0" y="850" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">文件与运维</text>
+<text x="1180.0" y="872" text-anchor="middle" font-size="14" font-family="SimHei" font-weight="normal" fill="#1f2d3d">uploads 图片 / logs 日志 / backups 备份</text>
+<line x1="290" y1="174" x2="290" y2="232" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="750" y1="174" x2="750" y2="232" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1210" y1="174" x2="1210" y2="232" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="750" y1="277" x2="750" y2="368" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="225" y1="540" x2="225" y2="558" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="632" y1="540" x2="632" y2="558" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1117" y1="540" x2="1117" y2="558" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="225" y1="705" x2="225" y2="818" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="632" y1="705" x2="632" y2="818" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+<line x1="1117" y1="705" x2="1117" y2="818" stroke="#5b6b80" stroke-width="1.8" marker-end="url(#arrow)"/>
+</svg>
