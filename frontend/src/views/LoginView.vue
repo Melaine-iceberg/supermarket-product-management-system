@@ -107,8 +107,6 @@ async function handleLogin() {
           />
         </AppFormItem>
       </AppForm>
-
-      <p class="tip">演示账号：admin / Admin@2026</p>
     </UCard>
   </div>
 </template>
@@ -148,13 +146,6 @@ async function handleLogin() {
       font-size: 13px;
       color: var(--ui-text-muted);
     }
-  }
-
-  .tip {
-    text-align: center;
-    color: var(--ui-text-dimmed);
-    font-size: 12px;
-    margin: 4px 0 0;
   }
 }
 </style>
