@@ -28,6 +28,12 @@ application-local.yaml
 
 #### 数据库转储（本地备份，不入库）####
 db/backup/
+/smms-*.sql
+
+#### 本地交付物与工具配置（个人环境，不入库）####
+/*.docx
+.opencode/
+opencode.json
 
 #### 日志与临时文件 ####
 logs/

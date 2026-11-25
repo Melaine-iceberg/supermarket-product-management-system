@@ -7,6 +7,8 @@ import com.smms.common.api.PageVO;
 import com.smms.goods.dto.CategoryNode;
 import com.smms.sale.dto.CashierGoodsVO;
 import com.smms.sale.dto.CheckoutCommand;
+import com.smms.sale.dto.CheckoutPreviewCommand;
+import com.smms.sale.dto.CheckoutPreviewVO;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
 import com.smms.sale.service.SalesCheckoutService;
@@ -42,6 +44,13 @@ public class SalesCheckoutController {
     public ApiResponse<CheckoutVO> checkout(@Valid @RequestBody CheckoutCommand cmd) {
         LoginUser cashier = SecurityUtils.getLoginUser();
         return ApiResponse.ok(checkoutService.checkout(cmd, cashier));
+    }
+
+    /** 结算金额试算（FR-SALE-06）：只读，不落库；用于收款弹窗展示后端精确应收与储值上限 */
+    @PostMapping("/checkout/preview")
+    @RequirePerm("sys:cashier:enter")
+    public ApiResponse<CheckoutPreviewVO> preview(@Valid @RequestBody CheckoutPreviewCommand cmd) {
+        return ApiResponse.ok(checkoutService.preview(cmd));
     }
 
     /** 收银台会员检索（FR-SALE-05）：手机号/会员编号/姓名；关键词为空返回空列表 */

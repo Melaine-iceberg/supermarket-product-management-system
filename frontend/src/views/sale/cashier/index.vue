@@ -2,7 +2,7 @@
 import { notify } from '@/utils/notify'
 import { confirm, alert } from '@/utils/confirm'
 import { moneyText } from '@/utils/format'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { getBusinessParams, getDictItems } from '@/api/system'
 import {
@@ -13,12 +13,14 @@ import {
   getSalesOrderDetail,
   listHolds,
   pageCashierGoods,
+  previewCheckout,
   searchCashierGoods,
   searchMembers,
   takeHold,
   PAY_TYPE_MAP,
   type CashierCategoryNode,
   type CashierGoodsVO,
+  type CheckoutPreviewVO,
   type CheckoutVO,
   type HoldVO,
   type MemberSearchVO,
@@ -71,6 +73,15 @@ const estPayable = computed(() => {
   const orderRate = orderRateInput.value ?? 1
   return Math.round(estGoodsAmount.value * memberRate * orderRate * 100) / 100
 })
+
+/** 收款弹窗的后端精确试算结果（含促销价/会员价/等级折扣，避免储值上限用过高的预估应收） */
+const payPreview = ref<CheckoutPreviewVO | null>(null)
+const previewLoading = ref(false)
+/** 试算请求序号：取消后重开弹窗时丢弃旧响应 */
+let payPreviewSeq = 0
+
+/** 收款弹窗实际使用的应收：后端试算成功取精确值，失败回退前端预估 */
+const payableForPay = computed(() => payPreview.value?.payableAmount ?? estPayable.value)
 
 // ---------- 收银台号（BR-SALE-02 单号组成部分） ----------
 const COUNTER_KEY = 'smms_counter_no'
@@ -605,16 +616,37 @@ const paidTotal = computed(() =>
 )
 
 const estChange = computed(() =>
-  Math.round((paidTotal.value - estPayable.value) * 100) / 100,
+  Math.round((paidTotal.value - payableForPay.value) * 100) / 100,
 )
 
 /** 储值可用上限 = min(应收, 会员余额)（BR-MEM-07：储值不参与找零、余额不可为负） */
 const balanceCap = computed(() => {
   if (!member.value) return 0
-  return Math.round(Math.min(estPayable.value, Number(member.value.balance)) * 100) / 100
+  return Math.round(Math.min(payableForPay.value, Number(member.value.balance)) * 100) / 100
 })
 
-function openPayDialog() {
+/** 结算/试算共用的明细入参：单价由后端按 BR-GOODS-04 解析，前端不传价 */
+function buildCheckoutItems() {
+  return cart.value.map((l) =>
+    l.lineType === 'TEMP'
+      ? {
+          tempName: l.name,
+          tempAmount: l.retailPrice,
+          quantity: 1,
+          remark: l.remark || undefined,
+        }
+      : {
+          goodsId: l.goodsId!,
+          quantity: l.quantity,
+          netWeight: l.isWeighed === 1 ? l.quantity : undefined,
+          remark: l.remark || undefined,
+          overridePrice: l.overridePrice ?? undefined,
+          priceReason: l.overridePrice != null ? l.priceReason || undefined : undefined,
+        },
+  )
+}
+
+async function openPayDialog() {
   if (cart.value.length === 0) {
     notify.warning('销售明细为空')
     return
@@ -626,8 +658,37 @@ function openPayDialog() {
   payDialog.lines = [{ payType: 'CASH', amount: null }]
   // 每次进入结算生成请求令牌（NFR-REL-02 防重）：失败重试复用同令牌，成功后再开新单换新令牌
   payDialog.requestToken = newRequestToken()
+  payPreview.value = null
   payDialog.visible = true
+  // 打开弹窗即向后端试算精确应收（促销价/会员价/等级折扣与结算完全同口径），
+  // 避免前端按零售价预估导致储值金额超过后端应收而被拒（BR-MEM-07）
+  const seq = ++payPreviewSeq
+  previewLoading.value = true
+  try {
+    const preview = await previewCheckout({
+      memberId: member.value && member.value.status === 1 ? member.value.id : undefined,
+      orderDiscountRate: orderRate.value,
+      items: buildCheckoutItems(),
+    })
+    if (seq === payPreviewSeq) payPreview.value = preview
+  } catch {
+    // 拦截器已提示；保留前端预估金额，结算时后端仍会兜底校验
+  } finally {
+    if (seq === payPreviewSeq) previewLoading.value = false
+  }
 }
+
+/** 关闭收款弹窗后丢弃试算结果，避免主界面“收款不足”沿用弹窗精确值 */
+watch(
+  () => payDialog.visible,
+  (visible) => {
+    if (!visible) {
+      payPreviewSeq++
+      payPreview.value = null
+      previewLoading.value = false
+    }
+  },
+)
 
 function addPayLine() {
   payDialog.lines.push({ payType: 'MOBILE', amount: null })
@@ -641,7 +702,7 @@ function removePayLine(idx: number) {
 /** 快捷填入：现金金额 = 应收 */
 function fillExact() {
   payDialog.lines.forEach((l) => (l.amount = null))
-  payDialog.lines[0].amount = estPayable.value
+  payDialog.lines[0].amount = payableForPay.value
 }
 
 /** 储值快捷：BALANCE 行金额 = min(应收, 余额)；无 BALANCE 行则追加（FR-MEM-08） */
@@ -687,8 +748,8 @@ async function submitCheckout() {
     }
   }
   const paid = pays.reduce((s, l) => s + (l.amount ?? 0), 0)
-  if (paid < estPayable.value - 0.005) {
-    notify.warning(`实收 ${money(paid)} 元不足应收 ${money(estPayable.value)} 元`)
+  if (paid < payableForPay.value - 0.005) {
+    notify.warning(`实收 ${money(paid)} 元不足应收 ${money(payableForPay.value)} 元`)
     return
   }
   payDialog.submitting = true
@@ -713,23 +774,7 @@ async function submitCheckout() {
       authorizerPassword: needsAuthorizer.value ? orderAuth.password : undefined,
       discountReason: orderRate.value != null ? discountReasonApplied.value || undefined : undefined,
       remark: remark.value || undefined,
-      items: cart.value.map((l) =>
-        l.lineType === 'TEMP'
-          ? {
-              tempName: l.name,
-              tempAmount: l.retailPrice,
-              quantity: 1,
-              remark: l.remark || undefined,
-            }
-          : {
-              goodsId: l.goodsId!,
-              quantity: l.quantity,
-              netWeight: l.isWeighed === 1 ? l.quantity : undefined,
-              remark: l.remark || undefined,
-              overridePrice: l.overridePrice ?? undefined,
-              priceReason: l.overridePrice != null ? l.priceReason || undefined : undefined,
-            },
-      ),
+      items: buildCheckoutItems(),
       payments: pays.map((l) => ({ payType: l.payType, amount: l.amount! })),
       requestToken: payDialog.requestToken || undefined,
     })
@@ -981,15 +1026,16 @@ onUnmounted(() => {
     <UCard class="input-card">
       <div class="input-row">
         <span class="counter-label">收银台</span>
-        <AppInputNumber
-          v-model="counterNo"
-          :min="1"
-          :max="99"
-          :controls="false"
-          size="large"
-          style="width: 72px"
-          @change="saveCounter"
-        />
+        <div class="counter-input">
+          <AppInputNumber
+            v-model="counterNo"
+            :min="1"
+            :max="99"
+            :controls="false"
+            size="large"
+            @change="saveCounter"
+          />
+        </div>
         <div ref="inputRef" class="scan-input">
           <AppInput
             v-model="input"
@@ -1668,7 +1714,10 @@ onUnmounted(() => {
     >
       <div class="pay-summary">
         <div class="pay-row"><span>件数</span><b>{{ itemCount }}</b></div>
-        <div class="pay-row"><span>应收（预估）</span><b class="payable">￥{{ money(estPayable) }}</b></div>
+        <div class="pay-row">
+          <span>应收{{ previewLoading ? '（计算中）' : payPreview ? '（结算）' : '（预估）' }}</span>
+          <b class="payable">￥{{ money(payableForPay) }}</b>
+        </div>
       </div>
       <div v-for="(line, idx) in payDialog.lines" :key="idx" class="pay-line">
         <AppSelect v-model="line.payType" style="width: 120px">
@@ -1705,11 +1754,19 @@ onUnmounted(() => {
           label="+ 添加收款方式"
           @click="addPayLine"
         />
-        <UButton size="sm" color="neutral" variant="outline" label="金额=应收" @click="fillExact" />
+        <UButton
+          size="sm"
+          color="neutral"
+          variant="outline"
+          label="金额=应收"
+          :disabled="previewLoading"
+          @click="fillExact"
+        />
         <UButton
           v-if="member && member.status === 1"
           size="sm"
           color="warning"
+          :disabled="previewLoading"
           @click="fillBalance"
         >
           储值￥{{ money(balanceCap) }}
@@ -1741,7 +1798,12 @@ onUnmounted(() => {
           label="取消（Esc）"
           @click="payDialog.visible = false"
         />
-        <UButton :loading="payDialog.submitting" label="确认结算" @click="submitCheckout" />
+        <UButton
+          :loading="payDialog.submitting"
+          :disabled="previewLoading"
+          label="确认结算"
+          @click="submitCheckout"
+        />
       </template>
     </AppModal>
 
@@ -1842,16 +1904,27 @@ onUnmounted(() => {
     .input-row {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 10px;
+      row-gap: 8px;
 
       .counter-label {
         font-size: 13px;
         color: var(--el-text-color-regular);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      /* AppInputNumber 的 style 会落到内部 input，根节点仍是 w-full；
+         这里用固定宽外层约束根节点，避免它挤占检索框宽度（收银台窄屏重叠问题） */
+      .counter-input {
+        flex: 0 0 72px;
+        width: 72px;
       }
 
       .scan-input {
-        flex: 1;
-        min-width: 0;
+        flex: 1 1 260px;
+        min-width: 180px;
 
         :deep(input) {
           font-size: 15px;
@@ -1859,20 +1932,31 @@ onUnmounted(() => {
       }
 
       .temp-btn {
+        flex-shrink: 0;
         font-weight: 500;
+        white-space: nowrap;
         /* 关键按钮 ≥44px 支持触屏（IR-UI-06：收银台专项，GAP-P1-12） */
         min-height: 44px;
       }
 
       .hotkeys {
+        flex-shrink: 0;
         font-size: 12px;
         color: var(--el-text-color-secondary);
         white-space: nowrap;
       }
 
       .exit-link {
+        flex-shrink: 0;
         margin-left: auto;
         white-space: nowrap;
+      }
+    }
+
+    /* 窄屏优先保证检索框与操作按钮的可用宽度，快捷键提示收起 */
+    @media (max-width: 1100px) {
+      .input-row .hotkeys {
+        display: none;
       }
     }
 

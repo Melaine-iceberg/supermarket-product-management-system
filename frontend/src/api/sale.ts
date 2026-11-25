@@ -87,6 +87,27 @@ export function checkout(data: CheckoutPayload) {
   return http.post<CheckoutVO>('/sales/checkout', data, 30000)
 }
 
+/** 结算金额试算入参（FR-SALE-06）：与结算相同的商品/会员/折扣，不含收款 */
+export type CheckoutPreviewPayload = Pick<
+  CheckoutPayload,
+  'memberId' | 'orderDiscountRate' | 'items'
+>
+
+/** 结算金额试算结果：后端取价（促销价/会员价/等级折扣）后的精确金额 */
+export interface CheckoutPreviewVO {
+  goodsAmount: number
+  memberDiscountAmount: number
+  orderDiscountAmount: number
+  discountAmount: number
+  payableAmount: number
+  totalRate: number
+}
+
+/** 结算金额试算（只读）：用于收款弹窗展示精确应收与储值上限 */
+export function previewCheckout(data: CheckoutPreviewPayload) {
+  return http.post<CheckoutPreviewVO>('/sales/checkout/preview', data)
+}
+
 // ---------- 收银台商品检索（FR-SALE-02） ----------
 
 /** 收银检索候选：条码/编码/PLU 精确命中优先，名称/拼音首字母模糊次之 */

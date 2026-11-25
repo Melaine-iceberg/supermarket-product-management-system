@@ -24,6 +24,8 @@ import com.smms.member.mapper.MemberMapper;
 import com.smms.member.service.MemberBusinessService;
 import com.smms.sale.dto.CashierGoodsVO;
 import com.smms.sale.dto.CheckoutCommand;
+import com.smms.sale.dto.CheckoutPreviewCommand;
+import com.smms.sale.dto.CheckoutPreviewVO;
 import com.smms.sale.dto.CheckoutVO;
 import com.smms.sale.dto.MemberSearchVO;
 import com.smms.sale.entity.CashierShift;
@@ -126,7 +128,7 @@ public class SalesCheckoutService {
         MemberContext member = resolveMember(cmd.memberId());
 
         // 4. 整单折扣/单品改价授权校验（FR-SALE-07）：打折或改价须店长账号+密码现场授权并填写原因
-        BigDecimal orderRate = resolveOrderRate(cmd);
+        BigDecimal orderRate = resolveOrderRate(cmd.orderDiscountRate());
         resolveDiscountReason(cmd, orderRate);
         boolean hasOverride = cmd.items().stream().anyMatch(i -> i.overridePrice() != null);
         String authorizerName = resolveOrderAuthorizer(cmd, cashier, orderRate, hasOverride);
@@ -192,7 +194,25 @@ public class SalesCheckoutService {
                 lines.goodsAmount(), order.getMemberDiscountAmount(), order.getOrderDiscountAmount(),
                 order.getDiscountAmount(), lines.payable(), paid, change, paymentLines,
                 memberLevelUpgraded, order.getSaleTime());
-    }    // ==================== 收银台商品/会员检索（FR-SALE-02/05） ====================
+    }
+
+    /**
+     * 结算金额试算（FR-SALE-06）：按与结算完全相同的取价、会员折扣与整单折扣规则计算，
+     * 不落库、不扣库存、不校验收款。收银台在打开收款弹窗时调用，保证储值上限与后端应收一致。
+     */
+    public CheckoutPreviewVO preview(CheckoutPreviewCommand cmd) {
+        validateItems(cmd.items());
+        Map<Long, Goods> goodsMap = loadGoods(cmd.items());
+        Map<Long, Promotion> promoMap = loadEffectivePromotions(goodsMap.keySet(), LocalDateTime.now());
+        MemberContext member = resolveMember(cmd.memberId());
+        BigDecimal orderRate = resolveOrderRate(cmd.orderDiscountRate());
+        CalculatedLines lines = calculateLines(cmd.items(), goodsMap, promoMap,
+                member.hasMember(), member.discountRate(), orderRate);
+        return new CheckoutPreviewVO(lines.goodsAmount(), lines.memberDiscount(),
+                lines.orderDiscount(), lines.totalDiscount(), lines.payable(), lines.totalRate());
+    }
+
+    // ==================== 收银台商品/会员检索（FR-SALE-02/05） ====================
 
     /** 商品关键字检索（FR-SALE-02）：条码/编码/PLU 精确与名称/拼音首字母模糊统一匹配，仅启用商品，最多 20 条 */
     public List<CashierGoodsVO> searchCashierGoods(String keyword) {
@@ -380,11 +400,10 @@ public class SalesCheckoutService {
     }
 
     /** 整单折扣率校验（FR-SALE-07/BR-SALE-05/10）：不低于系统下限 */
-    private BigDecimal resolveOrderRate(CheckoutCommand cmd) {
-        if (cmd.orderDiscountRate() == null) {
+    private BigDecimal resolveOrderRate(BigDecimal rate) {
+        if (rate == null) {
             return BigDecimal.ONE;
         }
-        BigDecimal rate = cmd.orderDiscountRate();
         BigDecimal min = minDiscountRate();
         if (rate.compareTo(min) < 0) {
             throw new BusinessException(ErrorCode.SALE_DISCOUNT_BELOW_MIN,

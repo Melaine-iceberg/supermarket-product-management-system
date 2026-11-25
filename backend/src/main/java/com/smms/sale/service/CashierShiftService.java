@@ -109,7 +109,19 @@ public class CashierShiftService {
                 : new ShiftQuery(q.cashierName(), q.counterNo(), q.status(),
                         q.beginDate(), q.endDate(), user.userId(), q.page(), q.size());
         IPage<ShiftVO> result = shiftMapper.selectShiftPage(new Page<>(pageNo, size), scoped);
-        return PageVO.of(result);
+        // 在班班次的统计字段尚未回写（交班时才落库）：列表同样按班次内销售单实时计算，
+        // 避免收银员在交班前看到 0 单 / 0 元（与 detail 接口口径一致，FR-SALE-12）。
+        List<ShiftVO> list = result.getRecords().stream().map(vo -> {
+            if (!CashierShift.STATUS_WORKING.equals(vo.status())) {
+                return vo;
+            }
+            ShiftStats stats = computeStats(shiftMapper.selectShiftOrders(vo.id()));
+            return new ShiftVO(vo.id(), vo.cashierId(), vo.cashierName(), vo.counterNo(),
+                    vo.startTime(), vo.endTime(), stats.orderCount(), stats.netSales(),
+                    stats.cash(), stats.bank(), stats.mobile(), stats.balance(),
+                    stats.returnTotal(), stats.expectedCash(), vo.status());
+        }).toList();
+        return new PageVO<>(list, result.getTotal());
     }
 
     /** 班次详情（交班单视图）：统计实时计算——已交班班次的后续退货仍计入原班次 */
